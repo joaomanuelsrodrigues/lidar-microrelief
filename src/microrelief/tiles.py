@@ -15,7 +15,6 @@ from typing import Any
 import requests
 
 STAC_SEARCH_URL = "https://cdd.dgterritorio.gov.pt/dgt-be/v1/search"
-TILE_CRS_EPSG = 3763
 _EPSG_IN_WKT = re.compile(r'AUTHORITY\["EPSG","(\d+)"\]')
 
 
