@@ -2,7 +2,7 @@
 name = "microrelief"
 version = "0.1.0"
 description = "Microrelief from raw airborne LiDAR: DTM, DSM and CHM that declare what each cell is made of"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = [
     "laspy[lazrs]>=2.5",
     "numpy>=1.26",
@@ -25,7 +25,7 @@ build-backend = "hatchling.build"
 
 [tool.ruff]
 line-length = 100
-target-version = "py311"
+target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]

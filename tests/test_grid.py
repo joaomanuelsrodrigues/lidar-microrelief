@@ -1,3 +1,5 @@
+import dataclasses
+
 import numpy as np
 import pytest
 
@@ -45,5 +47,5 @@ def test_degenerate_bounds_refuse() -> None:
 
 def test_grid_is_frozen_so_no_stage_can_redefine_it_midway() -> None:
     g = grid_for_bounds(0.0, 0.0, 10.0, 10.0, cell=1.0, crs_epsg=3763)
-    with pytest.raises(Exception):  # noqa: B017
+    with pytest.raises(dataclasses.FrozenInstanceError):
         g.cell = 2.0  # type: ignore[misc]
