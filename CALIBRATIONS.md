@@ -13,3 +13,4 @@ Every number here is declared, not justified by taste. `origin` says where the v
 | `slope_threshold` | TBD Task 12 | `ground.py` | Progressive morphological filter, Zhang et al. 2003 | Agreement per class vs official classification |
 | `elevation_threshold_m` | TBD Task 12 | `ground.py` | Progressive morphological filter, Zhang et al. 2003 | Agreement per class vs official classification |
 | `max_elevation_m` | 3.0 m | `ground.py` | Caps the slope-dependent tolerance so a single wide window cannot excuse any drop | Largest true riser measured at the site |
+| `max_cells` | 200,000,000 | `grid.py` | Memory ceiling: one float64 array of that many cells is ~1.6 GB, and the AOI is meant to be ~4 km² | Largest AOI that fits in the working machine's RAM at the chosen cell size |
