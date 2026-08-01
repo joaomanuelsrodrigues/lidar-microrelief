@@ -14,7 +14,7 @@ jobs:
       - name: neutrality
         run: |
           set -e
-          # generic classes only; the private-name list runs from the nabia side (s245)
+          # generic classes only; the private-name list is enforced upstream
           ! grep -rInE '/home/[a-z]+/|C:\\\\Users\\\\' --include='*.py' --include='*.md' . || exit 1
-          ! grep -rInE '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}' --include='*.py' . || exit 1
+          ! grep -rInE '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}' --include='*.py' --include='*.md' . || exit 1
           test ! -f .env
