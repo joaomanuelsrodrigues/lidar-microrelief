@@ -134,3 +134,100 @@ def search_tiles(
             f"catalogue returned HTTP {response.status_code} for bbox {bbox_wgs84}"
         )
     return parse_search_response(response.json(), limit=limit)
+
+
+class SelectionError(CatalogueError):
+    """The tiles on offer do not make an AOI we are willing to process."""
+
+
+@dataclass(frozen=True)
+class Selection:
+    tiles: tuple[TileRef, ...]
+    aoi_bounds: tuple[float, float, float, float]
+    covered_fraction: float
+    flight_dates: tuple[str, ...]
+    mixed_epochs: bool
+    dropped_duplicates: tuple[str, ...]
+
+    @property
+    def total_area_km2(self) -> float:
+        return sum(t.area_m2 for t in self.tiles) / 1e6
+
+
+def _overlap_area(t: TileRef, bounds: tuple[float, float, float, float]) -> float:
+    minx, miny, maxx, maxy = bounds
+    w = min(t.maxx, maxx) - max(t.minx, minx)
+    h = min(t.maxy, maxy) - max(t.miny, miny)
+    return w * h if w > 0 and h > 0 else 0.0
+
+
+def select_tiles(
+    tiles: Sequence[TileRef],
+    aoi_bounds: tuple[float, float, float, float],
+    allow_mixed_epochs: bool = False,
+    min_coverage: float = 1.0,
+    max_area_km2: float = 200.0,
+) -> Selection:
+    """Choose the tiles that actually cover the AOI, preferring a single flight.
+
+    Coverage is measured, not assumed from intersection. Where one footprint was flown more
+    than once, exactly one acquisition is kept: consistency on the spatial axis is not
+    consistency on the temporal one, and a mosaic of two epochs registered onto one grid is
+    harder to notice, not easier.
+    """
+    minx, miny, maxx, maxy = aoi_bounds
+    aoi_area = (maxx - minx) * (maxy - miny)
+    if aoi_area <= 0:
+        raise SelectionError(f"empty AOI bounds {aoi_bounds}")
+
+    touching = [t for t in tiles if _overlap_area(t, aoi_bounds) > 0]
+    if not touching:
+        raise SelectionError(f"no tile intersects AOI {aoi_bounds}")
+
+    crs = {t.crs_epsg for t in touching}
+    if len(crs) > 1:
+        raise SelectionError(f"tiles declare more than one CRS: {sorted(crs)}")
+
+    # Coverage per flight date, so "dominant" means "covers most of this AOI", not "most tiles".
+    by_date: dict[str, float] = {}
+    for t in touching:
+        by_date[t.flight_date] = by_date.get(t.flight_date, 0.0) + _overlap_area(t, aoi_bounds)
+    dominant = max(sorted(by_date), key=lambda d: by_date[d])
+
+    kept: dict[tuple[float, float], TileRef] = {}
+    dropped: list[str] = []
+    for t in sorted(
+        touching, key=lambda t: (t.footprint_key, t.flight_date != dominant, t.item_id)
+    ):
+        if t.footprint_key in kept:
+            dropped.append(t.item_id)
+        else:
+            kept[t.footprint_key] = t
+
+    chosen = tuple(sorted(kept.values(), key=lambda t: (t.minx, t.miny)))
+    dates = tuple(sorted({t.flight_date for t in chosen}))
+    if len(dates) > 1 and not allow_mixed_epochs:
+        raise SelectionError(
+            f"AOI needs two flight dates ({', '.join(dates)}); a mosaic of two epochs is a "
+            f"product made of two moments — pass allow_mixed_epochs to accept and declare it"
+        )
+
+    covered = sum(_overlap_area(t, aoi_bounds) for t in chosen) / aoi_area
+    if covered < min_coverage:
+        raise SelectionError(
+            f"selection covers {covered:.2f} of the AOI, need {min_coverage:.2f}; "
+            f"the DGT survey is ~90% of the territory, not national"
+        )
+
+    area_km2 = sum(t.area_m2 for t in chosen) / 1e6
+    if area_km2 > max_area_km2:
+        raise SelectionError(f"selection is {area_km2:.1f} km2, provider cap is {max_area_km2} km2")
+
+    return Selection(
+        tiles=chosen,
+        aoi_bounds=aoi_bounds,
+        covered_fraction=covered,
+        flight_dates=dates,
+        mixed_epochs=len(dates) > 1,
+        dropped_duplicates=tuple(dropped),
+    )
