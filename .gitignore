@@ -1,0 +1,10 @@
+.env
+.venv/
+outputs/
+data/
+CLAUDE.local.md
+__pycache__/
+*.egg-info/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
