@@ -13,8 +13,15 @@ jobs:
       - run: uv run pytest -q
       - name: neutrality
         run: |
-          set -e
-          # generic classes only; the private-name list is enforced upstream
-          ! grep -rInE '/home/[a-z]+/|C:\\\\Users\\\\' --include='*.py' --include='*.md' . || exit 1
-          ! grep -rInE '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}' --include='*.py' --include='*.md' . || exit 1
+          set -euo pipefail
+          # Tracked files only: the constraint is about what the repository
+          # contains, not what the working directory happens to hold.
+          # (`uv sync` above populates .venv with third-party docstrings that
+          #  legitimately contain example home paths.)
+          check() {
+            hits=$(git ls-files -z '*.py' '*.md' | xargs -0 -r grep -nIE "$1" || true)
+            [ -z "$hits" ] || { echo "$2"; echo "$hits"; exit 1; }
+          }
+          check '/home/[a-z]+/|C:\\+Users\\+' 'private path leak:'
+          check '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}' 'e-mail leak:'
           test ! -f .env
