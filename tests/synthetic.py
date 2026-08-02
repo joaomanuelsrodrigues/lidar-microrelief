@@ -82,9 +82,7 @@ def canopy(
 
 def with_void(cloud: Cloud, x0: float, y0: float, size: float) -> Cloud:
     """Delete every ground return inside a square, leaving a hole with no ground evidence."""
-    inside = (
-        (cloud.x >= x0) & (cloud.x < x0 + size) & (cloud.y >= y0) & (cloud.y < y0 + size)
-    )
+    inside = (cloud.x >= x0) & (cloud.x < x0 + size) & (cloud.y >= y0) & (cloud.y < y0 + size)
     keep = ~(inside & (cloud.classification == GROUND))
     return Cloud(
         cloud.x[keep], cloud.y[keep], cloud.z[keep], cloud.classification[keep], cloud.truth_surface

@@ -37,8 +37,13 @@ def test_two_tiles_land_in_one_grid_with_no_seam() -> None:
     def stats_for(order):
         acc = Accumulator(g)
         for mask in order:
-            acc.add(batch_from(type(c)(c.x[mask], c.y[mask], c.z[mask],
-                                       c.classification[mask], c.truth_surface)))
+            acc.add(
+                batch_from(
+                    type(c)(
+                        c.x[mask], c.y[mask], c.z[mask], c.classification[mask], c.truth_surface
+                    )
+                )
+            )
         return acc.finish()
 
     a = stats_for([left, ~left])
@@ -63,8 +68,17 @@ def test_points_outside_the_grid_are_counted_not_folded_onto_the_border() -> Non
     x = np.array([ORIGIN_X - 50.0, ORIGIN_X + 0.5])
     y = np.array([ORIGIN_Y + 0.5, ORIGIN_Y + 0.5])
     acc = Accumulator(g)
-    acc.add(PointBatch(x, y, np.array([1.0, 2.0]), np.full(2, GROUND, np.uint8),
-                       3763, __import__("pathlib").Path("m"), "0" * 64))
+    acc.add(
+        PointBatch(
+            x,
+            y,
+            np.array([1.0, 2.0]),
+            np.full(2, GROUND, np.uint8),
+            3763,
+            __import__("pathlib").Path("m"),
+            "0" * 64,
+        )
+    )
     stats = acc.finish()
     assert stats.n_outside == 1
     assert stats.n_all.sum() == 1
@@ -76,8 +90,9 @@ def test_official_ground_counts_are_tracked_separately_from_all_returns() -> Non
     y = np.array([ORIGIN_Y + 0.5] * 2)
     cls = np.array([GROUND, VEGETATION], np.uint8)
     acc = Accumulator(g)
-    acc.add(PointBatch(x, y, np.array([3.0, 9.0]), cls, 3763,
-                       __import__("pathlib").Path("m"), "0" * 64))
+    acc.add(
+        PointBatch(x, y, np.array([3.0, 9.0]), cls, 3763, __import__("pathlib").Path("m"), "0" * 64)
+    )
     stats = acc.finish()
     assert stats.n_all[1, 0] == 2
     assert stats.n_ground_asprs[1, 0] == 1
@@ -94,8 +109,15 @@ def test_add_refuses_a_batch_whose_crs_does_not_match_the_grid() -> None:
     g = grid_for_bounds(ORIGIN_X, ORIGIN_Y, ORIGIN_X + 2.0, ORIGIN_Y + 2.0, 1.0, 3763)
     x = np.array([ORIGIN_X + 0.5])
     y = np.array([ORIGIN_Y + 0.5])
-    mismatched = PointBatch(x, y, np.array([1.0]), np.full(1, GROUND, np.uint8),
-                             4326, __import__("pathlib").Path("m"), "0" * 64)
+    mismatched = PointBatch(
+        x,
+        y,
+        np.array([1.0]),
+        np.full(1, GROUND, np.uint8),
+        4326,
+        __import__("pathlib").Path("m"),
+        "0" * 64,
+    )
     acc = Accumulator(g)
     with pytest.raises(ValueError, match="4326"):
         acc.add(mismatched)

@@ -64,9 +64,7 @@ class Accumulator:
 
     def add(self, batch: PointBatch) -> None:
         if batch.crs_epsg != self.grid.crs_epsg:
-            raise ValueError(
-                f"batch is EPSG:{batch.crs_epsg}, grid is EPSG:{self.grid.crs_epsg}"
-            )
+            raise ValueError(f"batch is EPSG:{batch.crs_epsg}, grid is EPSG:{self.grid.crs_epsg}")
         row, col, inside = self.grid.cell_indices(batch.x, batch.y)
         self._n_outside += int((~inside).sum())
         if not inside.any():
