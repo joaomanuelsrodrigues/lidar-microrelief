@@ -17,7 +17,7 @@ class ReadError(RuntimeError):
     """This file is not something we are willing to build a surface from."""
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, eq=False)
 class PointBatch:
     x: NDArray[np.float64]
     y: NDArray[np.float64]
@@ -70,6 +70,17 @@ def read_laz(path: Path, expect_epsg: int = 3763) -> PointBatch:
     if epsg != expect_epsg:
         raise ReadError(f"{path.name} declares EPSG:{epsg}, AOI is EPSG:{expect_epsg}")
 
+    x = np.asarray(las.x, dtype=np.float64)
+    y = np.asarray(las.y, dtype=np.float64)
+    z = np.asarray(las.z, dtype=np.float64)
+    for name, coord in (("x", x), ("y", y), ("z", z)):
+        n_bad = int((~np.isfinite(coord)).sum())
+        if n_bad:
+            raise ReadError(
+                f"{path.name}: {n_bad} point(s) have non-finite {name} (a header scale/offset "
+                f"that decodes to NaN or inf); refusing to build a surface on it"
+            )
+
     classification = np.asarray(las.classification, dtype=np.uint8)
     if not (classification == ASPRS_GROUND).any():
         raise ReadError(
@@ -78,9 +89,9 @@ def read_laz(path: Path, expect_epsg: int = 3763) -> PointBatch:
         )
 
     return PointBatch(
-        x=np.asarray(las.x, dtype=np.float64),
-        y=np.asarray(las.y, dtype=np.float64),
-        z=np.asarray(las.z, dtype=np.float64),
+        x=x,
+        y=y,
+        z=z,
         classification=classification,
         crs_epsg=epsg,
         source_path=path,

@@ -1,3 +1,5 @@
+import warnings
+
 import laspy
 import numpy as np
 import pytest
@@ -71,4 +73,42 @@ def test_a_crs_with_no_epsg_equivalent_refuses_rather_than_assuming(tmp_path) ->
     assert laspy.read(path).header.parse_crs().to_epsg() is None
 
     with pytest.raises(ReadError, match="could not be resolved to an EPSG code"):
+        read_laz(path, expect_epsg=3763)
+
+
+@pytest.mark.parametrize("axis,name", [(0, "x"), (1, "y"), (2, "z")])
+def test_a_non_finite_coordinate_refuses_rather_than_polluting_the_nan_sentinel(
+    tmp_path, axis, name
+) -> None:
+    """A NaN header offset decodes every point on that axis to NaN, whatever the raw stored
+
+    integer is -- this is what a malformed or corrupted header produces in practice. If this
+    slipped through, a cell built from such a point would carry n_all > 0 next to a NaN
+    elevation: the one state the contract forbids, because NaN would stop uniquely meaning
+    "nothing was measured here."
+    """
+    x = np.array([48000.0, 48001.0])
+    y = np.array([169000.0, 169001.0])
+    z = np.array([1.0, 2.0])
+    offsets = [np.floor(x.min()), np.floor(y.min()), np.floor(z.min())]
+    offsets[axis] = np.nan
+
+    header = laspy.LasHeader(version="1.4", point_format=6)
+    header.scales = np.array([0.01, 0.01, 0.01])
+    header.offsets = np.array(offsets)
+    header.add_crs(CRS.from_epsg(3763))
+    las = laspy.LasData(header)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)  # the NaN-offset cast itself warns
+        las.x, las.y, las.z = x, y, z
+    las.classification = np.full(x.size, ASPRS_GROUND, dtype=np.uint8)
+    path = tmp_path / f"nan_offset_{name}.laz"
+    las.write(path)
+
+    # Confirm the round trip actually produces the NaN premise before trusting the refusal.
+    reread = laspy.read(path)
+    coord = np.asarray(getattr(reread, name), dtype=np.float64)
+    assert np.isnan(coord).all()
+
+    with pytest.raises(ReadError, match=f"non-finite {name}"):
         read_laz(path, expect_epsg=3763)

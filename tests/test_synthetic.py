@@ -22,7 +22,9 @@ def test_canopy_thins_ground_returns_to_about_the_requested_fraction() -> None:
 
 def test_with_void_removes_every_ground_return_inside_the_square() -> None:
     c = with_void(ramp(), 48010.0, 169010.0, 5.0)
-    inside = (c.x >= 48010) & (c.x < 48015) & (c.y >= 169010) & (c.y < 169015)
+    # y is top-closed/bottom-open (grid.py's own convention), the opposite of x's bottom-closed
+    # /top-open -- see with_void's docstring.
+    inside = (c.x >= 48010) & (c.x < 48015) & (c.y > 169010) & (c.y <= 169015)
     assert not (inside & (c.classification == GROUND)).any()
 
 

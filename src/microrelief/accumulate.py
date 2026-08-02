@@ -1,7 +1,23 @@
 """Stream points into the one grid, then discard them.
 
-The ceiling on AOI size is grid memory, not point memory: at 0.5 m, 4 km2 is 16M cells, about
-0.3 GB per float32 array. The points are never all in RAM at once.
+The grid is what accumulates: allocated once, sized to the AOI (not to how many tiles get
+poured into it). Measured via `.nbytes`, not estimated: at 0.5 m, 4 km2 is 16M cells, so the
+accumulator's five internal float64/int64 arrays (8 bytes/cell) total 0.64 GB, and the five
+published float32/int32 arrays in `CellStats` (4 bytes/cell) total 0.32 GB -- that 0.32 GB is
+the sum across all five arrays, not the size of any one of them.
+
+That grid figure is fixed for the whole run, but it is not the peak. Peak memory happens once
+per `add()` call and is dominated by that tile's points, not by the grid. Measured with
+`resource.getrusage` around `read_laz()` + `add()` for one synthetic ~21M-point tile poured
+into this same 4 km2 grid: peak RSS reached ~2.8 GB, most of it `read_laz()` materialising the
+tile's x/y/z/classification arrays and `add()`'s own per-point temporaries (row/col/inside, the
+sorted copies behind `_grouped_extrema`) -- the grid's 0.64 GB was a minority of that peak. A
+large enough single tile can push point memory past the grid's footprint well before AOI size
+does, so sizing for the largest tile matters as much as sizing for the AOI.
+
+What genuinely never happens is two tiles' points coexisting: `add()` returns having copied
+nothing of the batch into `self`, so only the grid's aggregates survive from one tile to the
+next.
 """
 
 from __future__ import annotations
@@ -15,7 +31,17 @@ from microrelief.grid import Grid
 from microrelief.read import ASPRS_GROUND, PointBatch
 
 
-@dataclass(frozen=True)
+class AccumulateError(ValueError):
+    """A batch was refused before any point of it was touched.
+
+    Subclasses ValueError so existing `except ValueError` callers keep working unchanged, but
+    lets a caller narrow its catch to accumulator-declared refusals -- distinguishing them from
+    a genuine array bug (mismatched-length arrays, wrong dtype) that also raises a bare
+    ValueError from inside the same `add()` call and should not be silently swallowed.
+    """
+
+
+@dataclass(frozen=True, eq=False)
 class CellStats:
     min_z_all: NDArray[np.float32]
     max_z_all: NDArray[np.float32]
@@ -64,7 +90,9 @@ class Accumulator:
 
     def add(self, batch: PointBatch) -> None:
         if batch.crs_epsg != self.grid.crs_epsg:
-            raise ValueError(f"batch is EPSG:{batch.crs_epsg}, grid is EPSG:{self.grid.crs_epsg}")
+            raise AccumulateError(
+                f"batch is EPSG:{batch.crs_epsg}, grid is EPSG:{self.grid.crs_epsg}"
+            )
         row, col, inside = self.grid.cell_indices(batch.x, batch.y)
         self._n_outside += int((~inside).sum())
         if not inside.any():

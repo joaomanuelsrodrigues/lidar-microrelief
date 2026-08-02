@@ -4,7 +4,7 @@ import pytest
 from microrelief.accumulate import Accumulator
 from microrelief.grid import grid_for_bounds
 from microrelief.read import PointBatch
-from tests.synthetic import GROUND, ORIGIN_X, ORIGIN_Y, VEGETATION, ramp
+from tests.synthetic import GROUND, ORIGIN_X, ORIGIN_Y, VEGETATION, ramp, with_void
 
 
 def batch_from(cloud, path="mem") -> PointBatch:
@@ -53,14 +53,37 @@ def test_two_tiles_land_in_one_grid_with_no_seam() -> None:
 
 
 def test_empty_cells_are_nan_not_zero() -> None:
+    """Zero and "nothing measured" must stay distinguishable in both directions: a cell whose
+
+    only return is a genuine z == 0.0 publishes 0.0, and a cell with no returns at all
+    publishes NaN -- neither may be mistaken for the other.
+    """
     g = grid_for_bounds(ORIGIN_X, ORIGIN_Y, ORIGIN_X + 5.0, ORIGIN_Y + 5.0, 1.0, 3763)
     acc = Accumulator(g)
-    acc.add(batch_from(ramp(size_m=1.0, spacing=0.5)))
+    acc.add(batch_from(ramp(size_m=1.0, spacing=0.5)))  # lands in row 4, cols 0-1 only
+    # A genuine z == 0.0 measurement, landing in row 0, col 4 -- a cell the ramp never touches.
+    acc.add(
+        PointBatch(
+            np.array([ORIGIN_X + 4.5]),
+            np.array([ORIGIN_Y + 4.5]),
+            np.array([0.0]),
+            np.full(1, GROUND, np.uint8),
+            3763,
+            __import__("pathlib").Path("m"),
+            "0" * 64,
+        )
+    )
     stats = acc.finish()
-    assert np.isnan(stats.min_z_all).any()
-    assert (stats.n_all == 0).any()
-    # zero would be a plausible elevation; NaN cannot be mistaken for a measurement
-    assert not (stats.min_z_all[np.isnan(stats.min_z_all)] == 0).any()
+
+    zero_row, zero_col = 0, 4
+    empty_row, empty_col = 2, 2  # untouched by either batch
+
+    assert stats.n_all[empty_row, empty_col] == 0
+    assert np.isnan(stats.min_z_all[empty_row, empty_col])
+
+    assert stats.n_all[zero_row, zero_col] == 1
+    assert not np.isnan(stats.min_z_all[zero_row, zero_col])
+    assert stats.min_z_all[zero_row, zero_col] == pytest.approx(0.0)
 
 
 def test_points_outside_the_grid_are_counted_not_folded_onto_the_border() -> None:
@@ -97,6 +120,48 @@ def test_official_ground_counts_are_tracked_separately_from_all_returns() -> Non
     assert stats.n_all[1, 0] == 2
     assert stats.n_ground_asprs[1, 0] == 1
     assert stats.min_z_ground_asprs[1, 0] == pytest.approx(3.0)
+
+
+def test_a_cell_with_only_vegetation_publishes_no_ground_minimum() -> None:
+    """A cell that has returns but none classified ground must not leak the accumulator's
+
+    +inf initialiser into a published field. `min_z_all` (masked by `n_all == 0`) stays a real
+    number; `min_z_ground_asprs` (masked by `n_ground == 0`, a *different* counter) must be NaN,
+    not +inf -- +inf would pass `np.isnan() == False` and silently poison anything downstream
+    that expects "not NaN" to mean "a real measurement."
+    """
+    g = grid_for_bounds(ORIGIN_X, ORIGIN_Y, ORIGIN_X + 2.0, ORIGIN_Y + 2.0, 1.0, 3763)
+    x = np.array([ORIGIN_X + 0.5] * 2)
+    y = np.array([ORIGIN_Y + 0.5] * 2)
+    cls = np.full(2, VEGETATION, np.uint8)
+    acc = Accumulator(g)
+    acc.add(
+        PointBatch(x, y, np.array([4.0, 6.0]), cls, 3763, __import__("pathlib").Path("m"), "0" * 64)
+    )
+    stats = acc.finish()
+    assert stats.n_all[1, 0] == 2
+    assert stats.n_ground_asprs[1, 0] == 0
+    assert np.isfinite(stats.min_z_all[1, 0])
+    assert np.isnan(stats.min_z_ground_asprs[1, 0])
+
+
+def test_with_void_empties_exactly_size_over_cell_grid_rows() -> None:
+    """`with_void`'s y-selection must align with the grid's own (top-closed, bottom-open) row
+
+    convention, not the "intuitive" bottom-closed reading that agrees with it in x but points
+    the opposite way in y -- otherwise a void of `size` empties one row short, with a lattice
+    line surviving at the boundary as a sparsely-measured cell instead of an empty one.
+    """
+    cell = 0.5
+    c = with_void(ramp(size_m=50.0, spacing=0.2), ORIGIN_X + 10.0, ORIGIN_Y + 10.0, 5.0)
+    g = grid_for_bounds(ORIGIN_X, ORIGIN_Y, ORIGIN_X + 50.0, ORIGIN_Y + 50.0, cell, 3763)
+    acc = Accumulator(g)
+    acc.add(batch_from(c))
+    stats = acc.finish()
+
+    col_lo, col_hi = int(10.0 / cell), int(15.0 / cell)
+    fully_empty_rows = int((stats.n_all[:, col_lo:col_hi] == 0).all(axis=1).sum())
+    assert fully_empty_rows == int(5.0 / cell)
 
 
 def test_add_refuses_a_batch_whose_crs_does_not_match_the_grid() -> None:

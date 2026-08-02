@@ -20,7 +20,7 @@ VEGETATION = 5
 ORIGIN_X, ORIGIN_Y = 48000.0, 169000.0  # inside the DGT lattice, so fixtures look like real data
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, eq=False)
 class Cloud:
     x: NDArray[np.float64]
     y: NDArray[np.float64]
@@ -81,8 +81,16 @@ def canopy(
 
 
 def with_void(cloud: Cloud, x0: float, y0: float, size: float) -> Cloud:
-    """Delete every ground return inside a square, leaving a hole with no ground evidence."""
-    inside = (cloud.x >= x0) & (cloud.x < x0 + size) & (cloud.y >= y0) & (cloud.y < y0 + size)
+    """Delete every ground return inside a square, leaving a hole with no ground evidence.
+
+    The y bound is closed on the top and open on the bottom (`y0 < y <= y0 + size`), the
+    opposite of x's `x0 <= x < x0 + size` -- not the "intuitive" symmetric reading. This is
+    `grid.py`'s own convention (row = `(top - cell, top]`, top-closed, y-down), and matching it
+    is what makes a void of `size` empty exactly `size / cell` grid rows: getting it backwards
+    leaves one boundary lattice line alive, so the void reads as one row short and the surviving
+    row looks sparsely measured instead of empty.
+    """
+    inside = (cloud.x >= x0) & (cloud.x < x0 + size) & (cloud.y > y0) & (cloud.y <= y0 + size)
     keep = ~(inside & (cloud.classification == GROUND))
     return Cloud(
         cloud.x[keep], cloud.y[keep], cloud.z[keep], cloud.classification[keep], cloud.truth_surface
