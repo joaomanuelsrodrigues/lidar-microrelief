@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -12,7 +11,6 @@ import numpy as np
 from numpy.typing import NDArray
 
 ASPRS_GROUND = 2
-_EPSG_IN_WKT = re.compile(r'AUTHORITY\["EPSG","(\d+)"\]')
 
 
 class ReadError(RuntimeError):
@@ -56,11 +54,9 @@ def _epsg_of(header: laspy.LasHeader, path: Path) -> int:
         raise ReadError(f"{path.name} declares no CRS; refusing to assume one")
     code = crs.to_epsg()
     if code is None:
-        wkt = crs.to_wkt()
-        codes = _EPSG_IN_WKT.findall(wkt)
-        if not codes:
-            raise ReadError(f"{path.name} has a CRS with no EPSG authority; refusing to assume one")
-        code = int(codes[-1])
+        raise ReadError(
+            f"{path.name}'s CRS could not be resolved to an EPSG code; refusing to assume one"
+        )
     return int(code)
 
 
