@@ -21,6 +21,13 @@ science — the science lives in `RUBRIC.md`, `CALIBRATIONS.md`, and `ATTRIBUTIO
 6. **Mocked tests prove wiring, not behaviour.** Any reader or client that touches a real file or a
    real network endpoint is unvalidated until it has been exercised end-to-end against the real
    source at least once, with the result recorded.
+7. **The gate is `.github/workflows/ci.yml`, not a remembered command.** It runs five steps —
+   `ruff check src tests scripts`, `ruff format --check src tests scripts`, `mypy`, `pytest -q`,
+   and a neutrality grep over tracked files. Run all five before calling a change clean; invoke
+   each binary by path (`.venv/bin/ruff`, never a bare name, which can resolve to a shell function
+   and diverge from the runner in silence); and report each exit code separately, because `&&`
+   hides which step failed. Where a check's silence is its pass condition, prove it can still
+   fail — a check that scanned nothing exits 0 exactly like a check that found nothing.
 
 ## Where things live
 
