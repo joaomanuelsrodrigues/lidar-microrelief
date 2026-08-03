@@ -64,6 +64,26 @@ def terraced(
     return Cloud(x, y, surface(x, y), np.full(x.size, GROUND, np.uint8), surface)
 
 
+def hillside(
+    size_m: float = 50.0, spacing: float = 0.2, tread: float = 6.0, riser: float = 1.5
+) -> Cloud:
+    """Terraces climbing to a crest and back down: a hill, not an endless staircase.
+
+    `terraced` is monotone, and a morphological opening removes only local maxima -- so no window
+    of any size can damage it (measured s256: ground fraction is exactly 1.0000 at 1 m, 4 m and
+    24 m windows against a 6 m tread). It therefore cannot demonstrate the failure it was written
+    to demonstrate. A crest gives the opening something to bite on, which is what makes the pair
+    "terraces survive" / "terraces are destroyed" discriminate rather than both pass by default.
+    """
+    x, y = _lattice(size_m, spacing)
+    crest = ORIGIN_X + size_m / 2
+
+    def surface(px: NDArray[np.float64], py: NDArray[np.float64]) -> NDArray[np.float64]:
+        return -np.floor(np.abs(px - crest) / tread) * riser
+
+    return Cloud(x, y, surface(x, y), np.full(x.size, GROUND, np.uint8), surface)
+
+
 def canopy(
     size_m: float = 50.0,
     spacing: float = 0.2,
