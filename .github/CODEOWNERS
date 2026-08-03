@@ -1,0 +1,14 @@
+# Code owners.
+#
+# This file names who must review a change. On its own it does nothing: GitHub
+# only enforces it when a branch protection rule on `main` requires review from
+# code owners. Adding that rule is the other half, and it matters once this repo
+# is public and taking pull requests.
+#
+# The workflow directory is listed separately and last (last match wins) because
+# it is the highest-value target: a change there runs arbitrary code in CI.
+
+*                   @joaomanuelsrodrigues
+
+/.github/           @joaomanuelsrodrigues
+/.github/workflows/ @joaomanuelsrodrigues
