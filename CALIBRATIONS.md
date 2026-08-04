@@ -13,6 +13,11 @@ Every number here is declared, not justified by taste. `origin` says where the v
 | `slope_threshold` | 0.3 (unmeasured default) | `ground.py` | Progressive morphological filter, Zhang et al. 2003 | Agreement per class vs the official classification (`agreement()`) |
 | `elevation_threshold_m` | 0.3 m (unmeasured default) | `ground.py` | Progressive morphological filter, Zhang et al. 2003 | Agreement per class vs the official classification (`agreement()`) |
 | `max_elevation_m` | 3.0 m | `ground.py` | **The parameter that decides whether terraces survive.** It caps every tolerance, so a riser is excused exactly when the cap exceeds it, at any window. At 3.0 m the filter tolerates two 1.5 m risers | **Largest true riser (or terrace wall) measured at the site** — the value has to stay above it |
+| `max_cells` | 200,000,000 | `grid.py` | Memory ceiling: one float64 array of that many cells is ~1.6 GB, and the AOI is meant to be ~4 km² | Largest AOI that fits in the working machine's RAM at the chosen cell size |
+| `limit` | 500 | `tiles.py` | Far above any anticipated AOI's tile count; otherwise arbitrary. Controls the STAC page size and truncation guard threshold. | Largest real AOI tile count actually observed in production queries |
+| `min_coverage` | 0.999 | `tiles.py`, `select_tiles()` | Policy: the AOI defines the working area strictly and partial coverage is a refusal, not a shortfall to report — but **1.0 is unsatisfiable against this catalogue** (see below), so the bar sits just under it. Measured band: any value in (0.99, 0.999998] accepts the declared seams and still refuses the smallest real hole | The smallest genuine gap worth refusing, once one has been seen in real data rather than constructed |
+| `max_area_km2` | 200.0 | `tiles.py`, `select_tiles()` | Found in DGT's own QGIS plugin source code (via project design spec); client-code claim, not published spec | Confirm against actual provider behaviour by requesting above the limit |
+| `sortie_gap_hours` | 6.0 h | `tiles.py`, `group_sorties()` | Longest gap between two acquisition stamps still counted as one flight. **The observed data does not discriminate inside a wide band** (see below): any value above ~3.2 min and below 24 h groups all four candidate sites identically. 6 h is the middle of that band in log terms, and cannot merge two date-only stamps, which the catalogue publishes at midnight | Distribution of within-sortie and between-sortie gaps across a whole DGT survey block, rather than four AOIs |
 
 ## What was measured, and what it corrected
 
@@ -36,7 +41,47 @@ say otherwise:
 One artefact to not rediscover: at windows far past the AOI's own scale (100 m on a 50 m fixture) cells
 *are* marked, but they are a contiguous strip against the high-x border with identical counts on riser
 and non-riser columns alike. That is `mode="nearest"` clamping the array edge, not terraces being eaten.
-| `max_cells` | 200,000,000 | `grid.py` | Memory ceiling: one float64 array of that many cells is ~1.6 GB, and the AOI is meant to be ~4 km² | Largest AOI that fits in the working machine's RAM at the chosen cell size |
-| `limit` | 500 | `tiles.py` | Far above any anticipated AOI's tile count; otherwise arbitrary. Controls the STAC page size and truncation guard threshold. | Largest real AOI tile count actually observed in production queries |
-| `min_coverage` | 1.0 | `tiles.py`, `select_tiles()` | Policy: 100% coverage required by default. The AOI defines the working area strictly; partial coverage is a refusal, not a shortfall to report. | Weakest defensible coverage per biome / survey season |
-| `max_area_km2` | 200.0 | `tiles.py`, `select_tiles()` | Found in DGT's own QGIS plugin source code (via project design spec); client-code claim, not published spec | Confirm against actual provider behaviour by requesting above the limit |
+
+## The sortie tolerance, and the band the data actually pins
+
+`sortie_gap_hours` exists because the catalogue stamps each tile with the moment it was acquired, so
+one pass appears as several stamps: Manteigas publishes four, spanning 6m23s of the same night, and
+`select_tiles` read them as four epochs and refused a perfectly uniform AOI. Grouping by UTC day would
+fix that case and break the one that matters — a night flight crossing midnight is one acquisition.
+
+The value was measured rather than picked, by running the same three checks under four mechanisms
+(2026-08-04, all four candidate sites' real stamps):
+
+| Mechanism | Manteigas = 1 sortie | midnight crossing = 1 | Sistelo (1 day apart) = 2 |
+|---|---|---|---|
+| gap 3 min | **FAIL** (n=2) | **FAIL** (n=2) | PASS |
+| **gap 6 h (landed)** | PASS | PASS | PASS |
+| gap 30 h | PASS | PASS | **FAIL** (n=1) |
+| UTC day (rejected) | PASS | **FAIL** (n=2) | PASS |
+
+Two things this says. The tolerance is **not load-bearing** anywhere between ~3.2 min (Manteigas's
+largest internal gap) and 24 h (the finest separation the date-only stamps can express) — every value
+in that band gives the same answer on every candidate, so 6 h is a declaration, not a discovery. And
+the midnight row is what makes `test_a_flight_across_midnight_is_one_sortie_and_not_two_days` a real
+test rather than a green one: it is the only check the rejected mechanism fails.
+
+## Why coverage cannot be required to be exactly 1.0
+
+DGT publishes `proj:bbox` as the bounding box of the **returns**, not of the tile. Measured
+2026-08-04, the far corner lands about a millimetre inside the lattice — a tile runs
+`-21000.0 .. -20000.001` while its neighbour starts at `-20000.0` — so every internal seam leaves an
+uncovered strip 1 mm wide. Over the chosen 2 km AOI that is 3.97 m² of 3,942,464 m², and over the
+Manteigas candidate 8.07 m². `min_coverage = 1.0` therefore refuses **every multi-tile AOI in this
+catalogue**, and its message read `covers 1.00 of the AOI, need 1.00`: a refusal that contradicts
+itself on the page.
+
+Two changes, both measured:
+
+- **Coverage is the union, not the sum of per-tile overlaps.** The old sum double-counted where
+  footprints overlap, which they do — the Pinhão tiles overlap by 0.1 m in y — and reported
+  `1.00040004` for an AOI that is merely fully covered. `_covered_fraction` compresses the tile edges
+  into elementary rectangles, so the answer is exact and cannot exceed 1.
+- **The bar moved to 0.999,** which the two tests pin from both sides: seams measure `0.99999800`
+  and the smallest single-tile hole (a corner tile, 200 m × 200 m of a 2 km box) measures
+  `0.99000000`. Values of 0.98 and 0.99 accept that hole; 1.0 rejects the seams. Four orders of
+  magnitude separate the artefact from the defect, which is the room the threshold works in.

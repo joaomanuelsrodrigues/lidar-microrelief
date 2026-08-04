@@ -8,14 +8,22 @@ so a full page is treated as truncation rather than as a complete answer.
 from __future__ import annotations
 
 import re
-from collections.abc import Sequence
+from bisect import bisect_left
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from typing import Any
 
 import requests
 
 STAC_SEARCH_URL = "https://cdd.dgterritorio.gov.pt/dgt-be/v1/search"
 _EPSG_IN_WKT = re.compile(r'AUTHORITY\["EPSG","(\d+)"\]')
+
+SORTIE_GAP_HOURS = 6.0
+"""Longest gap between two acquisition stamps that still counts as one flight."""
+
+MIN_COVERAGE = 0.999
+"""Fraction of the AOI that must lie under the tiles. Not 1.0: see CALIBRATIONS.md."""
 
 
 class CatalogueError(RuntimeError):
@@ -140,12 +148,51 @@ class SelectionError(CatalogueError):
     """The tiles on offer do not make an AOI we are willing to process."""
 
 
+def _parse_stamp(value: str) -> datetime:
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise UnexpectedCatalogue(f"flight date {value!r} is not an ISO-8601 timestamp") from exc
+    if parsed.tzinfo is None:
+        raise UnexpectedCatalogue(f"flight date {value!r} carries no UTC offset; refusing to guess")
+    return parsed
+
+
+def group_sorties(
+    flight_dates: Iterable[str], gap_hours: float = SORTIE_GAP_HOURS
+) -> tuple[tuple[str, ...], ...]:
+    """Cluster acquisition stamps into sorties by the gap between consecutive ones.
+
+    Single-linkage on the time axis: two stamps belong to the same sortie when nothing
+    separates them by more than `gap_hours`. Grouping by UTC day instead would split a
+    night flight that crosses midnight, which is the one case this has to get right —
+    and the catalogue does publish sub-minute stamps for night acquisitions.
+
+    Stamps are ordered by the instant they denote, not lexically: two offsets for the
+    same moment sort in the wrong order as strings and would invent a gap.
+    """
+    if gap_hours <= 0:
+        raise ValueError(f"gap_hours must be positive, got {gap_hours}")
+    parsed = sorted(((_parse_stamp(s), s) for s in set(flight_dates)), key=lambda p: p[0])
+    if not parsed:
+        return ()
+    gap = timedelta(hours=gap_hours)
+    groups: list[list[str]] = [[parsed[0][1]]]
+    for (previous, _), (moment, raw) in zip(parsed, parsed[1:], strict=False):
+        if moment - previous > gap:
+            groups.append([raw])
+        else:
+            groups[-1].append(raw)
+    return tuple(tuple(g) for g in groups)
+
+
 @dataclass(frozen=True)
 class Selection:
     tiles: tuple[TileRef, ...]
     aoi_bounds: tuple[float, float, float, float]
     covered_fraction: float
     flight_dates: tuple[str, ...]
+    sorties: tuple[tuple[str, ...], ...]
     mixed_epochs: bool
     dropped_duplicates: tuple[str, ...]
 
@@ -161,12 +208,40 @@ def _overlap_area(t: TileRef, bounds: tuple[float, float, float, float]) -> floa
     return w * h if w > 0 and h > 0 else 0.0
 
 
+def _covered_fraction(tiles: Sequence[TileRef], bounds: tuple[float, float, float, float]) -> float:
+    """Fraction of the AOI under the *union* of the tiles, computed exactly.
+
+    Summing each tile's overlap is not coverage: it double-counts where footprints
+    overlap, and the DGT publishes footprints that do overlap (a 0.1 m strip in y at
+    Pinhão). Coordinate compression turns the tiles into a grid of elementary
+    rectangles, each either covered or not, so the answer is exact for axis-aligned
+    boxes and cannot exceed 1.
+    """
+    minx, miny, maxx, maxy = bounds
+
+    def edges(lo: float, hi: float, values: Iterable[float]) -> list[float]:
+        return sorted({lo, hi} | {min(max(v, lo), hi) for v in values})
+
+    xs = edges(minx, maxx, (v for t in tiles for v in (t.minx, t.maxx)))
+    ys = edges(miny, maxy, (v for t in tiles for v in (t.miny, t.maxy)))
+    covered: set[tuple[int, int]] = set()
+    for t in tiles:
+        i0 = bisect_left(xs, min(max(t.minx, minx), maxx))
+        i1 = bisect_left(xs, min(max(t.maxx, minx), maxx))
+        j0 = bisect_left(ys, min(max(t.miny, miny), maxy))
+        j1 = bisect_left(ys, min(max(t.maxy, miny), maxy))
+        covered.update((i, j) for i in range(i0, i1) for j in range(j0, j1))
+    area = sum((xs[i + 1] - xs[i]) * (ys[j + 1] - ys[j]) for i, j in covered)
+    return area / ((maxx - minx) * (maxy - miny))
+
+
 def select_tiles(
     tiles: Sequence[TileRef],
     aoi_bounds: tuple[float, float, float, float],
     allow_mixed_epochs: bool = False,
-    min_coverage: float = 1.0,
+    min_coverage: float = MIN_COVERAGE,
     max_area_km2: float = 200.0,
+    sortie_gap_hours: float = SORTIE_GAP_HOURS,
 ) -> Selection:
     """Choose the tiles that actually cover the AOI, preferring a single flight.
 
@@ -174,6 +249,10 @@ def select_tiles(
     than once, exactly one acquisition is kept: consistency on the spatial axis is not
     consistency on the temporal one, and a mosaic of two epochs registered onto one grid is
     harder to notice, not easier.
+
+    "One flight" means one **sortie**, not one stamp. The catalogue stamps each tile with
+    the moment it was acquired, so a single pass appears as several stamps minutes apart;
+    treating those as distinct epochs would refuse a perfectly uniform AOI.
     """
     minx, miny, maxx, maxy = aoi_bounds
     aoi_area = (maxx - minx) * (maxy - miny)
@@ -188,16 +267,27 @@ def select_tiles(
     if len(crs) > 1:
         raise SelectionError(f"tiles declare more than one CRS: {sorted(crs)}")
 
-    # Coverage per flight date, so "dominant" means "covers most of this AOI", not "most tiles".
-    by_date: dict[str, float] = {}
+    # Coverage per sortie, so "dominant" means "covers most of this AOI", not "most tiles"
+    # and not "most stamps" — one pass spread over four stamps must not lose to a single
+    # stamp from another flight.
+    sortie_of = {
+        stamp: index
+        for index, group in enumerate(
+            group_sorties((t.flight_date for t in touching), sortie_gap_hours)
+        )
+        for stamp in group
+    }
+    by_sortie: dict[int, float] = {}
     for t in touching:
-        by_date[t.flight_date] = by_date.get(t.flight_date, 0.0) + _overlap_area(t, aoi_bounds)
-    dominant = max(sorted(by_date), key=lambda d: by_date[d])
+        index = sortie_of[t.flight_date]
+        by_sortie[index] = by_sortie.get(index, 0.0) + _overlap_area(t, aoi_bounds)
+    dominant = max(sorted(by_sortie), key=lambda i: by_sortie[i])
 
     kept: dict[tuple[float, float], TileRef] = {}
     dropped: list[str] = []
     for t in sorted(
-        touching, key=lambda t: (t.footprint_key, t.flight_date != dominant, t.item_id)
+        touching,
+        key=lambda t: (t.footprint_key, sortie_of[t.flight_date] != dominant, t.item_id),
     ):
         if t.footprint_key in kept:
             dropped.append(t.item_id)
@@ -206,16 +296,18 @@ def select_tiles(
 
     chosen = tuple(sorted(kept.values(), key=lambda t: (t.minx, t.miny)))
     dates = tuple(sorted({t.flight_date for t in chosen}))
-    if len(dates) > 1 and not allow_mixed_epochs:
+    sorties = group_sorties(dates, sortie_gap_hours)
+    if len(sorties) > 1 and not allow_mixed_epochs:
+        spans = ", ".join(f"{g[0]}..{g[-1]}" if len(g) > 1 else g[0] for g in sorties)
         raise SelectionError(
-            f"AOI needs two flight dates ({', '.join(dates)}); a mosaic of two epochs is a "
-            f"product made of two moments — pass allow_mixed_epochs to accept and declare it"
+            f"AOI spans {len(sorties)} sorties ({spans}); a mosaic of two epochs is a product "
+            f"made of two moments — pass allow_mixed_epochs to accept and declare it"
         )
 
-    covered = sum(_overlap_area(t, aoi_bounds) for t in chosen) / aoi_area
+    covered = _covered_fraction(chosen, aoi_bounds)
     if covered < min_coverage:
         raise SelectionError(
-            f"selection covers {covered:.2f} of the AOI, need {min_coverage:.2f}; "
+            f"selection covers {covered:.4f} of the AOI, need {min_coverage:.4f}; "
             f"the DGT survey is ~90% of the territory, not national"
         )
 
@@ -228,6 +320,7 @@ def select_tiles(
         aoi_bounds=aoi_bounds,
         covered_fraction=covered,
         flight_dates=dates,
-        mixed_epochs=len(dates) > 1,
+        sorties=sorties,
+        mixed_epochs=len(sorties) > 1,
         dropped_duplicates=tuple(dropped),
     )
