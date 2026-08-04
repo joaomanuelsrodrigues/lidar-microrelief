@@ -94,12 +94,17 @@ directly rather than accepted second-hand.
 - **Criterion 1 — PASS.** Four tiles, one sortie (2026-03-30), 25.1–28.3 pts/m², union coverage
   0.999999 of the AOI. The wider parish carries 66 tiles with no gap. This is the candidate the
   earlier draft expected to fail, and the highest density of the four.
-- **Criterion 2 — PROVISIONAL, and the doubt is sharper than the earlier draft admitted.** The
-  Vez valley here carries pine, oak and riparian woodland, but the photographed Sistelo terraces
-  themselves are largely **open grazed pasture**, not closed canopy. A DTM under open ground
-  demonstrates far less than a DTM under canopy, which is the whole point of the piece. Not
-  measured from text either way: **Task 9 measures the share of returns above 2 m over this exact
-  AOI**, and if it fails there the site is re-picked and the reversal is recorded here.
+- **Criterion 2 — CONFIRMED 2026-08-04 against the real returns.** The doubt recorded here before
+  the download was sharper than the first draft admitted: the Vez valley carries pine, oak and
+  riparian woodland, but the photographed Sistelo terraces are largely **open grazed pasture**,
+  and a DTM under open ground demonstrates far less than a DTM under canopy. That doubt was
+  **spatial**, so an aggregate could not settle it — a high AOI-wide canopy share is perfectly
+  consistent with the terraces themselves being bare. Measured both ways (`docs/live-smoke.md`):
+  **84.51%** of returns are above 2 m and 58.19% above 5 m over this exact AOI, and across 400
+  blocks of 100 m **not one is bare**. The least wooded block in the AOI still returns 5.1% above
+  2 m, the median block 88%, and 95.3% of the AOI is under real canopy. There is nowhere here for
+  terraces to sit under open sky. The criterion holds on measurement, not on expectation.
+  **The site therefore stands, and no re-pick is triggered.**
 - **Criterion 3 — PASS, and the strongest of the four.** The Paisagem Cultural de Sistelo was
   classified as **monumento nacional by Decreto n.º 4/2018, de 15 de janeiro** — the first cultural
   landscape in Portugal to hold that classification. The terraces are not merely described in the
@@ -193,7 +198,7 @@ directly rather than accepted second-hand.
 
 | Candidate | C1 coverage | C2 canopy | C3 documented | C4 no non-inventoried structure |
 |---|---|---|---|---|
-| **sistelo-arcos-de-valdevez** | **pass, 4 tiles, one sortie, ρ 25-28** | provisional, doubt named | **pass (strongest)** | pass, positioning preference declared unmet |
+| **sistelo-arcos-de-valdevez** | **pass, 4 tiles, one sortie, ρ 25-28** | **PASS — measured, 0.845 above 2 m, no bare block** | **pass (strongest)** | pass, positioning preference declared unmet |
 | alto-douro-pinhao | pass, ρ 16-21 | **provisional fail** | pass | pass |
 | coa-valley | pass, but 3 sorties over 30 days | provisional | weak pass | **fail — excluded** |
 | serra-da-estrela-manteigas | pass, ρ 22-40 | **provisional fail** | weak / fail | **fail** |
@@ -204,8 +209,43 @@ the one whose data is densest. Two candidates are excluded outright on criterion
 the runner-up and would be the fallback if criterion 2 fails at Task 9 — with its own criterion-2
 doubt intact, which is the honest reason it is second and not first.
 
-**What is not settled by this file.** Criterion 2 is provisional for every candidate, including the
-one chosen: no canopy measurement exists yet for any of them, and the Sistelo terraces may well be
-more open than the surrounding valley. Task 9 measures returns above 2 m over the exact AOI above.
-If it fails, this file records the reversal and the site is re-picked — the criterion does not move
-to accommodate the site.
+**What is not settled by this file.** Criterion 2 is provisional for every candidate *except the one
+chosen*: it was measured for Sistelo on 2026-08-04 and passes decisively (see above and
+`docs/live-smoke.md`). The three rejected candidates keep their provisional scores, because no LAZ
+was ever downloaded for them — if Sistelo had failed, the fallback would have had to be measured
+before being trusted, not promoted on a score of the same kind that had just been overturned.
+
+---
+
+## Acquisition — manual, and why
+
+The four tiles were downloaded **by hand through the portal's browser login on 2026-08-04**, not
+by a fetcher. `scripts/dgt_fetch.py` was specified in the plan and never written, because the
+provider closed the automated path: `POST /token` with `grant_type=password` answers **HTTP 401
+`unauthorized_client`**, and a three-request control settles which side refuses — a real password,
+a junk password and a non-existent user all return the *identical* response, so the credentials are
+never evaluated, while a non-existent `client_id` returns a *different* error (`invalid_client`).
+The client `aai-oidc-dgt` exists and simply is not authorised for the direct grant. The operator's
+credentials are fine. **A fetcher that does not exist is a fact about the provider, not a gap to be
+papered over**, and building a browser-login scraper was declined deliberately: it is fragile and
+buys nothing this piece is judged on.
+
+Acceptance was the artefact, never a status code. Each file was checked with `file(1)` — all four
+report *LIDAR point data records, version 1.4, SYSID AL;, Generating Software TerraScan*, header
+magic `LASF` — and each size matched the catalogue's `file:size` byte for byte:
+
+| item_id | delivered filename | bytes | catalogue `file:size` |
+|---|---|---:|---:|
+| `LO-179556-07-2025` | `LO-179556-07-2025_v05.laz` | 218,416,286 | 218,416,286 |
+| `LO-179557-07-2025` | `LO-179557-07-2025_v05.laz` | 215,620,272 | 215,620,272 |
+| `LO-180556-07-2025` | `LO-180556-07-2025_v05.laz` | 193,817,718 | 193,817,718 |
+| `LO-180557-07-2025` | `LO-180557-07-2025_v05.laz` | 217,518,419 | 217,518,419 |
+
+Total 845,372,695 bytes. Two things worth not re-deriving:
+
+- **The delivered filename carries a `_v05` suffix the catalogue's `item_id` does not.** The files
+  are stored under the bare `item_id` so the mapping back to the catalogue is mechanical, and the
+  provider's own name is recorded here so the version is not lost.
+- **The 64-hex segment of the download href is *not* the content hash.** Checked on all four: the
+  sha256 of each file differs from the hash in its href. It is an opaque identifier, so the
+  catalogue offers no free integrity check and the size match above is what stands in for one.
