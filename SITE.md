@@ -16,60 +16,65 @@ the relief reveals nothing that was hidden. Documented is a *pass*, not a disapp
 4 is its safeguard: a landscape where structure is actively being found is excluded, however
 interesting, because the piece must not be the thing that discloses it.
 
-## Status: **UNRESOLVED** as of 2026-08-02 — criterion 1 could not be measured
+## Status: **RESOLVED 2026-08-04 — the site is Sistelo, Arcos de Valdevez**
 
-Criteria 2, 3 and 4 are scored below. **Criterion 1 was not measurable on 2026-08-02**: the DGT
-Centro de Dados API returned HTTP 500 to every request, for every candidate, over roughly half an
-hour.
+The AOI is `aoi/aoi.geojson`: 1980 m × 1980 m at (-20990, 255010, -19010, 256990) in EPSG:3763
+(ETRS89 / PT-TM06), four tiles, all flown **2026-03-30**, 25.1–28.3 pts/m², 845 MB to download.
 
-This is not a finding about the candidates. A candidate that could not be reached is not a
-candidate that lacks coverage, and scoring it as a failure would convert a provider outage into a
-fact about the world. `scripts/triage_candidates.py` enforces that distinction mechanically: it
-prints `UNMEASURED` rather than `NO COVERAGE`, and exits non-zero so an incomplete table cannot be
-read as a verdict.
+Two things had to be corrected before the verdict could be written, and both are recorded rather
+than folded in silently.
 
-### Criterion 1 — evidence of the outage (verbatim)
+### Correction 1 — the pre-registered expectation about Sistelo was wrong
 
-```
-$ .venv/bin/python -m ... (scripts/triage_candidates.py, first run)
-sistelo-arcos-de-valdevez     UNMEASURED  CatalogueError: catalogue returned HTTP 500 ...
-alto-douro-pinhao             UNMEASURED  CatalogueError: catalogue returned HTTP 500 ...
-coa-valley                    UNMEASURED  CatalogueError: catalogue returned HTTP 500 ...
-serra-da-estrela-manteigas    UNMEASURED  CatalogueError: catalogue returned HTTP 500 ...
-```
+The 2026-08-02 draft of this file predicted that Sistelo *"is also the one most likely to fail
+criterion 1, being in the northwest where the DGT survey is incomplete"*. Measured on 2026-08-04:
+**66 tiles over the parish, a complete lattice, no gap.** The prior was reasonable and it was
+false. It is left standing above rather than edited out, because a pre-registration that gets
+quietly revised to match the data is not a pre-registration.
 
-The client was exonerated before the provider was blamed. `limit` was raised from 50 to 500 in a
-recent change, so that was the first suspect; it is not the cause:
+### Correction 2 — the triage box was not on the site
 
-```
-$ curl -s -X POST "https://cdd.dgterritorio.gov.pt/dgt-be/v1/search" \
-    -H "Content-Type: application/json" \
-    -d '{"bbox":[-7.55,41.18,-7.526,41.198],"collections":["LAZ"],"limit":50}'
-{"status":500,"message":"Internal Server Error"}
+The Sistelo box carried in `scripts/triage_candidates.py` since Task 6 was
+`(-8.375, 41.930, -8.351, 41.948)`. That box lies **1–3 km south of the Sistelo parish boundary**
+and 2.8 km from the village: criterion 1 was being measured somewhere the criterion-3 evidence
+does not reach, because the Portaria names the socalcos of the classified landscape, not of that
+box. The candidate now *is* the AOI. This moves where a criterion is measured; it does not relax
+the criterion, and no candidate's score improved as a result — Sistelo's coverage was already a
+pass at the old box.
 
-limit=50   -> HTTP 500
-limit=100  -> HTTP 500
-limit=500  -> HTTP 500
-```
-
-`limit=50` is the exact request measured working on 2026-08-01, and the same bbox that returned 9
-tiles then. The failure is not payload-shaped:
+## Criterion 1 — triage output (verbatim, 2026-08-04)
 
 ```
-GET  /dgt-be/v1/collections      -> HTTP 500
-GET  /dgt-be/v1/collections/LAZ  -> HTTP 500
-POST /dgt-be/v1/search (no collections filter) -> HTTP 500
-GET  /dgt-be/                    -> HTTP 200      <- the app is up
-GET  /dgt-be/v1/conformance      -> HTTP 302
-auth realm .well-known           -> HTTP 200      <- auth is up
+$ PYTHONPATH=src .venv/bin/python scripts/triage_candidates.py
+sistelo-arcos-de-valdevez    tiles=  4  epsg=3763  dates=2026-03-30  rho=25.1-28.3 pts/m2  void@f=0.4=8.2%
+                             box_in_crs=(-20996, 255010, -19005, 256990)  1991 x 1980 m
+                             covered=1.000
+                             tile origins=[(-21000, 255000), (-21000, 256000), (-20000, 255000), (-20000, 256000)]
+alto-douro-pinhao            tiles=  9  epsg=3763  dates=2024-11-22  rho=15.9-21.2 pts/m2  void@f=0.4=20.3%
+                             box_in_crs=(48926, 168032, 50926, 170045)  2000 x 2013 m
+                             covered=1.000
+                             tile origins=[(47999, 167999), (47999, 168999), (47999, 170000), (48999, 169000), (48999, 169999), (49000, 167999), (49999, 169000), (49999, 169999), (50000, 167999)]
+coa-valley                   tiles= 10  epsg=3763  dates=2024-11-11,2024-11-18,2024-12-11  rho=12.6-21.6 pts/m2  void@f=0.4=28.3%
+                             box_in_crs=(85989, 156156, 87982, 158179)  1993 x 2023 m
+                             SELECTION REFUSED (AOI spans 3 sorties (2024-11-11T00:00:00Z, 2024-11-18T00:00:00Z, 2024-12-11T00:00:00Z); a mosaic of two epochs is a product made of two moments — pass allow_mixed_epochs to accept and declare it)
+                             tile origins=[(84999, 156000), (84999, 156999), (84999, 157999), (85999, 156000), (85999, 156999), (85999, 157999), (86999, 156000), (86999, 156999), (86999, 157999), (87999, 156000)]
+serra-da-estrela-manteigas   tiles=  9  epsg=3763  dates=2025-07-04  rho=22.3-40.3 pts/m2  void@f=0.4=10.7%
+                             box_in_crs=(49930, 80860, 51954, 82873)  2024 x 2013 m
+                             covered=1.000
+                             tile origins=[(49000, 80000), (49000, 81000), (49000, 82000), (50000, 80000), (50000, 81000), (50000, 82000), (51000, 80000), (51000, 81000), (51000, 82000)]
+
+All 4 candidates measured.
 ```
 
-The host and the authentication realm answer normally; the whole `/dgt-be/v1/*` catalogue surface
-is erroring. Criterion 1 is re-run when it returns, and this section is replaced with the real
-table.
+All four candidates now have DGT coverage. **Criterion 1 does not separate them** — it only did so
+on 2026-08-02, when none of them could be reached at all.
 
-**Forward consequence:** the fetcher session depends on the same host. If this outage persists it
-blocks that session too, not only this one.
+Two things in that table are worth reading carefully. Côa's refusal is not a coverage failure: its
+ten tiles were flown on three dates spanning 30 days, and `select_tiles` refuses to register a
+30-day mosaic onto one grid without being told to. And Manteigas reads `dates=2025-07-04` only
+because sortie grouping landed in this session — the catalogue publishes four stamps for it,
+6m23s apart, and before the change it was refused for spanning four "epochs" that are one pass of
+one aircraft.
 
 ## How criteria 2-4 were scored
 
@@ -84,12 +89,17 @@ directly rather than accepted second-hand.
 
 ## Candidates
 
-### sistelo-arcos-de-valdevez — bbox (-8.375, 41.930, -8.351, 41.948)
+### sistelo-arcos-de-valdevez — **CHOSEN**, AOI at (-20990, 255010, -19010, 256990) EPSG:3763
 
-- **Criterion 1 — UNMEASURED.** See above. Note this candidate carries the highest prior risk on
-  this criterion: the DGT survey covers ~90% of the territory and the gap is in the northwest.
-- **Criterion 2 — PROVISIONAL PASS.** Pine and riparian woodland along the Vez, within the
-  Peneda-Gerês area. Not measured; confirmed from real returns in Task 9.
+- **Criterion 1 — PASS.** Four tiles, one sortie (2026-03-30), 25.1–28.3 pts/m², union coverage
+  0.999999 of the AOI. The wider parish carries 66 tiles with no gap. This is the candidate the
+  earlier draft expected to fail, and the highest density of the four.
+- **Criterion 2 — PROVISIONAL, and the doubt is sharper than the earlier draft admitted.** The
+  Vez valley here carries pine, oak and riparian woodland, but the photographed Sistelo terraces
+  themselves are largely **open grazed pasture**, not closed canopy. A DTM under open ground
+  demonstrates far less than a DTM under canopy, which is the whole point of the piece. Not
+  measured from text either way: **Task 9 measures the share of returns above 2 m over this exact
+  AOI**, and if it fails there the site is re-picked and the reversal is recorded here.
 - **Criterion 3 — PASS, and the strongest of the four.** The Paisagem Cultural de Sistelo was
   classified as **monumento nacional by Decreto n.º 4/2018, de 15 de janeiro** — the first cultural
   landscape in Portugal to hold that classification. The terraces are not merely described in the
@@ -102,26 +112,39 @@ directly rather than accepted second-hand.
   The official DGPC/SIPA record ([id 35666](http://www.monumentos.gov.pt/Site/APP_PagesUser/SIPA.aspx?id=35666)) was **not reachable** — connection refused — and the
   DGPC search returns HTTP 403 to automated fetch; neither is required, since the legal act itself
   was read.
-- **Criterion 4 — PASS, with a positioning constraint.** No published statement of archaeological
-  incompleteness at Sistelo was found. What the same Portaria does establish, in Artigo 1.º alínea
-  a), is a **delimited** archaeological-sensitivity area: *"É criada uma área de sensibilidade
-  arqueológica circundante à Igreja Paroquial de Sistelo, no lugar de Igreja, conforme planta
-  anexa, onde devem ser realizadas sondagens arqueológicas de avaliação prévia nas ações com
-  impacte no subsolo."* This **strengthens** the criterion rather than failing it — the sensitivity
-  is inventoried, bounded and published, which is the opposite of the Côa condition below. It is
-  recorded here as a constraint on where the AOI is placed: **the AOI is positioned away from the
-  Igreja Paroquial de Sistelo**, and if that proves impossible the fact is declared rather than
-  quietly accepted.
+  **Limit of this evidence, stated rather than assumed:** the perimeter of the classified landscape
+  is defined in a map annexed to the Portaria, which was not obtained. What was verified is that
+  the AOI is 90% inside the **Sistelo parish** (OSM administrative boundary) and centred 22 m from
+  the village point. That it is inside the *classified perimeter* is inferred from that, not read.
+- **Criterion 4 — PASS, with the positioning preference DECLARED AS NOT MET.** Portaria n.º 45/2018,
+  Artigo 1.º alínea a), creates a **delimited** archaeological-sensitivity area: *"É criada uma área
+  de sensibilidade arqueológica circundante à Igreja Paroquial de Sistelo, no lugar de Igreja,
+  conforme planta anexa, onde devem ser realizadas sondagens arqueológicas de avaliação prévia nas
+  ações com impacte no subsolo."* That **strengthens** criterion 4 rather than failing it: the
+  sensitivity is inventoried, bounded and published, which is the opposite of the Côa condition
+  below.
+  The earlier draft added a positioning preference — *"the AOI is positioned away from the Igreja
+  Paroquial de Sistelo, and if that proves impossible the fact is declared rather than quietly
+  accepted"*. **It proved impossible, and this is the declaration.** The church sits at
+  (-19916, 256166), roughly 186 m from the AOI's centre. It was measured, not assumed: of every
+  2 km × 2 km block over the parish that is covered by a single sortie, the one containing the
+  village amphitheatre is the **only** one on the documented terraces, and the nearest alternative
+  that excludes the church is 2.2 km away, only 63% inside the parish, and carries no evidence of
+  terraces at all. There is no placement that keeps the amphitheatre, a single flight, and the
+  church outside.
+  Three things bound what is being accepted. The sensitivity area is published and delimited, so
+  its existence is not being disclosed by this piece. The act it regulates is subsoil impact, which
+  a relief map is not. And **DGT already publishes a 0.5 m MDT covering this ground** — the piece
+  therefore reveals no relief that the state has not already released at the same resolution.
 
-### alto-douro-pinhao — bbox (-7.550, 41.180, -7.526, 41.198)
+### alto-douro-pinhao — rejected on criterion 2
 
-- **Criterion 1 — UNMEASURED.** See above. Lowest prior risk: this is the bbox measured on
-  2026-08-01 returning 9 tiles, all flown 2024-11-22, at 15.9-21.2 pts/m².
-- **Criterion 2 — PROVISIONAL FAIL, and this is the candidate's weak point.** Working Douro
-  terraces are planted vineyard and are **open** — no canopy. Abandoned terraces (*mortórios*) have
-  reverted to Mediterranean woodland, but whether this particular 2×2 km box is mostly working
-  vineyard or mostly *mortório* is unknown from text. Canopy is a requirement of the piece, not a
-  nicety: a DTM under open vineyard demonstrates far less than a DTM under closed canopy.
+- **Criterion 1 — PASS.** Nine tiles, one flight date (2024-11-22), 15.9–21.2 pts/m², coverage
+  1.000. The lowest density of the four and the highest estimated void fraction (20.3%).
+- **Criterion 2 — PROVISIONAL FAIL, and this is why it is not the site.** Working Douro terraces
+  are planted vineyard and are **open** — no canopy. Abandoned terraces (*mortórios*) have reverted
+  to Mediterranean woodland, but whether this particular 2×2 km box is mostly working vineyard or
+  mostly *mortório* is unknown from text. Canopy is a requirement of the piece, not a nicety.
 - **Criterion 3 — PASS.** Alto Douro Wine Region, UNESCO World Heritage inscription 1046 (2001);
   terrace typologies (*socalcos* pré-filoxera, *patamares*, *vinha ao alto*) are named in published
   descriptions. The UNESCO page itself returned HTTP 403 to automated fetch and the inscription
@@ -131,9 +154,11 @@ directly rather than accepted second-hand.
   the region's known sites (Roman villae, Côa rock art) are catalogued and are tens of kilometres
   away.
 
-### coa-valley — bbox (-7.110, 41.070, -7.086, 41.088)
+### coa-valley — rejected on criterion 4
 
-- **Criterion 1 — UNMEASURED.** See above.
+- **Criterion 1 — PASS on coverage, but the selection is refused.** Ten tiles across three flight
+  dates spanning 30 days (2024-11-11, 2024-11-18, 2024-12-11), and the highest estimated void
+  fraction of the four (28.3%). Processing it would require accepting a three-epoch mosaic.
 - **Criterion 2 — PROVISIONAL.** Open oak woodland with scrub understorey; some pine and eucalyptus
   in abandoned parcels.
 - **Criterion 3 — WEAK PASS.** The terracing itself is described only in popular and municipal
@@ -146,9 +171,11 @@ directly rather than accepted second-hand.
   permission. This is precisely the landscape where publishing a 0.5 m relief map could be the act
   that discloses structure nobody has inventoried. Excluded.
 
-### serra-da-estrela-manteigas — bbox (-7.545, 40.395, -7.521, 40.413)
+### serra-da-estrela-manteigas — rejected on criteria 2, 3 and 4
 
-- **Criterion 1 — UNMEASURED.** See above.
+- **Criterion 1 — PASS.** Nine tiles, one sortie of four stamps spanning 6m23s on the night of
+  2025-07-04, 22.3–40.3 pts/m², coverage 1.000. This candidate is what made sortie grouping
+  necessary.
 - **Criterion 2 — PROVISIONAL FAIL.** The August 2022 wildfire burned this area — Copernicus EMS
   activation EMSR618 mapped Manteigas among the affected municipalities, with thousands of hectares
   of pine and cork oak lost. Canopy state in 2026 is unverified from published sources; regrowth
@@ -164,24 +191,21 @@ directly rather than accepted second-hand.
 
 ## Verdict
 
-**None yet. Criterion 1 is unmeasured for all four candidates, so no candidate can pass all four,
-and the pre-registered rule is that a site enters only by passing all four.** That is a statement
-about the measurement, not about the sites: the stopping rule does not fire on candidates that were
-never reached.
+| Candidate | C1 coverage | C2 canopy | C3 documented | C4 no non-inventoried structure |
+|---|---|---|---|---|
+| **sistelo-arcos-de-valdevez** | **pass, 4 tiles, one sortie, ρ 25-28** | provisional, doubt named | **pass (strongest)** | pass, positioning preference declared unmet |
+| alto-douro-pinhao | pass, ρ 16-21 | **provisional fail** | pass | pass |
+| coa-valley | pass, but 3 sorties over 30 days | provisional | weak pass | **fail — excluded** |
+| serra-da-estrela-manteigas | pass, ρ 22-40 | **provisional fail** | weak / fail | **fail** |
 
-On criteria 2-4 alone, the ordering is:
+**Sistelo is the site.** It is the only candidate that passes criterion 3 in its strongest available
+form, the only one whose canopy premise is not already contradicted by what the landscape is, and
+the one whose data is densest. Two candidates are excluded outright on criterion 4. Alto Douro is
+the runner-up and would be the fallback if criterion 2 fails at Task 9 — with its own criterion-2
+doubt intact, which is the honest reason it is second and not first.
 
-| Candidate | C2 canopy | C3 documented | C4 no non-inventoried structure |
-|---|---|---|---|
-| sistelo-arcos-de-valdevez | provisional pass | **pass (strongest)** | pass, with a positioning constraint |
-| alto-douro-pinhao | **provisional fail** | pass | pass |
-| coa-valley | provisional | weak pass | **fail — excluded** |
-| serra-da-estrela-manteigas | **provisional fail** | weak / fail | **fail** |
-
-Two candidates are excluded on criterion 4. Of the two that survive it, Sistelo passes criterion 3
-in its strongest available form and is the only one whose canopy premise is not already in doubt —
-but it is also the one most likely to fail criterion 1, being in the northwest where the DGT survey
-is incomplete. Alto Douro is the reverse: coverage is already demonstrated, canopy is the doubt.
-
-**The two survivors are separated by exactly the measurement that is unavailable.** No pick is
-recorded here until criterion 1 is measured for both.
+**What is not settled by this file.** Criterion 2 is provisional for every candidate, including the
+one chosen: no canopy measurement exists yet for any of them, and the Sistelo terraces may well be
+more open than the surrounding valley. Task 9 measures returns above 2 m over the exact AOI above.
+If it fails, this file records the reversal and the site is re-picked — the criterion does not move
+to accommodate the site.

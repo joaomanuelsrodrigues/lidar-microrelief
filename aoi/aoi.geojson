@@ -1,0 +1,58 @@
+{
+  "type": "Feature",
+  "properties": {
+    "name": "Sistelo — socalcos do vale do Vez",
+    "municipality": "Arcos de Valdevez, Viana do Castelo, Portugal",
+    "chosen_on": "2026-08-04",
+    "criteria": "SITE.md — all four pre-registered criteria, scored by hand",
+    "bounds_epsg3763": [
+      -20990.0,
+      255010.0,
+      -19010.0,
+      256990.0
+    ],
+    "note_bounds": "The working bounds are these metres in EPSG:3763 (ETRS89/PT-TM06); the coordinates below are their WGS84 image and are not exactly axis-aligned.",
+    "note_inset": "Inset 10 m inside the four-tile block so the AOI stays strictly interior to the declared footprints, whose far corners land ~1 mm inside the lattice.",
+    "tiles": [
+      "LO-179556-07-2025",
+      "LO-179557-07-2025",
+      "LO-180556-07-2025",
+      "LO-180557-07-2025"
+    ],
+    "flight_date": "2026-03-30T00:00:00Z",
+    "density_pts_m2": [
+      25.1,
+      28.3
+    ],
+    "download_mb": 845,
+    "source": "Direção-Geral do Território, LiDAR 2024/PRR, collection LAZ",
+    "licence": "CC BY 4.0 — see ATTRIBUTION.md"
+  },
+  "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+      [
+        [
+          -8.386314,
+          41.9643242
+        ],
+        [
+          -8.3624291,
+          41.9643744
+        ],
+        [
+          -8.3624931,
+          41.9822004
+        ],
+        [
+          -8.3863846,
+          41.9821501
+        ],
+        [
+          -8.386314,
+          41.9643242
+        ]
+      ]
+    ]
+  }
+}

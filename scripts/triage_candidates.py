@@ -23,8 +23,15 @@ from microrelief.precheck import estimate_tiles
 from microrelief.tiles import SelectionError, TileRef, search_tiles, select_tiles
 
 # 2 x 2 km boxes over publicly documented terraced landscapes.
+#
+# The Sistelo box was corrected on 2026-08-04. The original, (-8.375, 41.930, -8.351,
+# 41.948), lies about 1-3 km SOUTH of the Sistelo parish boundary and ~2.8 km from the
+# village, so criterion 1 was being measured somewhere the criterion-3 evidence does not
+# reach: the Portaria names the socalcos of the classified landscape, not of that box.
+# The replacement is the AOI itself (see aoi/aoi.geojson), inside the classified parish.
+# This moves where a criterion is measured; it does not relax the criterion.
 CANDIDATES: dict[str, tuple[float, float, float, float]] = {
-    "sistelo-arcos-de-valdevez": (-8.375, 41.930, -8.351, 41.948),
+    "sistelo-arcos-de-valdevez": (-8.386385, 41.964324, -8.362429, 41.982200),
     "alto-douro-pinhao": (-7.550, 41.180, -7.526, 41.198),
     "coa-valley": (-7.110, 41.070, -7.086, 41.088),
     "serra-da-estrela-manteigas": (-7.545, 40.395, -7.521, 40.413),
