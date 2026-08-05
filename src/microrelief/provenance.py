@@ -17,6 +17,7 @@ from datetime import UTC, datetime
 
 from microrelief import __version__
 from microrelief.grid import Grid
+from microrelief.tiles import group_sorties
 
 ATTRIBUTION = (
     "Source: Direção-Geral do Território (DGT), Centro de Dados, LiDAR point clouds, "
@@ -34,10 +35,17 @@ class InputRef:
     item_id: str
     file_name: str  # basename only: a local path in a published record is a leak, not provenance
     sha256: str
-    point_count_catalogue: int
+    # `None` when no catalogue entry was supplied, never the measured count copied across: the two
+    # fields exist so a reader can see whether the file we read is the file the provider described,
+    # and a field that cannot disagree with its sibling is decoration, not evidence.
+    point_count_catalogue: int | None
     point_count_measured: int
     density_measured: float
-    flight_date: str
+    flight_date: str | None  # likewise absent rather than a word standing in for one
+    # Returns dropped before any surface was built (ASPRS noise classes). Published rather than
+    # silently subtracted: `point_count_measured` stays comparable with the catalogue's figure,
+    # and a reader can see how much of the delivery this product declined to stand on.
+    point_count_noise_excluded: int = 0
 
     def __post_init__(self) -> None:
         # Refused, not quietly shortened. Taking the basename would hide from the caller that it
@@ -120,7 +128,12 @@ def build_provenance(
         parameters=dict(parameters),
         inputs=tuple(sorted(inputs, key=lambda i: i.item_id)),
         flight_dates=tuple(sorted(set(flight_dates))),
-        mixed_epochs=len(set(flight_dates)) > 1,
+        # Sorties, not distinct stamps. The catalogue stamps each tile with the moment it was
+        # acquired, so one pass over four tiles arrives as four stamps minutes apart; counting
+        # those would publish `mixed_epochs: True` for a single-flight product. `tiles.py` already
+        # answers this question when it selects, and it has to be answered the same way here —
+        # one definition, not two that can drift.
+        mixed_epochs=len(group_sorties(flight_dates)) > 1,
         honesty=dict(honesty),
         agreement=dict(agreement),
         attribution=ATTRIBUTION,

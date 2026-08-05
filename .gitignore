@@ -1,6 +1,6 @@
 .env
 .venv/
-outputs/
+outputs*/
 data/
 CLAUDE.local.md
 __pycache__/

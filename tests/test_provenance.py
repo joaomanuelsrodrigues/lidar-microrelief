@@ -175,6 +175,35 @@ def test_a_single_epoch_says_so() -> None:
     assert json.loads(a_provenance().to_json())["mixed_epochs"] is False
 
 
+def test_four_stamps_from_one_sortie_are_not_mixed_epochs() -> None:
+    """The AOI this package was built for: four tiles acquired minutes apart in one pass.
+
+    `tiles.py` already decides this question, by sortie, and refuses a selection that spans two.
+    Deciding it a second time here — by counting distinct stamps — makes the two modules disagree
+    about a published field, and the disagreement runs the wrong way: the record and every GeoTIFF
+    tag would announce `mixed_epochs: True` for a product made of a single flight. One definition,
+    not two.
+    """
+    one_pass = (
+        "2025-03-30T11:02:14+00:00",
+        "2025-03-30T11:07:48+00:00",
+        "2025-03-30T11:13:05+00:00",
+        "2025-03-30T11:19:31+00:00",
+    )
+    doc = json.loads(a_provenance(flight_dates=one_pass).to_json())
+    assert doc["mixed_epochs"] is False
+    assert len(doc["flight_dates"]) == 4  # the stamps are still published, one per acquisition
+
+
+def test_no_flight_dates_at_all_is_not_a_claim_of_one_epoch(tmp_path: Any) -> None:
+    """An offline run has no catalogue and so knows no stamps. `flight_dates: []` beside
+    `mixed_epochs: false` is the denominator beside the number (§A1/s258): the reader can see the
+    field is empty rather than reading `false` as a measurement that was taken."""
+    doc = json.loads(a_provenance(flight_dates=()).to_json())
+    assert doc["flight_dates"] == []
+    assert doc["mixed_epochs"] is False
+
+
 def test_the_record_reports_how_many_points_it_actually_read() -> None:
     """Denominator beside the number (§A1/s258): the catalogue's count and the count we measured
     are separate fields, so a reader can see whether the file we read is the file it described."""

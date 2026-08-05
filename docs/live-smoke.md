@@ -119,3 +119,96 @@ The array is seeded with `+inf` in the version above, and the count of points wi
 (0.9993) stays printed beside the result, because it is what distinguishes a measured zero from
 an instrument that measured nothing. Same shape as the §A1 lesson of s252 and s255: silence and
 absence produce identical-looking output, so the check has to report what it actually saw.
+
+---
+
+## 2026-08-05 — the CLI, and the first end-to-end run over the real AOI (Task 18)
+
+Three verbs over the four Sistelo tiles, 845,372,695 bytes. `select` and `precheck` reach the
+catalogue and need no credentials; `run` touches no network at all.
+
+**Commands:**
+
+```
+microrelief select   --aoi aoi/aoi.geojson --out outputs/selection.json
+microrelief precheck --aoi aoi/aoi.geojson --cell 0.5 --ground-fraction 0.4
+microrelief run      --aoi aoi/aoi.geojson --laz ~/data/dgt-laz --out outputs/ \
+                     --cell 0.5 --selection outputs/selection.json
+```
+
+**Output:**
+
+```
+4 tiles, coverage 1.0000, 1 sortie(s), 1 stamp(s) -> selection.json
+
+LO-179556-07-2025   28.3 pts/m2  2026-03-30  void(open)=0.084%  void(f=0.4)=5.9%
+LO-179557-07-2025   27.7 pts/m2  2026-03-30  void(open)=0.098%  void(f=0.4)=6.3%
+LO-180556-07-2025   25.1 pts/m2  2026-03-30  void(open)=0.190%  void(f=0.4)=8.2%
+LO-180557-07-2025   28.2 pts/m2  2026-03-30  void(open)=0.087%  void(f=0.4)=6.0%
+
+grid 3960 x 3960 cells of 0.5 m (3.9204 km2), 4 tile(s), 3250766 return(s) outside the AOI
+measured 74.6% | interpolated 25.2% | undetermined 0.2%
+expected void at f=1: 0.117% (measured density 27.0 pts/m2)
+ground recall 0.999 | non-ground recall 0.495 | accuracy 0.749 | majority-class null 0.503
+flight dates 2026-03-30T00:00:00Z | mixed epochs False
+reproducibility_hash e5e8eb9b031f950083a4ad0e0ce5b1098f6b4cbe4a620455815968f2a3f54f58
+```
+
+41.0 s wall clock, 4.8 GiB peak resident. Every number the README quotes comes from this block.
+
+### What the run settles
+
+**The internal falsification criterion passes.** `agreement()` names it: ground recall below ~0.70
+is a defect in our filter. It is **0.999**. Accuracy **0.749** against a majority-class null of
+**0.503** — the filter beats guessing by 24.6 points, and the number to read beside it is
+`fp = 3,850,641`: a quarter of measured cells where we say ground and the official classification
+has no ground return. That is the expected shape of a minimum-surface filter under canopy, and it
+is declared rather than tuned away.
+
+**The catalogue's counts and ours agree exactly** on all four tiles — 28,339,881 / 27,720,324 /
+25,067,997 / 28,183,801. The pair of fields is not decoration: `--selection` supplies what the
+provider declared, and the record would show a disagreement if there were one.
+
+**11,882 cells that never existed.** `aoi_bounds` reads the AOI's declared `bounds_epsg3763`
+rather than re-deriving the box from its own WGS84 image. The ring round-trips up to 3.8 mm off,
+`grid_for_bounds` floors and ceils, and the plan's version of this function produced a 3961 x 3962
+grid at an origin half a cell away — 11,882 cells outside every tile, publishable only as
+`undetermined`, under a different `reproducibility_hash`.
+
+### Three defects the real data found, that no synthetic fixture could
+
+**1. ASPRS class 7 spans both extremes.** Measured here: class 7 runs from **84.2 m to 1752.5 m**
+while classified ground tops out at **506.1 m**, and every return above 1000 m in the delivery is
+class 7. Kept, it lifted the DSM — the first run produced a CHM of **1524.55 m** — and dropped
+`min_z_all` below the terrain, which is worse, because that is the surface the ground filter reads
+and the DTM publishes. Excluding classes 7 and 18 moved the CHM maximum to **43.04 m** (p99 20.68 m)
+and dropped 248,809 of 109,312,003 returns (0.228%), now published per tile as
+`point_count_noise_excluded`. Fixtures carry no noise class, so nothing in the suite could see this.
+
+**2. The reproducibility hash could not see a code change.** The run before the noise fix and the
+run after it produced **the same hash** — `b152a681…` — over different bytes. The hash covers
+package version, grid, parameters and input digests; the only thing that makes a *code* change
+visible is `__version__`, and nothing enforces bumping it. The version moved to 0.2.0 (goldens
+regenerated in the same commit, since the version is written into every raster's tags) and the hash
+moved to `e5e8eb9b…`. The gap itself is not closed: a run whose code changed without a version bump
+would still reuse a hash. It survived s259's 30-mutation exercise because `__version__` is data,
+not code.
+
+**3. Replay is not established on real data.** Of four reads of the dataset: two clean and
+byte-identical across all six bands, **one that returned a single corrupted coordinate**, and **one
+that failed outright** with `IoError: failed to fill whole buffer`. The corrupted read was visible
+only as second-order damage — that tile's measured density collapsed toward zero because the
+bounding box it divides by exploded, one return crossed the AOI boundary (`n_outside` 3,250,767 vs
+3,250,766), and one cell held 32 instead of 33. The other five bands stayed byte-identical, which
+is what rules out any larger corruption.
+
+The source is intact: `sha256sum` over the tile is stable across passes, and the files sit on ext4
+on the WSL2 virtual disk, not on a Windows mount. `dmesg` shows `mini_init: drop_caches` events on
+a host running a ~5 GiB working set. **The root cause is not established** — parallel LAZ
+decompression, WSL2 memory pressure and non-ECC memory are all live candidates and none has been
+discriminated.
+
+What did change: `read_laz` now takes the tile's declared `proj:bbox` from the selection and
+refuses any return outside it. A return cannot lie outside the box the catalogue derived from the
+returns, so that is a corrupted read, not terrain. **This does not make replay stable. It makes an
+unstable run fail loudly instead of publishing a density divided by an exploded bounding box.**
