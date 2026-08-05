@@ -21,6 +21,18 @@ Every number here is declared, not justified by taste. `origin` says where the v
 | `max_area_km2` | 200.0 | `tiles.py`, `select_tiles()` | Found in DGT's own QGIS plugin source code (via project design spec); client-code claim, not published spec | Confirm against actual provider behaviour by requesting above the limit |
 | `sortie_gap_hours` | 6.0 h | `tiles.py`, `group_sorties()` | Longest gap between two acquisition stamps still counted as one flight. **The observed data does not discriminate inside a wide band** (see below): any value above ~3.2 min and below 24 h groups all four candidate sites identically. 6 h is the middle of that band in log terms, and cannot merge two date-only stamps, which the catalogue publishes at midnight | Distribution of within-sortie and between-sortie gaps across a whole DGT survey block, rather than four AOIs |
 
+## Encoding conventions, not thresholds (`export.py`)
+
+Three numbers in `export.py` are magic in the literal sense and none of them is a threshold: nothing
+is compared against them to decide anything, and no measurement would ever replace them. They are
+listed here because "no magic number without a label" does not make an exception for sentinels.
+
+| Value | Band | Why this one |
+|---|---|---|
+| `NODATA_FLOAT = -9999.0` | `mdt`, `mds`, `chm` | The convention every GIS reads. It cannot collide with a real value: these are metres in EPSG:3763, and −9999 m is not a terrain elevation. NaN is *not* used on disk — it reads as missing in some tools and as a number in others |
+| `NODATA_UINT8 = 255` | `basis` | Deliberately **not 0**. Zero is `undetermined`, which is a published state — we looked and there was nothing to measure — and declaring it NoData would erase exactly the admission the band exists to make. 255 is a code the band never produces |
+| `NODATA_INT32 = -1` | `n_all`, `n_ground_asprs` | No count can be negative, so this cannot collide with a real value either. Again not 0, which is a true count: zero returns fell in that cell |
+
 ## What was measured, and what it corrected
 
 The two `ground.py` rows above said something different until 2026-08-03, and the correction is worth

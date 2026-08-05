@@ -47,5 +47,10 @@ ignore_missing_imports = true
 module = "scipy.*"
 ignore_missing_imports = true
 
+# rasterio ships no py.typed marker, so strict mode refuses the import outright.
+[[tool.mypy.overrides]]
+module = "rasterio.*"
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
