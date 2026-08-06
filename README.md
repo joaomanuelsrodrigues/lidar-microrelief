@@ -4,15 +4,17 @@ Microrelief over the terraces of Sistelo (Arcos de Valdevez, Portugal), derived 
 LiDAR — a 0.5 m DTM, DSM and CHM in which **every cell declares what it is made of**: measured,
 interpolated from a named neighbour, or undetermined. Undetermined cells are published as holes,
 deliberately. The inputs are the four raw DGT LAZ tiles of the AOI (845,372,695 bytes, one sortie,
-flown 2026-03-30); DGT's own published rasters are **not an input** to anything here — they appear
-in the comparison below and nowhere else.
+flown 2026-03-30); DGT's own published rasters are **not an input** to anything here — nothing in
+this repository reads them at all. The only official product used is the ASPRS classification the
+LAZ returns already carry, and it enters the comparison below and nowhere else.
 
 ## The picture
 
 Open `viewer/index.html` and drag the wipe between any two of DSM, DTM, CHM and basis. Transparent
-cells in the DTM/DSM/CHM are **undetermined**: no usable return in the cell, and no measured
-neighbour within 2 m to borrow from. They are holes on purpose. In the basis layer every cell
-shows its state directly: green = measured, orange = interpolated, red = undetermined.
+cells in the DTM/DSM/CHM are **undetermined**: nothing in the cell qualifies as measured ground —
+either no return at all, or only returns the filter rejects — and no measured cell lies within 2 m
+to borrow from. They are holes on purpose. In the basis layer every cell shows its state directly:
+green = measured, orange = interpolated, red = undetermined.
 
 ## How to reproduce
 
@@ -90,8 +92,9 @@ filter under canopy, declared rather than tuned away.
   comparison.
 - **Ground is decided per cell, not per return.** `n_ground_asprs` is the official per-cell count,
   not ours.
-- **Interpolation is nearest-measured with no smoothing**, never farther than 2 m, and each
-  interpolated cell records which measured cell it borrowed from.
+- **Interpolation is nearest-measured with no smoothing**, never farther than 2 m. The
+  borrowed-from cell indices exist only inside the run; they are not among the six published
+  bands.
 - The AOI is a single sortie (2026-03-30), so `mixed_epochs = false`. An AOI mixing flight dates
   would be a mosaic of moments; the pipeline refuses one unless told to accept it, and the record
   declares it.
