@@ -66,7 +66,7 @@ parameters, and what is actually known about them (`CALIBRATIONS.md`):
 The comparison against the official ASPRS classification exists to **quantify the difference, not
 to beat the DGT** — the official classes are used **only for comparison**. Ground recall 0.999,
 non-ground recall 0.495, accuracy 0.749, majority-class null 0.503; the number to read beside
-those is `fp = 3,889,074` — 0.2506 of compared cells are cells where this filter says ground and
+those is `fp = 3,889,074` — 0.2505 of compared cells are cells where this filter says ground and
 the official classification has no ground return, which is the expected shape of a minimum-surface
 filter under canopy, declared rather than tuned away.
 

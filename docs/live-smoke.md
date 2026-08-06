@@ -169,7 +169,7 @@ is declared rather than tuned away.
 > before the noise-class exclusion, whose record survives in `outputs2/provenance.json` (hash
 > `b152a681…`, `fp = 3,850,641`). The final record this entry's command block belongs to
 > (`outputs/provenance.json`, 0.2.0, hash `e5e8eb9b…`) has **`fp = 3,889,074`** of
-> `n_cells = 15,522,469` — 0.2506 of compared cells, so the sentence's argument stands; its digit
+> `n_cells = 15,522,469` — 0.2505 of compared cells, so the sentence's argument stands; its digit
 > did not. Corrected beside the original rather than edited over it.
 
 **The catalogue's counts and ours agree exactly** on all four tiles — 28,339,881 / 27,720,324 /
