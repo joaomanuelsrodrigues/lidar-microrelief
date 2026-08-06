@@ -1,7 +1,10 @@
 """The record that travels with the product.
 
-Two properties matter: a stranger can reproduce the run from this alone, and the hash changes when
-anything that affects the output changes — and only then. The creation timestamp is recorded and
+Two properties matter: a stranger holding the same inputs can re-run and verify against this
+record (it names the files, their digests, the grid and every parameter — not the acquisition
+route or the exact code revision, so it is a verification anchor, not a self-contained recipe),
+and the hash changes when anything that affects the output changes — and only then. The creation
+timestamp is recorded and
 deliberately excluded from the hash, so re-running is verifiable rather than merely plausible. So
 are the run's own results: a hash that folded in what was measured could not distinguish "you ran
 something else" from "you got something else", which is the one question it exists to answer.
