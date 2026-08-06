@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "broken-image",
+        "value": "*",
+        "files": [
+          "viewer/index.html"
+        ],
+        "createdAt": "2026-08-06T12:31:48.763Z",
+        "reason": "Wipe-slider stage imgs get src assigned synchronously by the inline script; verified live in headless browser (both PNGs load 3960x3960, zero console errors). Operator confirmed intentional."
+      }
+    ]
+  }
+}
