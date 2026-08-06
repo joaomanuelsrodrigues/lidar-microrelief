@@ -1,0 +1,103 @@
+{
+  "agreement": {
+    "accuracy": 0.7490835381922811,
+    "fn": 5769,
+    "fp": 3889074,
+    "ground_prevalence": 0.5034972851290603,
+    "majority_class_null": 0.5034972851290603,
+    "n_cells": 15522469,
+    "recall_ground": 0.9992618534324199,
+    "recall_nonground": 0.495380791462457,
+    "tn": 3817874,
+    "tp": 7809752
+  },
+  "attribution": "Source: Direção-Geral do Território (DGT), Centro de Dados, LiDAR point clouds, licensed CC BY 4.0. Derived products (ground classification, DTM, DSM, CHM) produced by microrelief; not reviewed or endorsed by DGT.",
+  "created_utc": "2026-08-05T12:49:57.826169+00:00",
+  "flight_dates": [
+    "2026-03-30T00:00:00Z"
+  ],
+  "grid": {
+    "cell": 0.5,
+    "crs_epsg": 3763,
+    "n_cols": 3960,
+    "n_rows": 3960,
+    "origin_x": -20990.0,
+    "origin_y": 256990.0
+  },
+  "honesty": {
+    "expected_void_fraction": 0.0011737482060784564,
+    "fraction_interpolated": 0.25207434190388733,
+    "fraction_measured": 0.7460224721967146,
+    "fraction_undetermined": 0.0019031858993980206,
+    "measured_density_pts_m2": 26.990212223242526
+  },
+  "inputs": [
+    {
+      "density_measured": 28.278694557360538,
+      "file_name": "LO-179556-07-2025.laz",
+      "flight_date": "2026-03-30T00:00:00Z",
+      "item_id": "LO-179556-07-2025",
+      "point_count_catalogue": 28339881,
+      "point_count_measured": 28339881,
+      "point_count_noise_excluded": 61243,
+      "sha256": "ebf57dae0d2a7564672866dc664346fee4b51cfc60eade990a2475bc8ebc0534"
+    },
+    {
+      "density_measured": 27.652317304606665,
+      "file_name": "LO-179557-07-2025.laz",
+      "flight_date": "2026-03-30T00:00:00Z",
+      "item_id": "LO-179557-07-2025",
+      "point_count_catalogue": 27720324,
+      "point_count_measured": 27720324,
+      "point_count_noise_excluded": 68062,
+      "sha256": "244cf8242f2923703625edcc9f5e5f35b756e71fceeca4a91903f999c19786d1"
+    },
+    {
+      "density_measured": 25.008623017220764,
+      "file_name": "LO-180556-07-2025.laz",
+      "flight_date": "2026-03-30T00:00:00Z",
+      "item_id": "LO-180556-07-2025",
+      "point_count_catalogue": 25067997,
+      "point_count_measured": 25067997,
+      "point_count_noise_excluded": 59424,
+      "sha256": "124f00ebd9b1750952bf0274f1d033824f38681a3b865a2d47069a07c4404dcc"
+    },
+    {
+      "density_measured": 28.123777247526075,
+      "file_name": "LO-180557-07-2025.laz",
+      "flight_date": "2026-03-30T00:00:00Z",
+      "item_id": "LO-180557-07-2025",
+      "point_count_catalogue": 28183801,
+      "point_count_measured": 28183801,
+      "point_count_noise_excluded": 60080,
+      "sha256": "37885bad7e1a7112da9ff23584ddff128baf4b65c2a43af8e84c278e80c91c8f"
+    }
+  ],
+  "known_limitations": [
+    "Interpolated cells borrow the nearest measured value; no smoothing is applied.",
+    "Ground is decided per cell, not per return; n_ground_asprs is the official count, not ours.",
+    "Byte-identical replay is verified on one machine only; cross-machine replay is unverified.",
+    "The ground-fraction term of the void expectation is a reference model, not a measurement."
+  ],
+  "mixed_epochs": false,
+  "package_version": "0.2.0",
+  "parameters": {
+    "cell": 0.5,
+    "d_max_interp_m": 2.0,
+    "elevation_threshold_m": 0.3,
+    "k_min_returns": 1,
+    "max_elevation_m": 3.0,
+    "max_window_m": 4.0,
+    "slope_threshold": 0.3
+  },
+  "reproducibility_hash": "e5e8eb9b031f950083a4ad0e0ce5b1098f6b4cbe4a620455815968f2a3f54f58",
+  "uncalibrated_thresholds": [
+    "cell",
+    "d_max_interp_m",
+    "elevation_threshold_m",
+    "k_min_returns",
+    "max_elevation_m",
+    "max_window_m",
+    "slope_threshold"
+  ]
+}

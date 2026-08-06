@@ -1,0 +1,51 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Microrelief — DSM / DTM / CHM</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 16px/1.5 system-ui, sans-serif; margin: 0 auto; max-width: 60rem; padding: 2rem 1rem; }
+  .stage { position: relative; overflow: hidden; border: 1px solid #8886; background: #7773; }
+  .stage img { display: block; width: 100%; image-rendering: pixelated; }
+  .stage img.top { position: absolute; inset: 0; clip-path: inset(0 50% 0 0); }
+  input[type=range] { width: 100%; margin: .75rem 0; }
+  .controls { display: flex; gap: 1rem; flex-wrap: wrap; align-items: center; }
+  .note { color: #7a7a7a; font-size: .9rem; }
+  .swatch { display: inline-block; width: .8em; height: .8em; border-radius: 2px; vertical-align: baseline; }
+</style>
+<h1>Microrelief from raw LiDAR</h1>
+<p class="note">Drag the slider. Transparent cells in the DTM, DSM and CHM are
+<strong>undetermined</strong>: no usable return, and no measured neighbour close enough to borrow
+from. They are holes on purpose. In the basis layer every cell declares what it is made of:
+<span class="swatch" style="background:#4daf4a"></span> measured ·
+<span class="swatch" style="background:#ff7f00"></span> interpolated ·
+<span class="swatch" style="background:#e41a1c"></span> undetermined.</p>
+<div class="controls">
+  <label>Left <select id="left"></select></label>
+  <label>Right <select id="right"></select></label>
+</div>
+<div class="stage" id="stage">
+  <img id="base" alt="">
+  <img id="over" class="top" alt="">
+</div>
+<input type="range" id="wipe" min="0" max="100" value="50" aria-label="Comparison wipe">
+<p class="note" id="attrib"></p>
+<script>
+  const LAYERS = { mds: "DSM (first surface)", mdt: "DTM (ground)", chm: "CHM (height above ground)", basis: "Basis (measured / interpolated / undetermined)" };
+  const left = document.getElementById("left"), right = document.getElementById("right");
+  for (const [k, label] of Object.entries(LAYERS)) {
+    left.add(new Option(label, k)); right.add(new Option(label, k));
+  }
+  left.value = "mds"; right.value = "mdt";
+  const base = document.getElementById("base"), over = document.getElementById("over");
+  const wipe = document.getElementById("wipe");
+  function sync() {
+    base.src = right.value + ".png"; over.src = left.value + ".png";
+    over.style.clipPath = `inset(0 ${100 - wipe.value}% 0 0)`;
+  }
+  [left, right, wipe].forEach(el => el.addEventListener("input", sync));
+  sync();
+  fetch("provenance.json").then(r => r.json()).then(p => {
+    document.getElementById("attrib").textContent =
+      p.attribution + " — reproducibility hash " + p.reproducibility_hash.slice(0, 12);
+  }).catch(() => {});
+</script>
