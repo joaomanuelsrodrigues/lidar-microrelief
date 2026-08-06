@@ -165,6 +165,13 @@ is a defect in our filter. It is **0.999**. Accuracy **0.749** against a majorit
 has no ground return. That is the expected shape of a minimum-surface filter under canopy, and it
 is declared rather than tuned away.
 
+> **Correction (2026-08-06).** The `fp` above is the superseded 0.1.0 iteration's figure — the run
+> before the noise-class exclusion, whose record survives in `outputs2/provenance.json` (hash
+> `b152a681…`, `fp = 3,850,641`). The final record this entry's command block belongs to
+> (`outputs/provenance.json`, 0.2.0, hash `e5e8eb9b…`) has **`fp = 3,889,074`** of
+> `n_cells = 15,522,469` — 0.2506 of compared cells, so the sentence's argument stands; its digit
+> did not. Corrected beside the original rather than edited over it.
+
 **The catalogue's counts and ours agree exactly** on all four tiles — 28,339,881 / 27,720,324 /
 25,067,997 / 28,183,801. The pair of fields is not decoration: `--selection` supplies what the
 provider declared, and the record would show a disagreement if there were one.
