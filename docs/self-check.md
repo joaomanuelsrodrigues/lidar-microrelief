@@ -129,3 +129,11 @@ the refusal message's exact wording was not reproduced from memory (the verbatim
 The Q5.3 truncation message was verified verbatim-in-substance against `tiles.py:122`, and the
 refusal inventory (CRS at `read.py:72-76`, finitude at `read.py:111-113`, coverage at
 `tiles.py:310`) checks out.
+
+**Correction (2026-08-06, judge round 4).** The "Failing conditions" section above says the
+official classification "appears **only** in the agreement comparison". That is the same
+overclaim the judge later caught in the README: the ASPRS classification also gates acceptance
+(`read.py:116` refuses a tile with no class 2), names the excluded noise classes (7 and 18), and
+is published per cell as `n_ground_asprs`. What holds — and what the failing condition was
+actually probing — is that it never decides which cells are ground in these surfaces. Left in
+place and corrected here, per the record discipline.

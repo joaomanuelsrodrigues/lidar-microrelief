@@ -7,14 +7,20 @@ holes,
 deliberately. The inputs are the four raw DGT LAZ tiles of the AOI (845,372,695 bytes, one sortie,
 flown 2026-03-30); DGT's own published rasters are **not an input** to anything here — nothing in
 this repository reads them at all. The only official product used is the ASPRS classification the
-LAZ returns already carry, and it enters the comparison below and nowhere else.
+LAZ returns already carry: it gates acceptance (a tile with no official ground class is refused),
+names the noise classes excluded from every surface (7 and 18), travels per cell as the published
+`n_ground_asprs` band, and anchors the comparison below. What it never does is decide which cells
+are ground in these surfaces — that decision is re-derived from the raw returns by our own filter.
 
 ## The picture
 
-Open `viewer/index.html` and drag the wipe between any two of DSM, DTM, CHM and basis. Transparent
-cells in the DTM/DSM/CHM are **undetermined**: nothing in the cell qualifies as measured ground —
-either no return at all, or only returns the filter rejects — and no measured cell lies within 2 m
-to borrow from. They are holes on purpose. In the basis layer every cell shows its state directly:
+Open `viewer/index.html` and drag the wipe between any two of DSM, DTM, CHM and basis. Each band
+is transparent exactly where it has nothing it can honestly publish, and the rules differ by band:
+the **DTM** on undetermined cells — nothing in the cell qualifies as measured ground, either no
+return at all or only returns the filter rejects, and no measured cell lies within 2 m to borrow
+from; the **CHM** wherever the cell's own ground was not measured, because a height against
+borrowed ground is a difference between a measurement and somewhere else; the **DSM** only where
+no return landed at all. The holes are on purpose. The basis layer is the exact per-cell answer:
 green = measured, orange = interpolated, red = undetermined.
 
 ## How to reproduce
@@ -41,7 +47,7 @@ run's `outputs/provenance.json`).
 |---|---|
 | Grid | 3960 × 3960 cells of 0.5 m (3.9204 km²), EPSG:3763, one common grid for everything |
 | Cell basis | measured 74.6% · interpolated 25.2% · undetermined 0.2% |
-| Closed-form void expectation | 0.117% of cells empty, given the measured 27.0 pts/m² and every return reaching the ground — read beside the measured 0.2% undetermined |
+| Closed-form void expectation | 0.117% of cells empty, given the measured 27.0 pts/m² and every return reaching the ground — read beside the cells with no measured basis (the 25.2% interpolated plus the 0.2% undetermined); the gap between the two is the canopy's effect |
 | Agreement with the official classification | ground recall 0.999 · non-ground recall 0.495 · accuracy 0.749 · **majority-class null 0.503** |
 | Reproducibility hash | `e5e8eb9b031f950083a4ad0e0ce5b1098f6b4cbe4a620455815968f2a3f54f58` |
 | Cost | 41.0 s wall clock, 4.8 GiB peak resident |
@@ -67,7 +73,8 @@ parameters, and what is actually known about them (`CALIBRATIONS.md`):
   at 1.0 m a whole level is lost.
 
 The comparison against the official ASPRS classification exists to **quantify the difference, not
-to beat the DGT** — the official classes are used **only for comparison**. Ground recall 0.999,
+to beat the DGT** — the official ground class never decides a cell in these surfaces; here it is
+the reference being quantified against, **not an input** to the filter. Ground recall 0.999,
 non-ground recall 0.495, accuracy 0.749, majority-class null 0.503; the number to read beside
 those is `fp = 3,889,074` — 0.2505 of compared cells are cells where this filter says ground and
 the official classification has no ground return, which is the expected shape of a minimum-surface
