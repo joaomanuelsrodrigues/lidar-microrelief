@@ -12,7 +12,7 @@
     "tp": 7809752
   },
   "attribution": "Source: Direção-Geral do Território (DGT), Centro de Dados, LiDAR point clouds, licensed CC BY 4.0. Derived products (ground classification, DTM, DSM, CHM) produced by microrelief; not reviewed or endorsed by DGT.",
-  "created_utc": "2026-08-05T12:49:57.826169+00:00",
+  "created_utc": "2026-08-08T17:46:07.231292+00:00",
   "flight_dates": [
     "2026-03-30T00:00:00Z"
   ],
@@ -76,21 +76,23 @@
   "known_limitations": [
     "Interpolated cells borrow the nearest measured value; no smoothing is applied.",
     "Ground is decided per cell, not per return; n_ground_asprs is the official count, not ours.",
-    "Byte-identical replay is verified on one machine only; cross-machine replay is unverified.",
+    "Byte-identical replay on real data is not established: one corrupted and one failed read of four on 2026-08-05, neither reproduced in 192 controlled re-reads across backends, memory pressure and cold caches; root cause open (docs/live-smoke.md 2026-08-08).",
+    "Cross-machine replay is unverified.",
+    "The reproducibility hash sees code only through the package version; the bump is enforced only by a warn-class CI check.",
     "The ground-fraction term of the void expectation is a reference model, not a measurement."
   ],
   "mixed_epochs": false,
-  "package_version": "0.2.0",
+  "package_version": "0.3.0",
   "parameters": {
     "cell": 0.5,
     "d_max_interp_m": 2.0,
     "elevation_threshold_m": 0.3,
     "k_min_returns": 1,
-    "max_elevation_m": 3.0,
+    "max_elevation_m": 3.5,
     "max_window_m": 4.0,
     "slope_threshold": 0.3
   },
-  "reproducibility_hash": "e5e8eb9b031f950083a4ad0e0ce5b1098f6b4cbe4a620455815968f2a3f54f58",
+  "reproducibility_hash": "c69dd559d915c3f02d00f91bda65759c7cafce48f2a3bfd6c64c2badc0192f33",
   "uncalibrated_thresholds": [
     "cell",
     "d_max_interp_m",

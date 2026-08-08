@@ -159,7 +159,9 @@ def test_noise_returns_are_excluded_from_the_surfaces_and_counted(tmp_path: Path
     assert 7 not in set(batch.classification.tolist())
 
 
-def _tile_at(tmp_path: Path, extra_xy: tuple[float, float] | None = None) -> Path:
+def _tile_at(
+    tmp_path: Path, extra_xy: tuple[float, float] | None = None, extra_cls: int = ASPRS_GROUND
+) -> Path:
     """A tile whose returns sit inside a 1 m box, optionally with one return placed elsewhere."""
     x = [48000.0, 48000.5, 48001.0]
     y = [169000.0, 169000.5, 169001.0]
@@ -176,7 +178,10 @@ def _tile_at(tmp_path: Path, extra_xy: tuple[float, float] | None = None) -> Pat
     header.add_crs(CRS.from_epsg(3763))
     las = laspy.LasData(header)
     las.x, las.y, las.z = xa, ya, za
-    las.classification = np.full(xa.size, ASPRS_GROUND, dtype=np.uint8)
+    cls = np.full(xa.size, ASPRS_GROUND, dtype=np.uint8)
+    if extra_xy is not None:
+        cls[-1] = extra_cls
+    las.classification = cls
     path = tmp_path / f"fp_{'wild' if extra_xy else 'clean'}.laz"
     las.write(path)
     return path
@@ -200,6 +205,21 @@ def test_a_return_outside_the_declared_footprint_is_a_refusal(tmp_path: Path) ->
     """
     with pytest.raises(ReadError, match="outside its declared footprint"):
         read_laz(_tile_at(tmp_path, (1_000_000.0, 169000.0)), expect_epsg=3763, footprint=FOOTPRINT)
+
+
+def test_a_noise_return_outside_the_footprint_is_also_a_refusal(tmp_path: Path) -> None:
+    """E-006's frozen-tree rounds caught the guard checking retained returns only: a corrupted
+    coordinate on a class-7/18 return was silently dropped with the noise, not detected. But a
+    coordinate that cannot be real is a property of the READ, not of the return's class — if one
+    record decoded to garbage, nothing vouches for the records beside it. Verified on the four
+    real tiles before extending (s263): zero noise returns fall outside any declared box, so the
+    guard's wider scope refuses nothing that the provider actually ships."""
+    with pytest.raises(ReadError, match="outside its declared footprint"):
+        read_laz(
+            _tile_at(tmp_path, (1_000_000.0, 169000.0), extra_cls=7),
+            expect_epsg=3763,
+            footprint=FOOTPRINT,
+        )
 
 
 def test_the_footprint_check_does_not_fire_on_the_boundary_or_when_absent(tmp_path: Path) -> None:

@@ -37,11 +37,14 @@ at all. Only the LAZ download itself needs an account, and it is manual: the pro
 token grant is closed to this client, so acceptance was the artefact — each file's size checked
 byte-for-byte against the catalogue's `file:size` — never a status code (`SITE.md` §Acquisition).
 
-## The numbers, from the run of 2026-08-05
+## The numbers, from the run of 2026-08-08 (0.3.0)
 
 Every figure below is quoted from `docs/live-smoke.md`, which carries the commands and their
 verbatim output. The machine-readable record is `viewer/provenance.json` (a tracked copy of the
-run's `outputs/provenance.json`).
+run's `outputs/provenance.json`). The values are unchanged from the 2026-08-05 run — 0.3.0
+widened the footprint guard and recalibrated a cap the default windows never reach, and the
+run's byte-identity with its own second pass, plus value-identity with 0.2.0's bands, is
+demonstrated in the record.
 
 | What | Value |
 |---|---|
@@ -49,8 +52,8 @@ run's `outputs/provenance.json`).
 | Cell basis | measured 74.6% · interpolated 25.2% · undetermined 0.2% |
 | Closed-form void expectation | 0.117% of cells empty, given the measured 27.0 pts/m² and every return reaching the ground — read beside the cells with no measured basis (the 25.2% interpolated plus the 0.2% undetermined); the gap between the two is the combined effect of canopy interception and the ground filter's own rejections — a cell is measured only when the filter calls it ground (`density.py`) |
 | Agreement with the official classification | ground recall 0.999 · non-ground recall 0.495 · accuracy 0.749 · **majority-class null 0.503** |
-| Reproducibility hash | `e5e8eb9b031f950083a4ad0e0ce5b1098f6b4cbe4a620455815968f2a3f54f58` |
-| Cost | 41.0 s wall clock, 4.8 GiB peak resident |
+| Reproducibility hash | `c69dd559d915c3f02d00f91bda65759c7cafce48f2a3bfd6c64c2badc0192f33` |
+| Cost | 41.3 s wall clock, 4.4 GiB peak resident |
 
 ASPRS noise classes 7 and 18 (Low Point / High Noise) are excluded from every surface and counted
 per tile as `point_count_noise_excluded` — 0.228% of returns here. This delivery's class 7 spans
@@ -72,10 +75,15 @@ parameters, and what is actually known about them (`CALIBRATIONS.md`):
   larger — more permissive toward ground. The values themselves are not the paper's: Zhang's
   experiments set them per site (s = 0.08 on flat urban terrain, 1.2 in mountains; dh0 = 0.25 m
   and 0.2 m), which is the case for declaring rather than borrowing them.
-- `max_elevation_m = 3.0` is the parameter that decides whether terrace risers survive: it caps
+- `max_elevation_m = 3.5` is the parameter that decides whether terrace risers survive: it caps
   every tolerance, so a riser is excused exactly when the cap exceeds it, at any window. Measured
   on the synthetic hillside fixture: at 3.0 m all five terrace levels survive every window tried;
-  at 1.0 m a whole level is lost.
+  at 1.0 m a whole level is lost. **The cap is now site-calibrated:** the tallest verified
+  terrace riser at Sistelo measures **2.98 m** (16,596 candidates, top-12 verified one by one —
+  everything taller is built walls, a gully edge, or steps carried by one or two returns), and a
+  cap 2 cm above a riser is not above it within the 0.2–0.3 m LiDAR error band, so it moved from
+  3.0 to 3.5. Method, figures and the ruling: `docs/riser-measurement.md`. At the default
+  windows the cap is unreached (largest tolerance 1.65 m), so the change alters no output here.
 
 The comparison against the official ASPRS classification exists to **quantify the difference, not
 to beat the DGT** — the official ground class never decides a cell in these surfaces; here it is
@@ -89,20 +97,29 @@ filter under canopy, declared rather than tuned away.
 
 ## What this does not support
 
-- **Byte-identical replay on real data is not established.** Of four reads of the 845 MB dataset:
-  two clean and byte-identical across all six bands, one returned a single corrupted coordinate,
-  and one failed outright with `IoError: failed to fill whole buffer`. The source files are intact
-  (`sha256sum` stable across passes); the **root cause is not established** — parallel LAZ
-  decompression, WSL2 memory pressure and non-ECC memory are all live candidates. `read_laz` now
-  refuses any retained return outside its tile's declared box (noise returns are dropped before
-  the check, by design — the guard exists to catch a corrupted read on the data it actually
-  uses), which converts a silent corruption into a loud failure; it does not make replay stable.
+- **Byte-identical replay on real data is not established — now with a measured bound.** The
+  2026-08-05 session saw, in four reads of the 845 MB dataset, one single corrupted coordinate
+  and one outright `IoError: failed to fill whole buffer` (source files intact, `sha256sum`
+  stable). A pre-registered hunt (2026-08-08, `docs/live-smoke.md`) then ran **192 controlled
+  re-reads** — parallel and single-thread backends, idle and under 20 GiB of active memory
+  pressure, warm and cold page cache — and reproduced **neither**: zero events, byte-agreement
+  everywhere, so no code remedy (such as pinning a backend) is justified by the data. The
+  **root cause stays open**: whatever fired that day was state-dependent, and the candidates the
+  experiment could not exercise — that day's host-side pressure, a one-off non-ECC memory event,
+  an in-process interaction — remain named rather than excluded. The 0.3.0 run and its second
+  pass are byte-identical across all six bands and the record; two clean passes are two clean
+  passes, not a stability proof. `read_laz` refuses any return outside its tile's declared box
+  (as of 0.3.0, noise classes included), which converts a silent corruption into a loud failure;
+  it does not make replay stable.
 - **Cross-machine replay is not verified.** Byte-identity holds on this machine's clean reads and
   on the synthetic goldens; no second machine has reproduced the run.
 - **The reproducibility hash cannot see a code change by itself.** It covers package version,
   grid, parameters and input digests; the only thing that makes a *code* change visible is
   `__version__`, and nothing enforces bumping it. A run whose code changed without a version bump
-  would reuse a hash.
+  would reuse a hash. A warn-class CI step (`scripts/check_version_bump.sh`) now flags a commit
+  that touches `src/` without a version change — it narrows the gap without closing it, and its
+  blindness (multi-commit pushes, dirty-tree runs) and over-reach (comment-only edits flag too)
+  are declared in its header.
 - **The ground-fraction term of the void expectation is a reference model, not a measurement** —
   it is the null the measured void share is read against, and tuning it to match would destroy the
   comparison.

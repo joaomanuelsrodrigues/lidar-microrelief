@@ -94,4 +94,64 @@ reported regardless of H.
 
 ## Results
 
-*(filled in after the method above was committed)*
+*(filled in after the method above was committed at `738fc59`; nothing above this line was edited
+since)*
+
+**Commands** (2026-08-08):
+
+```
+PYTHONPATH=src .venv/bin/python scripts/measure_risers.py build \
+    --aoi aoi/aoi.geojson --laz ~/data/dgt-laz --cache .../riser_surface.npz
+PYTHONPATH=src .venv/bin/python scripts/measure_risers.py measure \
+    --cache .../riser_surface.npz --basis outputs/basis.tif --out docs/figures/riser/report.json
+```
+
+**Zone coverage:** 1,291,705 of 2,560,000 cells carry at least one official-ground return
+(50.5%) — the other half is canopy dense enough, or built enough, to leave no class-2 return at
+0.5 m, and profiles broke there rather than bridging.
+
+**Distribution:** 16,596 candidates, 2,145 clusters. Heights p50 **1.67 m**, p90 **2.66 m**,
+max 6.51 m. Unconditional short-range relief (the bound the conditional measure cannot exceed)
+reaches 11.19 m at 2 m lag — the gap between 6.51 and 11.19 is exactly the steps the definition
+excludes: gorge banks and walls flanked by slopes rather than 2 m treads.
+
+**Verification of the top 12** (full table in `report.json`; figures in `docs/figures/riser/`):
+every cluster above 4.6 m failed verification as a terrace riser —
+
+| Ranks | Evidence | Label |
+|---|---|---|
+| 1, 2, 3, 5, 12 (6.51–4.62 m) | 1–3 aligned detections in 8 m; official-ground support median 1–4 returns per 5×5 cells; sit at edges of class-2 voids | **unsupported** — one or two returns carry the step |
+| 4, 11 (5.26, 4.64 m) | 78/37 aligned detections: a long straight E–W edge with rectangular class-2 voids (building footprints) against it, 200 m S of the church | **built** — road/retaining-wall line, not terrace fabric |
+| 8 (4.78 m) | 7.8 m from the church | **built** — churchyard wall |
+| 10 (4.72 m) | 40 aligned detections on a sharp sinuous channel edge | **gully/lane edge** |
+| 6, 7, 9 (4.97–4.74 m) | 6–10 aligned detections at the village margin among class-2 voids | **built/unsupported** |
+
+**The tallest verified terrace riser is 2.98 m** (−20132.8, 256319.2), on a regular NE–SW
+staircase in the north-west amphitheatre with 43 aligned detections and 2–4 official-ground
+returns per cell; its across-step profile reads 271.05 → 270.88 | step | 267.90 → 267.69 —
+flat tread, one-cell drop, flat tread. Its neighbours on the same flank measure 2.88, 2.86 and
+2.81 m. Figure: `f01-terrace-2.98m.png`.
+
+**Basis check:** the top clusters' midpoint cells all publish as `measured` in the DTM's basis
+band. That is consistent, not alarming: with the shipped default `max_window_m = 4.0` the
+windows run (1.5, 2.5, 4.5) m and the largest tolerance is 0.3 × 4.5 + 0.3 = **1.65 m — the
+3.0 m cap is never reached at the defaults**, and a step on a monotone slope survives any
+window regardless (`CALIBRATIONS.md`: a morphological opening removes local maxima only). The
+cap governs users who raise the window, which is exactly where the calibration target matters.
+
+## Verdict, and the ruling
+
+H = **2.98 m** falls in the pre-registered **2.5 m ≤ H < 3.0 m** band: the 3.0 m cap nominally
+stays above it by 2 cm, which is inside the LiDAR vertical error band (0.2–0.3 m) — precisely
+the "margin thinner than the measurement is precise" case. Surfaced to the operator before the
+final run, as the rule requires, with both options and the fragile assumption declared (the
+2.98 m flank's "terrace" label rests on morphology alone; were it a natural bench, the next
+verified riser is 2.88 m — same band, same decision).
+
+**Operator ruling (2026-08-08): raise `max_elevation_m` to 3.5 m.** The target's own rule is
+"the value has to stay above it", and 3.0 over 2.98 is not *above* within measurement noise;
+3.5 clears the tallest verified riser plus the noise band while staying well below the built
+walls (4.6–6.5 m) the filter exists to reject. Declared cost: at larger-than-default windows,
+built walls up to 3.5 m would be excused as ground. At the shipped defaults the change is
+byte-invisible in the outputs (the cap is unreached); it lands in 0.3.0 with the version bump,
+and `CALIBRATIONS.md` now records the measured origin.

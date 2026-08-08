@@ -226,3 +226,116 @@ unstable run fail loudly instead of publishing a density divided by an exploded 
 > pipeline already refuses to use would turn the guard into an obstacle; what it exists to catch
 > is a corrupted read of the data actually used). A corrupted coordinate on a noise return is
 > therefore dropped, not detected. Corrected beside the original rather than edited over it.
+
+> **Follow-up (2026-08-08, later the same day).** As of 0.3.0 the guard checks **all** returns,
+> noise classes included, so the original "any return" sentence is now true of the shipped code
+> — a corrupted coordinate is a property of the read, not of the return's class. Verified before
+> widening: zero noise returns sit outside any declared box on the four real tiles, so the wider
+> guard refuses nothing this delivery ships. The correction above stands as the record of what
+> 0.2.0 did; the entry below records the change.
+
+---
+
+## 2026-08-08 — hunting the s260 read instability; the riser measurement; the 0.3.0 replay
+
+Three measurements in one session, each pre-registered before its data was touched.
+
+### 1. The read instability, under controlled conditions
+
+The entry above left replay unestablished with three candidates (parallel LAZ decompression,
+WSL2 memory pressure, non-ECC memory), none discriminated. The protocol — configs, event
+definition (exception, non-zero exit, or an array hash differing from the tile's modal hash),
+decision rule — was committed in `scripts/read_stability.py` (`050805e`) **before** the first
+full run. Each read runs in a fresh subprocess and hashes both the raw packed point records and
+the decoded x/y/z/classification, so a corruption could be placed below or above the scaling
+step.
+
+**Command (config A shown; B swaps the backend, C adds the hog, D adds eviction):**
+
+```
+.venv/bin/python scripts/read_stability.py --tiles ~/data/dgt-laz --backend parallel \
+    --reps 12 --out .../stability_A.jsonl
+```
+
+**Results — every count with its denominator:**
+
+| Config | Backend | Conditions | Reads | Events | Hash variants/tile |
+|---|---|---|---|---|---|
+| A | LazrsParallel | idle (MemAvailable 28.3–28.5 GiB) | 48 (4 tiles × 12) | **0** | 1/1/1/1 |
+| B | Lazrs single-thread | idle | 48 | **0** | 1/1/1/1 |
+| C | LazrsParallel | 20 GiB active anonymous set (MemAvailable 8.2–8.3 GiB) | 48 | **0** | 1/1/1/1 |
+| D | LazrsParallel | 20 GiB set + per-rep page-cache eviction | 48 | **0** | 1/1/1/1 |
+
+Durations: A min 5.6 / median 6.5 / max 7.3 s; B 15.7 / 17.8 / 18.2 (~2.7× slower); C 5.5 /
+6.4 / 7.3; D 5.4 / 6.2 / 7.1. All four configs agree on both hashes for every tile.
+
+**Two amendments, declared.** Config D was added after C completed, because C's own durations
+(median 6.4 s, indistinguishable from idle) showed the tiles stayed in the page cache — C
+measured reads *beside* an active working set, not reads whose pages come from disk, and both
+s260 signatures (`IoError` on the read path; one garbage record) point at the I/O path. D
+evicts the four files before every rep (`posix_fadvise DONTNEED`), verified by accounting
+rather than by the clock: `Cached` in `/proc/meminfo` drops by the tile's ~208 MiB on evict and
+returns on re-read (the virtual disk delivers 218 MB fast enough that cold and warm reads look
+alike in duration). And the hog held 20 GiB rather than the planned ~24 so the reader stayed
+clear of the OOM killer, whose kills would have been events of the wrong kind.
+
+**Conclusion, per the pre-registered rule: NOT REPRODUCED.** 192 controlled reads, zero events,
+byte-agreement across backends and conditions. Had the s260 rate (2 events in 16 tile-reads)
+been a stationary property of this machine reading these files, 192 clean reads had probability
+≈ 0.875¹⁹² ≈ 10⁻¹¹ — whatever fired on 2026-08-05 was state-dependent, not the steady process.
+No code remedy is justified by this data: **no backend pin** (96 parallel reads produced
+nothing, and single-thread costs 2.7×). The root cause stays open; the candidates the configs
+could not exercise are that day's host state (pressure from the Windows side of WSL2, which
+cannot be induced from inside), a one-off physical event (non-ECC memory), and an in-process
+interaction that subprocess-per-read isolates away — the last one is probed by the double run
+in §3, which reads in-process beside the held grid. The bound, not a stability claim, went into
+`LIMITATIONS` and the README.
+
+### 2. The tallest real riser — `max_elevation_m` calibrated
+
+Method, zone, instrument parameters and verdict rule pre-registered in
+`docs/riser-measurement.md` (`738fc59`) before any relief was examined; full results, the
+verification table and figures live there and in `docs/figures/riser/`. Headline: 16,596
+candidates over the amphitheatre zone; p50 1.67 m, p90 2.66 m; everything above 4.6 m failed
+verification as terrace fabric (built walls, a churchyard wall, a gully edge, steps carried by
+1–2 returns); **the tallest verified terrace riser is 2.98 m**, with a flat-tread → one-cell
+drop → flat-tread profile and 43 aligned detections. The pre-registered 2.5–3.0 m band fired,
+the decision went to the operator, and the ruling raised the cap to **3.5 m** — a cap 2 cm
+above a riser is not above it within the 0.2–0.3 m LiDAR error band. At the shipped defaults
+the cap is unreached (largest tolerance 1.65 m), so the change is byte-invisible in the
+outputs; it lands in 0.3.0 with the version bump.
+
+### 3. The 0.3.0 run, twice
+
+Same command as the 2026-08-05 entry, run twice into separate directories under 0.3.0 (guard
+widened to all returns; `max_elevation_m` 3.5; LIMITATIONS updated in the record):
+
+```
+.venv/bin/microrelief run --aoi aoi/aoi.geojson --laz ~/data/dgt-laz --out outputs/ \
+    --cell 0.5 --selection outputs_0.2.0/selection.json
+```
+
+(The 2026-08-05 run's directory was renamed to `outputs_0.2.0/` before this run so its record
+survives beside the new one; `selection.json` is the file `select` wrote on 2026-08-05,
+unchanged and reused — `run` needs no network. The second pass wrote `outputs_pass2/` with the
+same flags.)
+
+**Output (identical in both passes):**
+
+```
+grid 3960 x 3960 cells of 0.5 m (3.9204 km2), 4 tile(s), 3250766 return(s) outside the AOI
+measured 74.6% | interpolated 25.2% | undetermined 0.2%
+expected void at f=1: 0.117% (measured density 27.0 pts/m2)
+ground recall 0.999 | non-ground recall 0.495 | accuracy 0.749 | majority-class null 0.503
+flight dates 2026-03-30T00:00:00Z | mixed epochs False
+reproducibility_hash c69dd559d915c3f02d00f91bda65759c7cafce48f2a3bfd6c64c2badc0192f33
+```
+
+41.3 s wall clock, 4.4 GiB peak resident. **The two passes are byte-identical across all six
+bands and the record minus `created_utc`** — the first time replay on real data has been
+demonstrated twice in one session, though two clean passes are two clean passes, not a
+stability proof; the 2026-08-05 events remain unexplained and declared. Against 0.2.0, the six
+bands are **value-identical and byte-different**: the only byte change is the version tag, which
+is the designed way a code change reaches the artefacts, and the hash moved
+`e5e8eb9b… → c69dd559…` for the two declared reasons (version, and the `max_elevation_m`
+parameter now 3.5).

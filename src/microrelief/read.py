@@ -126,19 +126,22 @@ def read_laz(
     n_noise = int((~keep).sum())
 
     if footprint is not None:
-        # Checked on the kept returns: noise is discarded anyway, and refusing a whole tile over a
-        # return we already refuse to use would turn the guard into an obstacle. What it exists to
-        # catch is a coordinate that cannot be real — a corrupted read, not a mislabelled point.
+        # Checked on ALL returns, noise classes included (widened in 0.3.0; until then it ran on
+        # the kept returns only, so a corrupted coordinate on a class-7/18 return was silently
+        # dropped rather than detected — E-006's catch). A coordinate that cannot be real is a
+        # property of the READ, not of the return's class: if one record decoded to garbage,
+        # nothing vouches for the records beside it. Verified on the four real tiles before
+        # widening: zero noise returns sit outside any declared box, so this refuses nothing the
+        # provider actually ships.
         fminx, fminy, fmaxx, fmaxy = footprint
         t = FOOTPRINT_TOLERANCE_M
-        kx, ky = x[keep], y[keep]
-        stray = (kx < fminx - t) | (kx > fmaxx + t) | (ky < fminy - t) | (ky > fmaxy + t)
+        stray = (x < fminx - t) | (x > fmaxx + t) | (y < fminy - t) | (y > fmaxy + t)
         n_stray = int(stray.sum())
         if n_stray:
             i = int(np.argmax(stray))
             raise ReadError(
                 f"{path.name}: {n_stray} return(s) fall outside its declared footprint "
-                f"({fminx}, {fminy})-({fmaxx}, {fmaxy}); first at ({kx[i]}, {ky[i]}). A return "
+                f"({fminx}, {fminy})-({fmaxx}, {fmaxy}); first at ({x[i]}, {y[i]}). A return "
                 f"cannot be outside the box the catalogue derived from the returns, so this is a "
                 f"corrupted read, not a property of the terrain — refusing rather than publishing "
                 f"a density divided by an exploded bounding box"

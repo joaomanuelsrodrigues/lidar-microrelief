@@ -44,7 +44,12 @@ UNCALIBRATED = (
 LIMITATIONS = (
     "Interpolated cells borrow the nearest measured value; no smoothing is applied.",
     "Ground is decided per cell, not per return; n_ground_asprs is the official count, not ours.",
-    "Byte-identical replay is verified on one machine only; cross-machine replay is unverified.",
+    "Byte-identical replay on real data is not established: one corrupted and one failed read "
+    "of four on 2026-08-05, neither reproduced in 192 controlled re-reads across backends, "
+    "memory pressure and cold caches; root cause open (docs/live-smoke.md 2026-08-08).",
+    "Cross-machine replay is unverified.",
+    "The reproducibility hash sees code only through the package version; the bump is enforced "
+    "only by a warn-class CI check.",
     "The ground-fraction term of the void expectation is a reference model, not a measurement.",
 )
 
@@ -307,7 +312,10 @@ def main(argv: list[str] | None = None) -> int:
             p.add_argument("--max-window-m", type=float, default=4.0)
             p.add_argument("--slope-threshold", type=float, default=0.3)
             p.add_argument("--elevation-threshold-m", type=float, default=0.3)
-            p.add_argument("--max-elevation-m", type=float, default=3.0)
+            # 3.5, not the original 3.0: the tallest verified terrace riser at the calibration
+            # site measures 2.98 m, and a cap 2 cm above a riser is not above it within the
+            # 0.2-0.3 m LiDAR error band (docs/riser-measurement.md, operator ruling 2026-08-08).
+            p.add_argument("--max-elevation-m", type=float, default=3.5)
 
     args = ap.parse_args(argv)
     try:
