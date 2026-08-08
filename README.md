@@ -44,7 +44,8 @@ verbatim output. The machine-readable record is `viewer/provenance.json` (a trac
 run's `outputs/provenance.json`). The values are unchanged from the 2026-08-05 run — 0.3.0
 widened the footprint guard and recalibrated a cap the default windows never reach, and the
 run's byte-identity with its own second pass, plus value-identity with 0.2.0's bands, is
-demonstrated in the record.
+demonstrated in `docs/live-smoke.md` (the provenance record carries no cross-run comparison;
+comparisons live where the commands and their output do).
 
 | What | Value |
 |---|---|
