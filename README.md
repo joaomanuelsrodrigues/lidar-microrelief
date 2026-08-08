@@ -107,8 +107,9 @@ filter under canopy, declared rather than tuned away.
   **root cause stays open**: whatever fired that day was state-dependent, and the candidates the
   experiment could not exercise — that day's host-side pressure, a one-off non-ECC memory event,
   an in-process interaction — remain named rather than excluded. The 0.3.0 run and its second
-  pass are byte-identical across all six bands and the record; two clean passes are two clean
-  passes, not a stability proof. `read_laz` refuses any return outside its tile's declared box
+  pass are byte-identical across all six bands and the record minus its `created_utc` timestamp
+  (deliberately excluded from the hash, and the one field two honest runs cannot share); two
+  clean passes are two clean passes, not a stability proof. `read_laz` refuses any return outside its tile's declared box
   (as of 0.3.0, noise classes included), which converts a silent corruption into a loud failure;
   it does not make replay stable.
 - **Cross-machine replay is not verified.** Byte-identity holds on this machine's clean reads and

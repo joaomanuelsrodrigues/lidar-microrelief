@@ -32,6 +32,10 @@ from microrelief.tiles import search_tiles, select_tiles
 
 TILE_CRS_EPSG = 3763
 
+# max_elevation_m is deliberately absent since 0.3.0: it carries a site measurement (tallest
+# verified terrace riser 2.98 m, docs/riser-measurement.md) rather than a declared guess, which
+# is what this list exists to disclose. The measured value is Sistelo's, not a constant of
+# terraces - CALIBRATIONS.md says so in its row.
 UNCALIBRATED = (
     "cell",
     "k_min_returns",
@@ -39,7 +43,6 @@ UNCALIBRATED = (
     "max_window_m",
     "slope_threshold",
     "elevation_threshold_m",
-    "max_elevation_m",
 )
 LIMITATIONS = (
     "Interpolated cells borrow the nearest measured value; no smoothing is applied.",
