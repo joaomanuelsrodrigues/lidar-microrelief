@@ -14,12 +14,20 @@ jobs:
       # here would execute it before any gate of ours runs. The trailing comment is
       # the human-readable version the SHA was verified against.
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 2 # the version-bump guard diffs HEAD~1..HEAD
       - uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4
       - run: uv sync --extra dev --extra site
       - run: uv run ruff check src tests scripts
       - run: uv run ruff format --check src tests scripts
       - run: uv run mypy
       - run: uv run pytest -q
+      # Warn-class (continue-on-error): visible, not blocking — Regra-13 posture for a new
+      # enforcement gate over a history with no zero-violation baseline. Scope and blindness
+      # are declared in the script's own header.
+      - name: version-bump guard (warn only)
+        continue-on-error: true
+        run: bash scripts/check_version_bump.sh
       - name: neutrality
         run: |
           set -euo pipefail
