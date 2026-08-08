@@ -70,6 +70,12 @@ declared `proj:bbox` (+1 cm tolerance), converting the silent version into a lou
 does not make replay stable, and the README says so in those words. Cross-machine replay:
 unverified, declared in `known_limitations`.
 
+**Correction (2026-08-08, frozen-tree judge round 3 — E-006).** "Any return outside the tile's
+declared `proj:bbox`" above means any **retained** return: classes 7 and 18 are dropped before
+the footprint check (`read.py`, by design — the guard exists to catch a corrupted read of the
+data it actually uses). The same correction is applied in the README's replay section. Left in
+place and corrected here, per the record discipline.
+
 **Can a stranger reproduce from the record alone?** The record (`viewer/provenance.json`, tracked
 copy of the run's `outputs/provenance.json`) carries the input file names (never local paths),
 their sha256 digests and per-tile counts (catalogue and measured, plus `point_count_noise_excluded`),

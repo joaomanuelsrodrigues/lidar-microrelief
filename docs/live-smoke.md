@@ -219,3 +219,10 @@ What did change: `read_laz` now takes the tile's declared `proj:bbox` from the s
 refuses any return outside it. A return cannot lie outside the box the catalogue derived from the
 returns, so that is a corrupted read, not terrain. **This does not make replay stable. It makes an
 unstable run fail loudly instead of publishing a density divided by an exploded bounding box.**
+
+> **Correction (2026-08-08, frozen-tree judge round 3 — E-006).** "Any return" above overstates
+> the guard's scope: the footprint check runs on **retained** returns only — ASPRS noise classes
+> 7 and 18 are dropped before it, by design (`read.py`: refusing a tile over a return the
+> pipeline already refuses to use would turn the guard into an obstacle; what it exists to catch
+> is a corrupted read of the data actually used). A corrupted coordinate on a noise return is
+> therefore dropped, not detected. Corrected beside the original rather than edited over it.

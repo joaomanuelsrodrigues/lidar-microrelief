@@ -47,7 +47,7 @@ run's `outputs/provenance.json`).
 |---|---|
 | Grid | 3960 × 3960 cells of 0.5 m (3.9204 km²), EPSG:3763, one common grid for everything |
 | Cell basis | measured 74.6% · interpolated 25.2% · undetermined 0.2% |
-| Closed-form void expectation | 0.117% of cells empty, given the measured 27.0 pts/m² and every return reaching the ground — read beside the cells with no measured basis (the 25.2% interpolated plus the 0.2% undetermined); the gap between the two is the canopy's effect |
+| Closed-form void expectation | 0.117% of cells empty, given the measured 27.0 pts/m² and every return reaching the ground — read beside the cells with no measured basis (the 25.2% interpolated plus the 0.2% undetermined); the gap between the two is the combined effect of canopy interception and the ground filter's own rejections — a cell is measured only when the filter calls it ground (`density.py`) |
 | Agreement with the official classification | ground recall 0.999 · non-ground recall 0.495 · accuracy 0.749 · **majority-class null 0.503** |
 | Reproducibility hash | `e5e8eb9b031f950083a4ad0e0ce5b1098f6b4cbe4a620455815968f2a3f54f58` |
 | Cost | 41.0 s wall clock, 4.8 GiB peak resident |
@@ -74,7 +74,9 @@ parameters, and what is actually known about them (`CALIBRATIONS.md`):
 
 The comparison against the official ASPRS classification exists to **quantify the difference, not
 to beat the DGT** — the official ground class never decides a cell in these surfaces; here it is
-the reference being quantified against, **not an input** to the filter. Ground recall 0.999,
+the reference being quantified against, **not an input** to the filter. Two other official labels
+*are* inputs upstream of it: classes 7 and 18 are removed before the minimum surface the filter
+reads is formed, and a tile carrying no class 2 at all is refused outright (`read.py`). Ground recall 0.999,
 non-ground recall 0.495, accuracy 0.749, majority-class null 0.503; the number to read beside
 those is `fp = 3,889,074` — 0.2505 of compared cells are cells where this filter says ground and
 the official classification has no ground return, which is the expected shape of a minimum-surface
@@ -87,8 +89,9 @@ filter under canopy, declared rather than tuned away.
   and one failed outright with `IoError: failed to fill whole buffer`. The source files are intact
   (`sha256sum` stable across passes); the **root cause is not established** — parallel LAZ
   decompression, WSL2 memory pressure and non-ECC memory are all live candidates. `read_laz` now
-  refuses any return outside its tile's declared box, which converts a silent corruption into a
-  loud failure; it does not make replay stable.
+  refuses any retained return outside its tile's declared box (noise returns are dropped before
+  the check, by design — the guard exists to catch a corrupted read on the data it actually
+  uses), which converts a silent corruption into a loud failure; it does not make replay stable.
 - **Cross-machine replay is not verified.** Byte-identity holds on this machine's clean reads and
   on the synthetic goldens; no second machine has reproduced the run.
 - **The reproducibility hash cannot see a code change by itself.** It covers package version,
