@@ -3,7 +3,9 @@
 Two properties matter: a stranger holding the same inputs can re-run and verify against this
 record (it names the files, their digests, the grid and every parameter — not the acquisition
 route or the exact code revision, so it is a verification anchor, not a self-contained recipe),
-and the hash changes when anything that affects the output changes — and only then. The creation
+and the hash changes when a declared input changes — grid, parameters, input digests, package
+version — and only then. Code reaches the hash only through that version, and nothing enforces
+the bump; the README's "What this does not support" declares this openly. The creation
 timestamp is recorded and
 deliberately excluded from the hash, so re-running is verifiable rather than merely plausible. So
 are the run's own results: a hash that folded in what was measured could not distinguish "you ran
@@ -109,7 +111,8 @@ def build_provenance(
         "n_rows": grid.n_rows,
         "crs_epsg": grid.crs_epsg,
     }
-    # Everything that can change the output, and nothing that cannot.
+    # The declared inputs and nothing else. Code is visible only through the version term —
+    # an unenforced convention, declared in the README's "What this does not support".
     digest = hashlib.sha256(
         _canonical(
             {

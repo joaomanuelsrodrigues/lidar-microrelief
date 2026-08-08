@@ -65,8 +65,13 @@ parameters, and what is actually known about them (`CALIBRATIONS.md`):
 
 - The window search doubles its radius, so under `max_window_m = 4.0` the filter runs windows of
   1.5, 2.5 and 4.5 m at 0.5 m cells; the ceiling is a bound the search never reaches.
-- `slope_threshold = 0.3` and `elevation_threshold_m = 0.3` are literature-derived starting
-  values (after Zhang et al., 2003), declared **uncalibrated** rather than presented as tuned.
+- `slope_threshold = 0.3` and `elevation_threshold_m = 0.3` are starting values declared
+  **uncalibrated** rather than presented as tuned. The tolerance formula follows Zhang et al.
+  (2003) with one declared variant: its slope term uses the full window width where the paper's
+  eq. (7) uses the increment between consecutive windows, so the tolerance is systematically
+  larger — more permissive toward ground. The values themselves are not the paper's: Zhang's
+  experiments set them per site (s = 0.08 on flat urban terrain, 1.2 in mountains; dh0 = 0.25 m
+  and 0.2 m), which is the case for declaring rather than borrowing them.
 - `max_elevation_m = 3.0` is the parameter that decides whether terrace risers survive: it caps
   every tolerance, so a riser is excused exactly when the cap exceeds it, at any window. Measured
   on the synthetic hillside fixture: at 3.0 m all five terrace levels survive every window tried;
