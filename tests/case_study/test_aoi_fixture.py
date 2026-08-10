@@ -9,7 +9,7 @@ from pathlib import Path
 
 from pyproj import Transformer
 
-AOI_PATH = Path(__file__).resolve().parents[1] / "aoi" / "aoi.geojson"
+AOI_PATH = Path(__file__).resolve().parents[2] / "aoi" / "aoi.geojson"
 
 
 def _ring() -> list[list[float]]:

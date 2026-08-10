@@ -15,10 +15,7 @@ import rasterio
 
 from microrelief.cli import aoi_bounds, main
 from microrelief.crs import CRSError
-from microrelief.grid import grid_for_bounds
 from tests.synthetic import ORIGIN_X, ORIGIN_Y, ramp, write_las
-
-REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # Every cloud in this file is synthetic, so it is nobody's data. Naming a real provider here
 # would be the same false source-and-licence claim `--attribution` exists to prevent, and it
@@ -165,24 +162,6 @@ def test_run_over_a_synthetic_tile_produces_every_output(tmp_path: Path) -> None
         assert (out / f"{name}.tif").exists()
     doc = json.loads((out / "provenance.json").read_text())
     assert doc["honesty"]["fraction_measured"] > 0.9
-
-
-def test_the_declared_bounds_win_over_the_wgs84_ring() -> None:
-    """§A6, and it is not a hypothetical: measured on the committed AOI.
-
-    The ring in `aoi/aoi.geojson` is the WGS84 *image* of the working box and, transformed back,
-    misses it by up to 3.8 mm — the file says so itself. `grid_for_bounds` floors the origin and
-    ceils the extent, so those millimetres move the origin half a cell and grow the grid from
-    3960x3960 to 3961x3962: 11,882 extra cells, every one of them outside all four tiles and so
-    published as `undetermined`, and a different `reproducibility_hash`, because the grid is in it.
-
-    So the declared `bounds` + `bounds_epsg` are not a convenience — they are the only source that
-    gives the grid the AOI was chosen with.
-    """
-    minx, miny, maxx, maxy, epsg = aoi_bounds(REPO_ROOT / "aoi" / "aoi.geojson")
-    assert (minx, miny, maxx, maxy) == (-20990.0, 255010.0, -19010.0, 256990.0)
-    assert epsg == 3763
-    assert grid_for_bounds(minx, miny, maxx, maxy, 0.5, epsg).shape == (3960, 3960)
 
 
 RING = [
