@@ -349,3 +349,136 @@ bands are **value-identical and byte-different**: the only byte change is the ve
 is the designed way a code change reaches the artefacts, and the hash moved
 `e5e8eb9b… → c69dd559…` for the two declared reasons (version, and the `max_elevation_m`
 parameter now 3.5).
+
+---
+
+## 2026-08-10 — 0.4.0: the core decoupled from its one provider, and the re-run that had to prove nothing moved
+
+Seven tasks (T-E6e) closed five defects the piece's own published standard already condemned:
+attribution welded into the record, no check that the CRS is projected and metric, a missing
+official ground class as a crash rather than a declared absence, the offline core importing an
+HTTP client for one national catalogue, and `TILE_CRS_EPSG = 3763` — a Portugal fact in a general
+code path. All of it rides **one** version bump, because `export.py` writes `package_version` and
+`reproducibility_hash` into every raster's tags: bumping once, last, keeps the golden regeneration
+to a single event and keeps the twelve goldens green through Tasks 1-6 as a free positive control
+that the changes preserved behaviour.
+
+### 1. The instrument, before the run
+
+`scripts/compare_runs.py` compares two runs the way this change requires: **band data cell for
+cell**, not file hashes — the bump changes all six files' bytes while changing nothing measured.
+Three controls first, because a comparison script that always prints "identical" is worse than
+none:
+
+```
+$ .venv/bin/python scripts/compare_runs.py outputs_0.3.0_run1 $MUT      # one cell mutated
+expected 1: 1
+  mdt.tif: 1 of 15681600 cells differ
+$ .venv/bin/python scripts/compare_runs.py outputs_0.3.0_run1 outputs_pass2
+expected 0: 0
+$ .venv/bin/python scripts/compare_runs.py --expect-new-limitations outputs_0.3.0_run1 outputs_pass2
+expected 1: 1
+  provenance.known_limitations is not the old list plus the two declared gaps: expected 8 entries, got 6
+```
+
+The mutation was `mdt[1000,1000]: 446.9219970703125 -> 447.9219970703125`, and the instrument
+named that cell and only it. The second and third commands are the **same inputs with the flag
+flipped**, so between them they show the flag is what decides, not the data.
+
+### 2. Hash-neutrality of the two new limitations, measured rather than argued
+
+The two gaps Task 5 owed were added to `LIMITATIONS` **before** the bump, and the goldens run
+in between:
+
+```
+$ .venv/bin/pytest tests/test_export.py::test_golden_hashes_are_unchanged -q
+goldens before the bump (expect 0): 0
+```
+
+Green — `known_limitations` is in the record but not in the hash payload
+(`{package_version, grid, parameters, inputs}`) and not in the raster tags. Then the bump, and:
+
+```
+golden hashes unchanged: 0   changed: 12   total: 12
+```
+
+**All twelve**, which is the confirmation that the bump alone moves every file. Had only some
+failed, a band had changed and the behaviour-preservation claim would have been false. Regenerated
+from the same `golden_fixtures()` / `pipeline()` path the test uses; the diff is 12 insertions and
+12 deletions — hash values only, no key moved.
+
+### 3. The run
+
+```
+.venv/bin/microrelief run --aoi aoi/aoi.geojson --laz ~/data/dgt-laz --out outputs/ \
+    --cell 0.5 --selection outputs_0.2.0/selection.json \
+    --attribution "Source: Direção-Geral do Território (DGT), Centro de Dados, LiDAR point clouds, licensed CC BY 4.0. Derived products (ground classification, DTM, DSM, CHM) produced by microrelief; not reviewed or endorsed by DGT."
+```
+
+(The literal attribution string was checked byte-for-byte against the provider's `DGT_ATTRIBUTION`
+constant before the run, so what is published above is what a reader copying it would get. The
+0.3.0 run's directory was renamed to `outputs_0.3.0_shipped/` beforehand; `selection.json` is
+still the file `select` wrote on 2026-08-05, unchanged and reused — `run` needs no network. No
+`--crs`: the committed AOI declares its own `bounds_epsg`.)
+
+**Output:**
+
+```
+grid 3960 x 3960 cells of 0.5 m (3.9204 km2), 4 tile(s), 3250766 return(s) outside the AOI
+measured 74.6% | interpolated 25.2% | undetermined 0.2%
+expected void at f=1: 0.117% (measured density 27.0 pts/m2)
+ground recall 0.999 | non-ground recall 0.495 | accuracy 0.749 | majority-class null 0.503
+flight dates 2026-03-30T00:00:00Z | mixed epochs False
+reproducibility_hash 8e8fee5b271caedd2c006b64a8d6a195b47029240766fdced65af084aaba14a4
+```
+
+43.3 s wall clock, 4.4 GiB peak resident. Every line identical to the 0.3.0 run but the hash.
+**The read instability did not fire** on this run — one clean read is one clean read, and the
+2026-08-05 events stay unexplained and declared.
+
+### 4. The acceptance check, and the baseline it caught
+
+```
+$ .venv/bin/python scripts/compare_runs.py --expect-new-limitations outputs_0.3.0_shipped outputs
+basis.tif: 15681600 cells compared
+chm.tif: 15681600 cells compared
+mds.tif: 15681600 cells compared
+mdt.tif: 15681600 cells compared
+n_all.tif: 15681600 cells compared
+n_ground_asprs.tif: 15681600 cells compared
+6 raster(s) compared
+provenance.created_utc: 2026-08-08T17:56:37.333764+00:00 -> 2026-08-10T20:44:29.521368+00:00
+provenance.package_version: 0.3.0 -> 0.4.0
+provenance.reproducibility_hash: c69dd559d915c3f02d00f91bda65759c7cafce48f2a3bfd6c64c2badc0192f33 -> 8e8fee5b271caedd2c006b64a8d6a195b47029240766fdced65af084aaba14a4
+provenance.known_limitations: 6 -> 8 entries
+
+identical in every band and every record field but the three permitted, and known_limitations gained exactly the two declared gaps
+```
+
+**94,089,600 cells compared, zero differ.** Run without the flag, the same comparison exits 1 and
+names the two added lines, so the flag is doing work on the acceptance data too, not only on the
+control pair.
+
+**And the first attempt exited 1.** The plan named `outputs_0.3.0_run1/` as the baseline; against
+it the check reported `provenance.uncalibrated_thresholds changed`. The plan's own rule is that a
+difference anywhere else is a signal to investigate, never to accept, and the investigation found
+the difference is in the **baseline**, not in this change: `max_elevation_m` left the uncalibrated
+tuple in 0.3.0's *own* post-judge fix, and `outputs_0.3.0_run1/` (17:46) predates it, while the
+shipped 0.3.0 record — `outputs/` at 17:56, hash `c69dd559…`, the one `viewer/provenance.json`
+tracks and the README quoted — carries the corrected six-entry list. Verified against git rather
+than chosen for passing: at `26e1323`, the commit this branch forks from, `UNCALIBRATED` already
+had six entries and no `max_elevation_m`. The acceptance question is whether Tasks 1-6 changed
+behaviour relative to the code the branch forked from, and only one record on disk was produced
+by that code.
+
+### 5. What the rename did not touch
+
+`bounds_epsg3763` became the neutral pair `bounds` + `bounds_epsg` in Task 5. Two documents still
+carry the old name and **keep it on purpose**: the 2026-08-05 entry above, and `docs/self-check.md`,
+whose own header says the from-memory answers are checked against the record with misses *logged
+rather than erased*. Both are dated records of what was true when they were written; editing them
+to the new name would make them describe a package that did not exist on their date, which is the
+same falsification the five judge verdicts citing `tiles.py:NNN` are left alone to avoid. The
+plan's closing sweep expected zero matches across tracked files; the honest result is **two, both
+dated records, named here**. `CALIBRATIONS.md` was updated instead, because a threshold register's
+"where" column is a live pointer into code, not a claim about a past moment.

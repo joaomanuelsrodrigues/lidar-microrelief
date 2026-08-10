@@ -52,6 +52,10 @@ LIMITATIONS = (
     "The reproducibility hash sees code only through the package version; the bump is enforced "
     "only by a warn-class CI check.",
     "The ground-fraction term of the void expectation is a reference model, not a measurement.",
+    "Calling select_tiles as a library function bypasses the AOI-vs-tile CRS check, which "
+    "lives at the CLI's composition root.",
+    "scripts/measure_risers.py takes no --crs, so it can only work an AOI that declares its "
+    "own projected CRS.",
 )
 
 
