@@ -55,7 +55,8 @@ def test_aoi_sits_strictly_inside_its_tile_block_by_more_than_the_seam() -> None
     # declared footprints stop ~1 mm short of the lattice, so an AOI flush with the block
     # is short of full coverage on all four sides for no gain.
     doc = json.loads(AOI_PATH.read_text(encoding="utf-8"))
-    x0, y0, x1, y1 = doc["properties"]["bounds_epsg3763"]
+    assert doc["properties"]["bounds_epsg"] == 3763
+    x0, y0, x1, y1 = doc["properties"]["bounds"]
     block = (
         (x0 // 1000) * 1000,
         (y0 // 1000) * 1000,

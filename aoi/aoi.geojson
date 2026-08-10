@@ -5,12 +5,13 @@
     "municipality": "Arcos de Valdevez, Viana do Castelo, Portugal",
     "chosen_on": "2026-08-04",
     "criteria": "SITE.md — all four pre-registered criteria, scored by hand",
-    "bounds_epsg3763": [
+    "bounds": [
       -20990.0,
       255010.0,
       -19010.0,
       256990.0
     ],
+    "bounds_epsg": 3763,
     "note_bounds": "The working bounds are these metres in EPSG:3763 (ETRS89/PT-TM06); the coordinates below are their WGS84 image and are not exactly axis-aligned.",
     "note_inset": "Inset 10 m inside the four-tile block so the AOI stays strictly interior to the declared footprints, whose far corners land ~1 mm inside the lattice.",
     "tiles": [
