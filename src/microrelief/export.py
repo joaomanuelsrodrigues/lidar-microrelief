@@ -31,7 +31,13 @@ def _prepare(band: NDArray[np.generic]) -> tuple[NDArray[np.generic], float | in
     return band.astype(np.int32), NODATA_INT32
 
 
-def export(surfaces: Surfaces, provenance: Provenance, out_dir: Path) -> dict[str, Path]:
+def export(
+    surfaces: Surfaces,
+    provenance: Provenance,
+    out_dir: Path,
+    *,
+    official_ground_available: bool = True,
+) -> dict[str, Path]:
     out_dir.mkdir(parents=True, exist_ok=True)
     grid = surfaces.grid
     written: dict[str, Path] = {}
@@ -45,6 +51,10 @@ def export(surfaces: Surfaces, provenance: Provenance, out_dir: Path) -> dict[st
     }
 
     for name, band in surfaces.rasters().items():
+        if name == "n_ground_asprs" and not official_ground_available:
+            # A count of something that was never counted. NoData is the only value that
+            # does not assert a measurement.
+            band = np.full(band.shape, NODATA_INT32, dtype=np.int32)
         data, nodata = _prepare(band)
         path = out_dir / f"{name}.tif"
         with rasterio.open(

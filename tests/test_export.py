@@ -149,6 +149,31 @@ def test_every_band_carries_the_attribution_not_only_the_first(tmp_path: Path) -
             assert "CC BY 4.0" in src.tags()["attribution"], name
 
 
+def test_n_ground_asprs_is_nodata_not_zero_when_there_was_no_official_classification(
+    tmp_path: Path,
+) -> None:
+    """Zero counts read as 'no official ground return in this cell', which is a measurement.
+    The truth is that no classification exists. Publishing zeros makes zero-by-instrument
+    indistinguishable from zero-by-world, which is the failure this package refuses."""
+    _g, _s, surf = pipeline(ramp())
+    export(surf, a_provenance(agreement=None), tmp_path, official_ground_available=False)
+    with rasterio.open(tmp_path / "n_ground_asprs.tif") as src:
+        band = src.read(1)
+        assert src.nodata == NODATA_INT32
+        assert (band == NODATA_INT32).all(), "not one cell may publish a count that was never made"
+
+
+def test_n_ground_asprs_still_carries_real_counts_when_the_classification_was_there(
+    tmp_path: Path,
+) -> None:
+    """Positive control for the test above: with the default the band must NOT be all-NoData,
+    or the assertion above would pass for the wrong reason."""
+    _g, _s, surf = pipeline(ramp())
+    export(surf, a_provenance(), tmp_path)
+    with rasterio.open(tmp_path / "n_ground_asprs.tif") as src:
+        assert not (src.read(1) == NODATA_INT32).all()
+
+
 def test_two_runs_produce_identical_bytes(tmp_path: Path) -> None:
     _g, _s, surf = pipeline(ramp())
     prov = a_provenance()

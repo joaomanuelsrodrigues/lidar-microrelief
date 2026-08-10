@@ -37,6 +37,9 @@ class PointBatch:
     source_path: Path
     source_sha256: str
     n_noise_excluded: int = 0
+    # Whether the delivery carried ASPRS class 2 at all. `False` is a fact about the file, not
+    # a failure: the official comparison is optional, the surface is not.
+    has_official_ground: bool = True
 
     @property
     def n_points(self) -> int:
@@ -90,7 +93,7 @@ that tile's density collapsing below 1e-6 pts/m2, which puts its bounding box ab
 
 def read_laz(
     path: Path,
-    expect_epsg: int = 3763,
+    expect_epsg: int,
     footprint: tuple[float, float, float, float] | None = None,
 ) -> PointBatch:
     try:
@@ -114,11 +117,7 @@ def read_laz(
             )
 
     classification = np.asarray(las.classification, dtype=np.uint8)
-    if not (classification == ASPRS_GROUND).any():
-        raise ReadError(
-            f"{path.name}: no points carry ASPRS class 2; without an official ground class "
-            f"there is nothing to compare our own filter against"
-        )
+    has_official_ground = bool((classification == ASPRS_GROUND).any())
 
     # Dropped after the finite check, not before: a non-finite coordinate is a refusal about the
     # whole file's header, and finding it on a noise return would not make the header trustworthy.
@@ -156,4 +155,5 @@ def read_laz(
         source_path=path,
         source_sha256=sha256_file(path),
         n_noise_excluded=n_noise,
+        has_official_ground=has_official_ground,
     )

@@ -76,7 +76,9 @@ def main() -> int:
     catalogue = {t.item_id: t for t in search_tiles((minlon, minlat, maxlon, maxlat))}
 
     print("== 1. read a real tile ==")
-    first = read_laz(paths[0])
+    # Explicit now that `read_laz` has no default: this driver is DGT-specific by construction
+    # (the AOI above is EPSG:3763), so it declares the CRS it expects rather than inheriting one.
+    first = read_laz(paths[0], expect_epsg=3763)
     classes = dict(zip(*np.unique(first.classification, return_counts=True), strict=True))
     print(f"file           {paths[0].name}")
     print(f"points         {first.n_points:,}")
@@ -99,7 +101,7 @@ def main() -> int:
 
     aoi_classes: dict[int, int] = {}
     for p in paths:
-        b = read_laz(p)
+        b = read_laz(p, expect_epsg=3763)
         ref = catalogue[p.stem]
         same = [round(v, 3) for v in b.bounds] == [ref.minx, ref.miny, ref.maxx, ref.maxy]
         print(

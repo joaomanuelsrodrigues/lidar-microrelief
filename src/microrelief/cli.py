@@ -172,10 +172,12 @@ def _catalogue_facts(path: Path | None) -> dict[str, dict[str, Any]] | None:
 
 def _read_inputs(
     paths: list[Path], grid: Grid, catalogue: dict[str, dict[str, Any]] | None
-) -> tuple[Accumulator, list[InputRef], list[str]]:
+) -> tuple[Accumulator, list[InputRef], list[str], bool]:
     acc = Accumulator(grid)
     inputs: list[InputRef] = []
     flight_dates: list[str] = []
+    official_ground = True
+    missing: list[str] = []
     for path in paths:
         entry = None
         if catalogue is not None:
@@ -193,6 +195,9 @@ def _read_inputs(
         )
         batch = read_laz(path, expect_epsg=grid.crs_epsg, footprint=footprint)
         acc.add(batch)
+        if not batch.has_official_ground:
+            official_ground = False
+            missing.append(path.stem)
         minx, miny, maxx, maxy = batch.bounds
         area = (maxx - minx) * (maxy - miny)
         flight_date = str(entry["flight_date"]) if entry else None
@@ -210,7 +215,16 @@ def _read_inputs(
                 point_count_noise_excluded=batch.n_noise_excluded,
             )
         )
-    return acc, inputs, flight_dates
+    if missing:
+        # All-or-nothing on purpose: comparing over a mosaic where some tiles are classified
+        # and others are not mixes 'measured non-ground' with 'never classified' in one
+        # number. Named, so the reader knows which tiles.
+        print(
+            f"no ASPRS class 2 in {', '.join(sorted(missing))}; agreement with the official "
+            f"classification is declared absent for this product, not computed over the rest",
+            file=sys.stderr,
+        )
+    return acc, inputs, flight_dates, official_ground
 
 
 def _cmd_run(args: argparse.Namespace) -> int:
@@ -221,7 +235,9 @@ def _cmd_run(args: argparse.Namespace) -> int:
         return 2
 
     grid = grid_for_bounds(minx, miny, maxx, maxy, args.cell, epsg)
-    acc, inputs, flight_dates = _read_inputs(paths, grid, _catalogue_facts(args.selection))
+    acc, inputs, flight_dates, official_ground = _read_inputs(
+        paths, grid, _catalogue_facts(args.selection)
+    )
     stats = acc.finish()
 
     params = GroundParams(
@@ -236,7 +252,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
     # extent would put the count over a denominator it was never taken from (§A1/s258).
     grid_area = grid.n_cells * grid.cell * grid.cell
     honesty = honesty_report(basis.basis, stats, args.cell, grid_area)
-    agree = agreement(is_ground, stats)
+    agree = agreement(is_ground, stats) if official_ground else None
 
     prov = build_provenance(
         grid=grid,
@@ -251,13 +267,13 @@ def _cmd_run(args: argparse.Namespace) -> int:
         },
         inputs=inputs,
         honesty=honesty.as_dict(),
-        agreement=agree.as_dict(),
+        agreement=agree.as_dict() if agree is not None else None,
         attribution=args.attribution,
         flight_dates=flight_dates,
         uncalibrated=UNCALIBRATED,
         limitations=LIMITATIONS,
     )
-    export(surfaces, prov, args.out)
+    export(surfaces, prov, args.out, official_ground_available=official_ground)
 
     print(
         f"grid {grid.n_rows} x {grid.n_cols} cells of {grid.cell} m "
@@ -272,11 +288,17 @@ def _cmd_run(args: argparse.Namespace) -> int:
         f"expected void at f=1: {honesty.expected_void_fraction:.3%} "
         f"(measured density {honesty.measured_density:.1f} pts/m2)"
     )
-    print(
-        f"ground recall {agree.recall_ground:.3f} | non-ground recall "
-        f"{agree.recall_nonground:.3f} | accuracy {agree.accuracy:.3f} | "
-        f"majority-class null {agree.majority_class_null:.3f}"
-    )
+    if agree is not None:
+        print(
+            f"ground recall {agree.recall_ground:.3f} | non-ground recall "
+            f"{agree.recall_nonground:.3f} | accuracy {agree.accuracy:.3f} | "
+            f"majority-class null {agree.majority_class_null:.3f}"
+        )
+    else:
+        print(
+            "agreement with the official classification: "
+            "not available (no ASPRS class 2 in the input)"
+        )
     print(
         f"flight dates {', '.join(prov.flight_dates) or '(none declared)'} | "
         f"mixed epochs {prov.mixed_epochs}"

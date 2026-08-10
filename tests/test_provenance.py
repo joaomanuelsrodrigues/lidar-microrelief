@@ -239,6 +239,13 @@ def test_the_package_ships_no_provider_attribution_constant() -> None:
     assert not hasattr(provenance_module, "ATTRIBUTION")
 
 
+def test_agreement_is_absent_rather_than_zeroed_when_nothing_was_classified() -> None:
+    """A record carrying recall 0.0 would claim the filter was compared and lost. It was
+    never compared. Absent, like `point_count_catalogue`, is the only honest shape."""
+    doc = json.loads(a_provenance(agreement=None).to_json())
+    assert doc["agreement"] is None
+
+
 def test_attribution_stays_out_of_the_reproducibility_hash() -> None:
     """Two runs of the same data under different attributions are the same run. If this ever
     starts failing, the hash payload grew a field and every published hash is invalidated."""

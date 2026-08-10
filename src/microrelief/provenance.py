@@ -67,7 +67,7 @@ class Provenance:
     flight_dates: tuple[str, ...]
     mixed_epochs: bool
     honesty: dict[str, float]
-    agreement: dict[str, float | int]
+    agreement: dict[str, float | int] | None
     attribution: str
     uncalibrated_thresholds: tuple[str, ...]
     known_limitations: tuple[str, ...]
@@ -92,7 +92,7 @@ def build_provenance(
     parameters: Mapping[str, object],
     inputs: Sequence[InputRef],
     honesty: Mapping[str, float],
-    agreement: Mapping[str, float | int],
+    agreement: Mapping[str, float | int] | None,
     attribution: str,
     flight_dates: Sequence[str],
     uncalibrated: Sequence[str],
@@ -143,7 +143,9 @@ def build_provenance(
         # one definition, not two that can drift.
         mixed_epochs=len(group_sorties(flight_dates)) > 1,
         honesty=dict(honesty),
-        agreement=dict(agreement),
+        # `None`, never an all-zero comparison: a record showing recall 0.0 claims the filter
+        # was measured against the official classification and lost. It was never measured.
+        agreement=dict(agreement) if agreement is not None else None,
         attribution=attribution,
         uncalibrated_thresholds=tuple(sorted(uncalibrated)),
         known_limitations=tuple(limitations),

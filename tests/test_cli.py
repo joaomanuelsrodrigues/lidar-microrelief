@@ -26,11 +26,18 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 ATTRIBUTION = "Source: synthetic test fixture, no provider, no licence."
 
 
-def _synthetic_run(tmp_path: Path, extra: list[str] | None = None) -> tuple[int, Path]:
-    """One synthetic tile, an AOI given directly in the tiles' CRS, and a run over both."""
+def _synthetic_run(
+    tmp_path: Path, extra: list[str] | None = None, unclassified_tile: bool = False
+) -> tuple[int, Path]:
+    """One synthetic tile, an AOI given directly in the tiles' CRS, and a run over both.
+
+    `unclassified_tile` adds a second tile carrying no ASPRS class 2, for the mosaic rule.
+    """
     laz = tmp_path / "laz"
     laz.mkdir()
     write_las(laz / "SYNTH-1.laz", cloud=ramp(size_m=50.0, spacing=0.5), epsg=3763)
+    if unclassified_tile:
+        write_las(laz / "SYNTH-2.laz", n=500, epsg=3763, classification=5)  # vegetation only
     aoi = tmp_path / "aoi.geojson"
     aoi.write_text(
         json.dumps(
@@ -119,6 +126,28 @@ def test_run_refuses_an_aoi_that_is_not_a_polygon(tmp_path: Path, capsys: Any) -
     )
     assert code != 0
     assert "Polygon" in capsys.readouterr().err
+
+
+def test_agreement_is_published_when_every_tile_carries_the_official_class(
+    tmp_path: Path,
+) -> None:
+    """Positive control for the test below. Without it, an `agreement is None` assertion would
+    pass just as well if agreement had been broken for every run rather than only this case."""
+    code, out = _synthetic_run(tmp_path)
+    assert code == 0
+    assert json.loads((out / "provenance.json").read_text())["agreement"] is not None
+
+
+def test_one_unclassified_tile_makes_agreement_absent_for_the_whole_product(
+    tmp_path: Path, capsys: Any
+) -> None:
+    """All-or-nothing on purpose. Agreement over a mosaic where only some tiles carry class 2
+    mixes 'measured non-ground' with 'never classified' into one number — a statistic over a
+    denominator it was not taken from (§A1/s258). The tile is named, not just counted."""
+    code, out = _synthetic_run(tmp_path, unclassified_tile=True)
+    assert code == 0
+    assert json.loads((out / "provenance.json").read_text())["agreement"] is None
+    assert "SYNTH-2" in capsys.readouterr().err
 
 
 def test_run_over_a_synthetic_tile_produces_every_output(tmp_path: Path) -> None:
