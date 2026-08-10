@@ -14,8 +14,25 @@ from __future__ import annotations
 import math
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import Protocol
 
-from microrelief.tiles import Selection, TileRef
+
+class TileLike(Protocol):
+    """What the void expectation needs to know about a tile, and nothing else.
+
+    Structural, not nominal: the DGT `TileRef` satisfies it without core naming that type, so
+    the honesty layer stops depending on one catalogue's data class to do arithmetic that has
+    nothing to do with catalogues.
+    """
+
+    @property
+    def item_id(self) -> str: ...
+
+    @property
+    def density(self) -> float: ...
+
+    @property
+    def flight_date(self) -> str: ...
 
 
 class PrecheckRefusal(RuntimeError):
@@ -42,7 +59,7 @@ def expected_void_fraction(density_pts_m2: float, cell: float, ground_fraction: 
 
 
 def estimate_tiles(
-    tiles: Sequence[TileRef], cell: float, ground_fraction: float
+    tiles: Sequence[TileLike], cell: float, ground_fraction: float
 ) -> list[TileEstimate]:
     """Per-tile expectation.
 
@@ -63,14 +80,14 @@ def estimate_tiles(
     ]
 
 
-def check_selection(
-    selection: Selection,
+def check_tiles(
+    tiles: Sequence[TileLike],
     cell: float,
     ground_fraction: float,
     max_void_fraction: float = 0.35,
     allow_sparse: bool = False,
 ) -> list[TileEstimate]:
-    estimates = estimate_tiles(selection.tiles, cell, ground_fraction)
+    estimates = estimate_tiles(tiles, cell, ground_fraction)
     worst = max(estimates, key=lambda e: e.void_at_f)
     if worst.void_at_f > max_void_fraction and not allow_sparse:
         raise PrecheckRefusal(

@@ -1,12 +1,12 @@
 import pytest
 
-from microrelief.tiles import (
+from microrelief.providers.dgt import (
     SelectionError,
     TileRef,
     UnexpectedCatalogue,
-    group_sorties,
     select_tiles,
 )
+from tests.test_sorties import MANTEIGAS
 
 
 def tile(
@@ -110,44 +110,19 @@ def test_mixed_epochs_are_refused_by_default_and_declared_when_allowed() -> None
     assert len(sel.sorties) == 2
 
 
-# The four stamps below are the real ones the DGT catalogue publishes for the Manteigas
-# candidate, measured 2026-08-03: one pass of one aircraft, spread over 6m23s.
-MANTEIGAS = (
-    "2025-07-04T21:11:07Z",
-    "2025-07-04T21:13:42Z",
-    "2025-07-04T21:14:21Z",
-    "2025-07-04T21:17:30Z",
-)
+def test_a_malformed_stamp_reaches_the_caller_as_a_catalogue_error() -> None:
+    """The sortie clustering moved to core and raises a core error; a caller catching
+    CatalogueError around select_tiles must keep catching this.
 
-
-def test_stamps_minutes_apart_are_one_sortie() -> None:
-    assert group_sorties(MANTEIGAS) == (MANTEIGAS,)
-
-
-def test_a_flight_across_midnight_is_one_sortie_and_not_two_days() -> None:
-    # The case that decides the mechanism: grouping by UTC day splits this pair, and a
-    # night flight crossing midnight is one acquisition by every physical meaning.
-    stamps = ("2025-07-04T23:52:00Z", "2025-07-05T00:19:00Z")
-    assert group_sorties(stamps) == (stamps,)
-
-
-def test_stamps_a_day_apart_are_separate_sorties() -> None:
-    # Sistelo publishes date-only stamps: at that precision two calendar dates cannot be
-    # shown to be one flight, so they are not merged.
-    stamps = ("2026-03-22T00:00:00Z", "2026-03-23T00:00:00Z")
-    assert group_sorties(stamps) == (("2026-03-22T00:00:00Z",), ("2026-03-23T00:00:00Z",))
-
-
-def test_sorties_are_ordered_in_time_not_lexically() -> None:
-    # 23:00+02:00 is 21:00 UTC and therefore *earlier* than 21:30Z — the reverse of the
-    # order the strings sort in. Ordering by the string would misread which gap is which.
-    stamps = ("2025-07-04T23:00:00+02:00", "2025-07-04T21:30:00Z")
-    assert group_sorties(stamps) == (("2025-07-04T23:00:00+02:00", "2025-07-04T21:30:00Z"),)
-
-
-def test_a_stamp_without_a_utc_offset_is_refused_rather_than_assumed() -> None:
+    This is what keeps the `_sorties` re-raise from being dead code: every other assertion
+    about a malformed stamp calls `group_sorties` directly and never enters the provider.
+    Its positive control is `test_one_sortie_spread_over_several_stamps_is_not_a_mixed_epoch`
+    below — the same shape of fixture with well-formed stamps — so a red here is the stamp
+    and not the plumbing.
+    """
+    tiles = [*full_cover()[1:], tile(48000.0, 169000.0, date="2025-07-04T21:11:07")]
     with pytest.raises(UnexpectedCatalogue, match="no UTC offset"):
-        group_sorties(("2025-07-04T21:11:07",))
+        select_tiles(tiles, AOI)
 
 
 def test_one_sortie_spread_over_several_stamps_is_not_a_mixed_epoch() -> None:

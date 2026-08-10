@@ -24,11 +24,10 @@ from microrelief.density import compute_basis, honesty_report
 from microrelief.export import export
 from microrelief.grid import Grid, grid_for_bounds
 from microrelief.ground import GroundParams, agreement, classify_ground
-from microrelief.precheck import check_selection
+from microrelief.precheck import check_tiles
 from microrelief.provenance import InputRef, build_provenance
 from microrelief.read import read_laz
 from microrelief.surfaces import build_surfaces
-from microrelief.tiles import search_tiles, select_tiles
 
 TILE_CRS_EPSG = 3763
 
@@ -106,11 +105,24 @@ def _wgs84_bbox(bounds: tuple[float, float, float, float]) -> tuple[float, float
     return lon0, lat0, lon1, lat1
 
 
+def _dgt() -> Any:
+    """Imported here, not at module scope: `run` needs no catalogue and no network, so the
+    core install must not have to carry an HTTP client to use it."""
+    try:
+        from microrelief.providers import dgt
+    except ImportError as exc:
+        raise SystemExit(
+            "the DGT provider needs the optional 'dgt' extra: pip install 'microrelief[dgt]'"
+        ) from exc
+    return dgt
+
+
 def _selection_for(args: argparse.Namespace) -> Any:
+    dgt = _dgt()
     minx, miny, maxx, maxy, _ = aoi_bounds(args.aoi)
     bounds = (minx, miny, maxx, maxy)
-    return select_tiles(
-        search_tiles(_wgs84_bbox(bounds)), bounds, allow_mixed_epochs=args.allow_mixed_epochs
+    return dgt.select_tiles(
+        dgt.search_tiles(_wgs84_bbox(bounds)), bounds, allow_mixed_epochs=args.allow_mixed_epochs
     )
 
 
@@ -153,8 +165,8 @@ def _cmd_select(args: argparse.Namespace) -> int:
 
 def _cmd_precheck(args: argparse.Namespace) -> int:
     sel = _selection_for(args)
-    for e in check_selection(
-        sel, args.cell, args.ground_fraction, args.max_void_fraction, args.allow_sparse
+    for e in check_tiles(
+        sel.tiles, args.cell, args.ground_fraction, args.max_void_fraction, args.allow_sparse
     ):
         print(
             f"{e.item_id}  {e.density:5.1f} pts/m2  {e.flight_date[:10]}  "

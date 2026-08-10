@@ -11,16 +11,15 @@ import re
 from bisect import bisect_left
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from datetime import datetime, timedelta
 from typing import Any
 
 import requests
 
+from microrelief.precheck import TileLike
+from microrelief.sorties import SORTIE_GAP_HOURS, StampError, group_sorties
+
 STAC_SEARCH_URL = "https://cdd.dgterritorio.gov.pt/dgt-be/v1/search"
 _EPSG_IN_WKT = re.compile(r'AUTHORITY\["EPSG","(\d+)"\]')
-
-SORTIE_GAP_HOURS = 6.0
-"""Longest gap between two acquisition stamps that still counts as one flight."""
 
 MIN_COVERAGE = 0.999
 """Fraction of the AOI that must lie under the tiles. Not 1.0: see CALIBRATIONS.md."""
@@ -65,6 +64,19 @@ class TileRef:
     def footprint_key(self) -> tuple[float, float]:
         """Identifies the ground footprint, so the same tile flown twice collapses to one entry."""
         return (round(self.minx, 3), round(self.miny, 3))
+
+
+def _tile_ref_satisfies_tile_like(tile: TileRef) -> TileLike:
+    """The structural conformance, asserted where a type checker can actually see it.
+
+    `precheck` takes a `TileLike` Protocol so the offline core never names a catalogue's data
+    class. Nothing else under mypy's scope (`files = ["src"]`) binds a concrete `TileRef` to
+    that parameter — the CLI reaches it through `_selection_for() -> Any` — so mypy returned
+    "Success" over a `TileRef` with `density` renamed away: silence about an unchecked
+    relationship reads exactly like silence about a sound one. This function is the binding,
+    and it is verified by mutation rather than assumed (§A1/s275).
+    """
+    return tile
 
 
 def _bbox_2d(values: Sequence[float]) -> tuple[float, float, float, float]:
@@ -148,42 +160,16 @@ class SelectionError(CatalogueError):
     """The tiles on offer do not make an AOI we are willing to process."""
 
 
-def _parse_stamp(value: str) -> datetime:
-    try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError as exc:
-        raise UnexpectedCatalogue(f"flight date {value!r} is not an ISO-8601 timestamp") from exc
-    if parsed.tzinfo is None:
-        raise UnexpectedCatalogue(f"flight date {value!r} carries no UTC offset; refusing to guess")
-    return parsed
+def _sorties(stamps: Iterable[str], gap_hours: float) -> tuple[tuple[str, ...], ...]:
+    """`group_sorties`, with core's error re-badged as a catalogue error.
 
-
-def group_sorties(
-    flight_dates: Iterable[str], gap_hours: float = SORTIE_GAP_HOURS
-) -> tuple[tuple[str, ...], ...]:
-    """Cluster acquisition stamps into sorties by the gap between consecutive ones.
-
-    Single-linkage on the time axis: two stamps belong to the same sortie when nothing
-    separates them by more than `gap_hours`. Grouping by UTC day instead would split a
-    night flight that crosses midnight, which is the one case this has to get right —
-    and the catalogue does publish sub-minute stamps for night acquisitions.
-
-    Stamps are ordered by the instant they denote, not lexically: two offsets for the
-    same moment sort in the wrong order as strings and would invent a gap.
+    The core says the stamp is not a timestamp; the catalogue layer says *whose* stamp it was.
+    A caller's `except CatalogueError` must keep meaning what it meant before the move.
     """
-    if gap_hours <= 0:
-        raise ValueError(f"gap_hours must be positive, got {gap_hours}")
-    parsed = sorted(((_parse_stamp(s), s) for s in set(flight_dates)), key=lambda p: p[0])
-    if not parsed:
-        return ()
-    gap = timedelta(hours=gap_hours)
-    groups: list[list[str]] = [[parsed[0][1]]]
-    for (previous, _), (moment, raw) in zip(parsed, parsed[1:], strict=False):
-        if moment - previous > gap:
-            groups.append([raw])
-        else:
-            groups[-1].append(raw)
-    return tuple(tuple(g) for g in groups)
+    try:
+        return group_sorties(stamps, gap_hours)
+    except StampError as exc:
+        raise UnexpectedCatalogue(str(exc)) from exc
 
 
 @dataclass(frozen=True)
@@ -272,9 +258,7 @@ def select_tiles(
     # stamp from another flight.
     sortie_of = {
         stamp: index
-        for index, group in enumerate(
-            group_sorties((t.flight_date for t in touching), sortie_gap_hours)
-        )
+        for index, group in enumerate(_sorties((t.flight_date for t in touching), sortie_gap_hours))
         for stamp in group
     }
     by_sortie: dict[int, float] = {}
@@ -296,7 +280,7 @@ def select_tiles(
 
     chosen = tuple(sorted(kept.values(), key=lambda t: (t.minx, t.miny)))
     dates = tuple(sorted({t.flight_date for t in chosen}))
-    sorties = group_sorties(dates, sortie_gap_hours)
+    sorties = _sorties(dates, sortie_gap_hours)
     if len(sorties) > 1 and not allow_mixed_epochs:
         spans = ", ".join(f"{g[0]}..{g[-1]}" if len(g) > 1 else g[0] for g in sorties)
         raise SelectionError(

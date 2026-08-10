@@ -183,7 +183,9 @@ def test_a_single_epoch_says_so() -> None:
 def test_four_stamps_from_one_sortie_are_not_mixed_epochs() -> None:
     """The AOI this package was built for: four tiles acquired minutes apart in one pass.
 
-    `tiles.py` already decides this question, by sortie, and refuses a selection that spans two.
+    A provider's selection already decides this question, by sortie, and refuses one that spans
+    two; both it and the record read the same `sorties.group_sorties` in core, which is what
+    makes "the same way" mechanical rather than a promise.
     Deciding it a second time here — by counting distinct stamps — makes the two modules disagree
     about a published field, and the disagreement runs the wrong way: the record and every GeoTIFF
     tag would announce `mixed_epochs: True` for a product made of a single flight. One definition,

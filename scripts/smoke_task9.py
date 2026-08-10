@@ -28,8 +28,8 @@ import numpy as np
 from pyproj import Transformer
 
 from microrelief.precheck import expected_void_fraction
+from microrelief.providers.dgt import search_tiles
 from microrelief.read import ASPRS_GROUND, read_laz
-from microrelief.tiles import search_tiles
 
 # The AOI chosen in Task 6, EPSG:3763 (ETRS89 / PT-TM06). See SITE.md.
 AOI = (-20990.0, 255010.0, -19010.0, 256990.0)

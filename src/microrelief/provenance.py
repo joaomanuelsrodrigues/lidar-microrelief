@@ -22,7 +22,7 @@ from datetime import UTC, datetime
 
 from microrelief import __version__
 from microrelief.grid import Grid
-from microrelief.tiles import group_sorties
+from microrelief.sorties import group_sorties
 
 
 class ProvenanceError(ValueError):
@@ -138,9 +138,10 @@ def build_provenance(
         flight_dates=tuple(sorted(set(flight_dates))),
         # Sorties, not distinct stamps. The catalogue stamps each tile with the moment it was
         # acquired, so one pass over four tiles arrives as four stamps minutes apart; counting
-        # those would publish `mixed_epochs: True` for a single-flight product. `tiles.py` already
-        # answers this question when it selects, and it has to be answered the same way here —
-        # one definition, not two that can drift.
+        # those would publish `mixed_epochs: True` for a single-flight product. A provider's
+        # selection already answers this question when it chooses tiles, and it has to be
+        # answered the same way here — which is why the clustering lives in core (`sorties.py`)
+        # and both callers reach for it. One definition, not two that can drift.
         mixed_epochs=len(group_sorties(flight_dates)) > 1,
         honesty=dict(honesty),
         # `None`, never an all-zero comparison: a record showing recall 0.0 claims the filter

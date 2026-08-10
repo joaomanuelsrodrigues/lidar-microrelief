@@ -1,11 +1,15 @@
 import pytest
 
-from microrelief.tiles import (
+from microrelief.providers.dgt import (
     CatalogueTruncated,
     UnexpectedCatalogue,
-    _tile_ref,
     parse_search_response,
 )
+
+# Reached through the module, not the package door: `_tile_ref` is underscore-private
+# catalogue internals, and re-exporting it would make it public by accident in the very
+# change that draws the layer boundary.
+from microrelief.providers.dgt.catalogue import _tile_ref
 
 FEATURE = {
     "id": "LO-248470-07-2024",
