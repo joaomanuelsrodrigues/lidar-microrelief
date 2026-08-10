@@ -24,12 +24,6 @@ from microrelief import __version__
 from microrelief.grid import Grid
 from microrelief.tiles import group_sorties
 
-ATTRIBUTION = (
-    "Source: Direção-Geral do Território (DGT), Centro de Dados, LiDAR point clouds, "
-    "licensed CC BY 4.0. Derived products (ground classification, DTM, DSM, CHM) produced "
-    "by microrelief; not reviewed or endorsed by DGT."
-)
-
 
 class ProvenanceError(ValueError):
     """The record we were asked to build is not one we are willing to publish."""
@@ -99,10 +93,18 @@ def build_provenance(
     inputs: Sequence[InputRef],
     honesty: Mapping[str, float],
     agreement: Mapping[str, float | int],
+    attribution: str,
     flight_dates: Sequence[str],
     uncalibrated: Sequence[str],
     limitations: Sequence[str],
 ) -> Provenance:
+    # Required, and required to say something. The package cannot know whose data this is,
+    # and a default naming one provider would publish a false source claim on every other.
+    if not attribution.strip():
+        raise ProvenanceError(
+            "attribution must name the source of the data and its licence; "
+            "an empty field in a published record reads as 'this product has no source'"
+        )
     grid_doc: dict[str, float | int] = {
         "origin_x": grid.origin_x,
         "origin_y": grid.origin_y,
@@ -142,7 +144,7 @@ def build_provenance(
         mixed_epochs=len(group_sorties(flight_dates)) > 1,
         honesty=dict(honesty),
         agreement=dict(agreement),
-        attribution=ATTRIBUTION,
+        attribution=attribution,
         uncalibrated_thresholds=tuple(sorted(uncalibrated)),
         known_limitations=tuple(limitations),
         reproducibility_hash=digest,

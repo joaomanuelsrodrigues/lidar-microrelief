@@ -252,6 +252,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
         inputs=inputs,
         honesty=honesty.as_dict(),
         agreement=agree.as_dict(),
+        attribution=args.attribution,
         flight_dates=flight_dates,
         uncalibrated=UNCALIBRATED,
         limitations=LIMITATIONS,
@@ -319,6 +320,13 @@ def main(argv: list[str] | None = None) -> int:
             # site measures 2.98 m, and a cap 2 cm above a riser is not above it within the
             # 0.2-0.3 m LiDAR error band (docs/riser-measurement.md, operator ruling 2026-08-08).
             p.add_argument("--max-elevation-m", type=float, default=3.5)
+            p.add_argument(
+                "--attribution",
+                required=True,
+                help="the source of the point cloud and its licence, written into "
+                "provenance.json and into every raster's tags. Required: this package cannot "
+                "know whose data it was handed, and guessing would publish a false claim.",
+            )
 
     args = ap.parse_args(argv)
     try:

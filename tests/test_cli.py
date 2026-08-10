@@ -19,6 +19,12 @@ from tests.synthetic import ORIGIN_X, ORIGIN_Y, ramp, write_las
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
+# Every cloud in this file is synthetic, so it is nobody's data. Naming a real provider here
+# would be the same false source-and-licence claim `--attribution` exists to prevent, and it
+# would stop these tests telling a string the CLI passed through from one the core supplied
+# on its own. The Sistelo string lives in the provenance factory, where real data is described.
+ATTRIBUTION = "Source: synthetic test fixture, no provider, no licence."
+
 
 def _synthetic_run(tmp_path: Path, extra: list[str] | None = None) -> tuple[int, Path]:
     """One synthetic tile, an AOI given directly in the tiles' CRS, and a run over both."""
@@ -44,7 +50,19 @@ def _synthetic_run(tmp_path: Path, extra: list[str] | None = None) -> tuple[int,
         )
     )
     out = tmp_path / "out"
-    argv = ["run", "--aoi", str(aoi), "--laz", str(laz), "--out", str(out), "--cell", "0.5"]
+    argv = [
+        "run",
+        "--aoi",
+        str(aoi),
+        "--laz",
+        str(laz),
+        "--out",
+        str(out),
+        "--cell",
+        "0.5",
+        "--attribution",
+        ATTRIBUTION,
+    ]
     return main(argv + (extra or [])), out
 
 
@@ -66,7 +84,19 @@ def test_run_refuses_when_the_laz_directory_is_empty(tmp_path: Path, capsys: Any
             }
         )
     )
-    code = main(["run", "--aoi", str(aoi), "--laz", str(tmp_path), "--out", str(tmp_path / "o")])
+    code = main(
+        [
+            "run",
+            "--aoi",
+            str(aoi),
+            "--laz",
+            str(tmp_path),
+            "--out",
+            str(tmp_path / "o"),
+            "--attribution",
+            ATTRIBUTION,
+        ]
+    )
     assert code != 0
     assert "no .laz files" in capsys.readouterr().err
 
@@ -74,7 +104,19 @@ def test_run_refuses_when_the_laz_directory_is_empty(tmp_path: Path, capsys: Any
 def test_run_refuses_an_aoi_that_is_not_a_polygon(tmp_path: Path, capsys: Any) -> None:
     aoi = tmp_path / "aoi.geojson"
     aoi.write_text(json.dumps({"type": "Point", "coordinates": [-7.55, 41.18]}))
-    code = main(["run", "--aoi", str(aoi), "--laz", str(tmp_path), "--out", str(tmp_path / "o")])
+    code = main(
+        [
+            "run",
+            "--aoi",
+            str(aoi),
+            "--laz",
+            str(tmp_path),
+            "--out",
+            str(tmp_path / "o"),
+            "--attribution",
+            ATTRIBUTION,
+        ]
+    )
     assert code != 0
     assert "Polygon" in capsys.readouterr().err
 
@@ -237,6 +279,8 @@ def test_the_density_denominator_is_the_grid_not_the_requested_aoi(tmp_path: Pat
                 str(out),
                 "--cell",
                 "0.5",
+                "--attribution",
+                ATTRIBUTION,
             ]
         )
         == 0
