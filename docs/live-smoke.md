@@ -482,3 +482,33 @@ same falsification the five judge verdicts citing `tiles.py:NNN` are left alone 
 plan's closing sweep expected zero matches across tracked files; the honest result is **two, both
 dated records, named here**. `CALIBRATIONS.md` was updated instead, because a threshold register's
 "where" column is a live pointer into code, not a claim about a past moment.
+
+### 6. The judge rounds (12, 13, 14)
+
+Same configuration as rounds 1-11: `codex exec` 0.144.1, read-only sandbox, `docs/judge/prompt.md`
+on stdin, output captured to a file and read head-first.
+
+**Round 12 FAILED** on the rubric's second clause — five questions answered, two README
+contradictions reported. Verified against source before either was touched, and they did not
+survive equally. One was real: `README.md:124` still said a tile carrying no class 2 "is refused
+outright", the behaviour Task 3 changed to a declared absence. The same claim had *already been
+corrected* eighty lines above in this session; the two sites word it differently, so a
+phrase-level sweep could not see the second. The other was **re-graded rather than accepted**: the
+blanket "each band is transparent exactly where it has nothing it can honestly publish" is, read
+as the biconditional it is, true of `basis` — transparent nowhere, never nothing to publish — but
+the enumeration after it names only three bands and invited exactly the misread a competent reader
+made. Rewritten to say outright that basis is never transparent.
+
+Both fixes were then swept for **both** failure modes before the confirmation round — the sibling
+the fix missed (searched by concept across every tracked `.md`, not by phrase) and the
+over-correction the fix introduced. The only surviving "refused" claims are in dated records: the
+2026-08-06 judge verdict r4 and `docs/self-check.md`'s own dated correction, which the addendum
+appended today explicitly supersedes.
+
+**Rounds 13 and 14 came back clean** — zero contradictions, zero unanswerable questions. The
+stopping rule was **declared before round 14 ran**: close when two consecutive rounds return zero
+of both over a tree that did not change between them. The tree was fingerprinted with
+`git write-tree` immediately before and after round 14 —
+`1e8b839dc8193efb1c2aedba6f6cd23b83df4d5f` both times — so "unchanged" is measured, not asserted.
+Two clean rounds buy coverage, not absence: E-006 puts per-round recall near 0.1 on a converged
+artefact.

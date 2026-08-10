@@ -16,14 +16,19 @@ surfaces — that decision is re-derived from the raw returns by our own filter.
 
 ## The picture
 
-Open `viewer/index.html` and drag the wipe between any two of DSM, DTM, CHM and basis. Each band
-is transparent exactly where it has nothing it can honestly publish, and the rules differ by band:
-the **DTM** on undetermined cells — nothing in the cell qualifies as measured ground, either no
-return at all or only returns the filter rejects, and no measured cell lies within 2 m to borrow
-from; the **CHM** wherever the cell's own ground was not measured, because a height against
-borrowed ground is a difference between a measurement and somewhere else; the **DSM** only where
-no return landed at all. The holes are on purpose. The basis layer is the exact per-cell answer:
-green = measured, orange = interpolated, red = undetermined.
+Open `viewer/index.html` and drag the wipe between any two of DSM, DTM, CHM and basis. Each of the
+three **surface** bands is transparent exactly where it has nothing it can honestly publish, and
+the rules differ by band: the **DTM** on undetermined cells — nothing in the cell qualifies as
+measured ground, either no return at all or only returns the filter rejects, and no measured cell
+lies within 2 m to borrow from; the **CHM** wherever the cell's own ground was not measured,
+because a height against borrowed ground is a difference between a measurement and somewhere else;
+the **DSM** only where no return landed at all. The holes are on purpose.
+
+**The basis layer is never transparent**, and that is the point: it is the exact per-cell answer —
+green = measured, orange = interpolated, red = undetermined — so `undetermined` reaches you as a
+published value, not as a hole. A band whose job is to say "we looked and there was nothing to
+measure" would erase its own admission by declaring that cell NoData; its NoData code is 255, one
+the band never produces (`test_the_undetermined_code_is_a_value_not_a_hole`).
 
 ## How to reproduce
 
@@ -121,7 +126,9 @@ The comparison against the official ASPRS classification exists to **quantify th
 to beat the DGT** — the official ground class never decides a cell in these surfaces; here it is
 the reference being quantified against, **not an input** to the filter. Two other official labels
 *are* inputs upstream of it: classes 7 and 18 are removed before the minimum surface the filter
-reads is formed, and a tile carrying no class 2 at all is refused outright (`read.py`). Ground recall 0.999,
+reads is formed, and a tile carrying no class 2 at all is read normally but recorded as carrying
+no official ground, which makes `agreement` absent for the whole product (`read.py`,
+`cli.py`). Ground recall 0.999,
 non-ground recall 0.495, accuracy 0.749, majority-class null 0.503; the number to read beside
 those is `fp = 3,889,074` — 0.2505 of compared cells are cells where this filter says ground and
 the official classification has no ground return, which is the expected shape of a minimum-surface
