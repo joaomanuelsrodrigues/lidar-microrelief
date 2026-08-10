@@ -14,6 +14,8 @@ import numpy as np
 from affine import Affine
 from numpy.typing import NDArray
 
+from microrelief.crs import require_metric_crs
+
 
 class GridError(ValueError):
     """The requested grid is not one we are willing to build."""
@@ -27,6 +29,12 @@ class Grid:
     n_cols: int
     n_rows: int
     crs_epsg: int
+
+    def __post_init__(self) -> None:
+        # On Grid rather than only on `grid_for_bounds`: this is the single object every
+        # metric path in the package shares, and a caller that constructs one directly
+        # must not get a different answer from one that goes through the helper.
+        require_metric_crs(self.crs_epsg)
 
     @property
     def shape(self) -> tuple[int, int]:
