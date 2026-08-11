@@ -143,3 +143,30 @@ overclaim the judge later caught in the README: the ASPRS classification also ga
 is published per cell as `n_ground_asprs`. What holds — and what the failing condition was
 actually probing — is that it never decides which cells are ground in these surfaces. Left in
 place and corrected here, per the record discipline.
+
+---
+
+**Addendum (2026-08-10, release 0.4.0).** Three things this document names have since changed.
+Following the discipline the header sets — misses are logged, not erased — the answers above are
+left exactly as they were written on 2026-08-06, and the changes are recorded here instead. A
+reader following a pointer above will find these differences and nothing else:
+
+1. **The AOI's declared key.** §2 calls it `bounds_epsg3763`. In 0.4.0 the hardcoded
+   `TILE_CRS_EPSG = 3763` was removed from the CLI and the key became the neutral pair `bounds` +
+   `bounds_epsg`, so an AOI declares which projected CRS its numbers are in rather than inheriting
+   Portugal's. The behaviour §2 describes is unchanged: the run still builds **one** grid from the
+   AOI's declared bounds, not from a re-derivation through WGS84.
+
+2. **`tiles.py` no longer exists.** §5 and the verification pass cite it. The DGT STAC client moved
+   to `providers/dgt/catalogue.py` behind an optional extra, and the sortie clustering
+   (`group_sorties`) moved to the core as `sorties.py`, because it is time arithmetic with no
+   network in it and the record needs it offline. The truncation refusal and the coverage refusal
+   quoted above are the same code, at a new path.
+
+3. **A tile with no official ground class is no longer refused.** The correction dated 2026-08-06
+   above says `read.py:116` refuses one; as of 0.4.0 that is a declared absence instead — the run
+   proceeds, `agreement` is published as `null`, and the tile without class 2 is named on stderr.
+   The reasoning is the one this document applies elsewhere: an agreement statistic over a mosaic
+   where only some tiles carry class 2 would mix "measured non-ground" with "never classified"
+   into one number, and the honest answer to a missing comparison is to say it is missing, not to
+   refuse to produce a surface that does not depend on it.

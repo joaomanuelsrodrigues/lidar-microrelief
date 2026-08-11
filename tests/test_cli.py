@@ -14,17 +14,28 @@ import pytest
 import rasterio
 
 from microrelief.cli import aoi_bounds, main
-from microrelief.grid import grid_for_bounds
+from microrelief.crs import CRSError
 from tests.synthetic import ORIGIN_X, ORIGIN_Y, ramp, write_las
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+# Every cloud in this file is synthetic, so it is nobody's data. Naming a real provider here
+# would be the same false source-and-licence claim `--attribution` exists to prevent, and it
+# would stop these tests telling a string the CLI passed through from one the core supplied
+# on its own. The Sistelo string lives in the provenance factory, where real data is described.
+ATTRIBUTION = "Source: synthetic test fixture, no provider, no licence."
 
 
-def _synthetic_run(tmp_path: Path, extra: list[str] | None = None) -> tuple[int, Path]:
-    """One synthetic tile, an AOI given directly in the tiles' CRS, and a run over both."""
+def _synthetic_run(
+    tmp_path: Path, extra: list[str] | None = None, unclassified_tile: bool = False
+) -> tuple[int, Path]:
+    """One synthetic tile, an AOI given directly in the tiles' CRS, and a run over both.
+
+    `unclassified_tile` adds a second tile carrying no ASPRS class 2, for the mosaic rule.
+    """
     laz = tmp_path / "laz"
     laz.mkdir()
     write_las(laz / "SYNTH-1.laz", cloud=ramp(size_m=50.0, spacing=0.5), epsg=3763)
+    if unclassified_tile:
+        write_las(laz / "SYNTH-2.laz", n=500, epsg=3763, classification=5)  # vegetation only
     aoi = tmp_path / "aoi.geojson"
     aoi.write_text(
         json.dumps(
@@ -44,7 +55,19 @@ def _synthetic_run(tmp_path: Path, extra: list[str] | None = None) -> tuple[int,
         )
     )
     out = tmp_path / "out"
-    argv = ["run", "--aoi", str(aoi), "--laz", str(laz), "--out", str(out), "--cell", "0.5"]
+    argv = [
+        "run",
+        "--aoi",
+        str(aoi),
+        "--laz",
+        str(laz),
+        "--out",
+        str(out),
+        "--cell",
+        "0.5",
+        "--attribution",
+        ATTRIBUTION,
+    ]
     return main(argv + (extra or [])), out
 
 
@@ -66,7 +89,26 @@ def test_run_refuses_when_the_laz_directory_is_empty(tmp_path: Path, capsys: Any
             }
         )
     )
-    code = main(["run", "--aoi", str(aoi), "--laz", str(tmp_path), "--out", str(tmp_path / "o")])
+    code = main(
+        [
+            "run",
+            "--aoi",
+            str(aoi),
+            "--laz",
+            str(tmp_path),
+            "--out",
+            str(tmp_path / "o"),
+            # This AOI is a bare WGS84 ring, so from Task 5 onward it names no working CRS and
+            # `_cmd_run` refuses on its first line — before it ever looks for `.laz` files. The
+            # CRS is passed rather than written into the fixture as a `crs_epsg` property: these
+            # coordinates are genuinely lon/lat, and declaring them as 3763 would make the
+            # fixture a lie to silence a failure.
+            "--crs",
+            "3763",
+            "--attribution",
+            ATTRIBUTION,
+        ]
+    )
     assert code != 0
     assert "no .laz files" in capsys.readouterr().err
 
@@ -74,9 +116,43 @@ def test_run_refuses_when_the_laz_directory_is_empty(tmp_path: Path, capsys: Any
 def test_run_refuses_an_aoi_that_is_not_a_polygon(tmp_path: Path, capsys: Any) -> None:
     aoi = tmp_path / "aoi.geojson"
     aoi.write_text(json.dumps({"type": "Point", "coordinates": [-7.55, 41.18]}))
-    code = main(["run", "--aoi", str(aoi), "--laz", str(tmp_path), "--out", str(tmp_path / "o")])
+    code = main(
+        [
+            "run",
+            "--aoi",
+            str(aoi),
+            "--laz",
+            str(tmp_path),
+            "--out",
+            str(tmp_path / "o"),
+            "--attribution",
+            ATTRIBUTION,
+        ]
+    )
     assert code != 0
     assert "Polygon" in capsys.readouterr().err
+
+
+def test_agreement_is_published_when_every_tile_carries_the_official_class(
+    tmp_path: Path,
+) -> None:
+    """Positive control for the test below. Without it, an `agreement is None` assertion would
+    pass just as well if agreement had been broken for every run rather than only this case."""
+    code, out = _synthetic_run(tmp_path)
+    assert code == 0
+    assert json.loads((out / "provenance.json").read_text())["agreement"] is not None
+
+
+def test_one_unclassified_tile_makes_agreement_absent_for_the_whole_product(
+    tmp_path: Path, capsys: Any
+) -> None:
+    """All-or-nothing on purpose. Agreement over a mosaic where only some tiles carry class 2
+    mixes 'measured non-ground' with 'never classified' into one number — a statistic over a
+    denominator it was not taken from (§A1/s258). The tile is named, not just counted."""
+    code, out = _synthetic_run(tmp_path, unclassified_tile=True)
+    assert code == 0
+    assert json.loads((out / "provenance.json").read_text())["agreement"] is None
+    assert "SYNTH-2" in capsys.readouterr().err
 
 
 def test_run_over_a_synthetic_tile_produces_every_output(tmp_path: Path) -> None:
@@ -88,47 +164,212 @@ def test_run_over_a_synthetic_tile_produces_every_output(tmp_path: Path) -> None
     assert doc["honesty"]["fraction_measured"] > 0.9
 
 
-def test_the_declared_bounds_win_over_the_wgs84_ring() -> None:
-    """§A6, and it is not a hypothetical: measured on the committed AOI.
-
-    The ring in `aoi/aoi.geojson` is the WGS84 *image* of the working box and, transformed back,
-    misses it by up to 3.8 mm — the file says so itself. `grid_for_bounds` floors the origin and
-    ceils the extent, so those millimetres move the origin half a cell and grow the grid from
-    3960x3960 to 3961x3962: 11,882 extra cells, every one of them outside all four tiles and so
-    published as `undetermined`, and a different `reproducibility_hash`, because the grid is in it.
-
-    So the declared `bounds_epsg3763` is not a convenience — it is the only source that gives the
-    grid the AOI was chosen with.
-    """
-    minx, miny, maxx, maxy, epsg = aoi_bounds(REPO_ROOT / "aoi" / "aoi.geojson")
-    assert (minx, miny, maxx, maxy) == (-20990.0, 255010.0, -19010.0, 256990.0)
-    assert epsg == 3763
-    assert grid_for_bounds(minx, miny, maxx, maxy, 0.5, epsg).shape == (3960, 3960)
+RING = [
+    [-8.3864, 41.9643],
+    [-8.3624, 41.9643],
+    [-8.3624, 41.9822],
+    [-8.3864, 41.9822],
+    [-8.3864, 41.9643],
+]
+"""Copied verbatim from the ring-only test this task supersedes, and so are the bounds asserted
+against it below. Those numbers are known to hold for this ring because that test has been
+passing on them; inventing a nearby ring and keeping the inherited bounds would be asserting
+numbers nobody measured, and a fixture whose expected values are guessed cannot tell you whether
+a failure is the code or the fixture (§A1/s256)."""
 
 
-def test_a_ring_only_aoi_still_works_and_is_reprojected(tmp_path: Path) -> None:
-    """The sibling of the test above: preferring the declared bounds must not delete the path for
-    an AOI that has none, which is what a reader drawing their own polygon will hand over."""
-    aoi = tmp_path / "aoi.geojson"
+def test_the_aoi_declares_its_own_crs_rather_than_the_cli_assuming_one(tmp_path: Path) -> None:
+    """A different metric CRS must work. The pin was a Portugal fact in a general code path."""
+    aoi = tmp_path / "utm.geojson"
     aoi.write_text(
         json.dumps(
             {
-                "type": "Polygon",
-                "coordinates": [
-                    [
-                        [-8.3864, 41.9643],
-                        [-8.3624, 41.9643],
-                        [-8.3624, 41.9822],
-                        [-8.3864, 41.9822],
-                        [-8.3864, 41.9643],
-                    ]
-                ],
+                "type": "Feature",
+                "properties": {
+                    "bounds": [500000.0, 4600000.0, 502000.0, 4602000.0],
+                    "bounds_epsg": 32629,
+                },
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [[[0, 0], [0, 1], [1, 1], [1, 0], [0, 0]]],
+                },
             }
         )
     )
     minx, miny, maxx, maxy, epsg = aoi_bounds(aoi)
+    assert (minx, miny, maxx, maxy) == (500000.0, 4600000.0, 502000.0, 4602000.0)
+    assert epsg == 32629
+
+
+def test_an_aoi_declaring_a_geographic_crs_for_its_metric_bounds_is_refused(
+    tmp_path: Path,
+) -> None:
+    """`aoi_bounds`'s own responsibility (R2-M1, R2-M2). It resolves 4326 as the working CRS,
+    so it must refuse it here — not return it and leave the refusal to whatever the caller
+    happens to build next. `select` and `precheck` build no Grid at all."""
+    aoi = tmp_path / "degrees.geojson"
+    aoi.write_text(
+        json.dumps(
+            {
+                "type": "Feature",
+                "properties": {"bounds": [-8.5, 41.9, -8.4, 42.0], "bounds_epsg": 4326},
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [[[0, 0], [0, 1], [1, 1], [1, 0], [0, 0]]],
+                },
+            }
+        )
+    )
+    with pytest.raises(CRSError, match="degree"):
+        aoi_bounds(aoi)
+
+
+def test_a_ring_declaring_etrs89_geographic_is_not_mistaken_for_a_projected_one(
+    tmp_path: Path,
+) -> None:
+    """R2-M1. EPSG:4258 is ETRS89 *geographic* — degrees, and the likeliest wrong tag on
+    Portuguese data. A draft of this task tested `ring_epsg != 4326` and would have taken these
+    degrees as metres: plausible output, silently wrong, which is the class this task exists
+    to close. It must refuse, and the refusal must still say how to get through."""
+    aoi = tmp_path / "etrs89.geojson"
+    aoi.write_text(json.dumps({"type": "Polygon", "crs_epsg": 4258, "coordinates": [RING]}))
+    with pytest.raises(SystemExit, match="--crs") as caught:
+        aoi_bounds(aoi)
+    # The guard's own words are carried through the chain, not swallowed and re-worded.
+    assert "4258" in str(caught.value) and "degree" in str(caught.value)
+
+
+def test_a_crs_named_by_the_caller_is_refused_as_itself_when_it_is_not_metric(
+    tmp_path: Path,
+) -> None:
+    """R2-M1. Naming a bad CRS is a different mistake from naming none, and gets a different
+    exception. A caller who just typed `--crs 4326` does not need to be told how to supply a
+    CRS; they need to be told why theirs will not do. Positive control on the pair: the same
+    file with `crs=3763` succeeds, in the test below."""
+    aoi = tmp_path / "ring.geojson"
+    aoi.write_text(json.dumps({"type": "Polygon", "coordinates": [RING]}))
+    with pytest.raises(CRSError, match="degree"):
+        aoi_bounds(aoi, crs=4326)
+
+
+def test_a_ring_only_wgs84_aoi_refuses_rather_than_assuming_a_national_grid(
+    tmp_path: Path,
+) -> None:
+    """Case 5. The package will not guess which country you are in. The refusal has to name both
+    ways out, or it trades a wrong answer for a dead end."""
+    aoi = tmp_path / "ring.geojson"
+    aoi.write_text(json.dumps({"type": "Polygon", "coordinates": [RING]}))
+    with pytest.raises(SystemExit, match="--crs"):
+        aoi_bounds(aoi)
+
+
+def test_a_ring_only_aoi_is_projected_into_the_crs_it_was_given(tmp_path: Path) -> None:
+    """Case 4, and the positive control for the refusal above: the same file that is refused
+    without a CRS must succeed with one, or the refusal is untestable as a discriminator
+    (§A1/s256).
+
+    This is the capability operator ruling D-1 preserves. Preferring the declared bounds must not
+    delete the path for an AOI that has none, which is what a reader drawing their own polygon
+    hands over — what goes is only the guess about *which* CRS to project into.
+    """
+    aoi = tmp_path / "ring.geojson"
+    aoi.write_text(json.dumps({"type": "Polygon", "coordinates": [RING]}))
+    minx, miny, _maxx, _maxy, epsg = aoi_bounds(aoi, crs=3763)
     assert epsg == 3763
     assert -21100 < minx < -20900 and 254900 < miny < 255100
+
+
+def _provider_serving(tiles: list[Any]) -> Any:
+    """A stand-in for the DGT module: crafted search results, the REAL select_tiles.
+
+    Stubbing only the network call is deliberate. If `select_tiles` were stubbed too, the
+    positive control would prove the guard let something through without proving a selection
+    can still be made — and it is the second half that says the guard is not simply blocking
+    everything."""
+    from microrelief.providers import dgt
+
+    class _Provider:
+        select_tiles = staticmethod(dgt.select_tiles)
+
+        @staticmethod
+        def search_tiles(_bbox: Any) -> list[Any]:
+            return tiles
+
+    return _Provider
+
+
+def _pt_tm06_tiles() -> list[Any]:
+    """A 3x3 km block of EPSG:3763 tiles — positive-x here, as `tests/test_selection.py`
+    builds them; what matters is only that no coordinate can coincide with UTM 29N's."""
+    from microrelief.providers.dgt import TileRef
+
+    return [
+        TileRef(
+            item_id=f"LO-{int(x)}-{int(y)}",
+            collection="LAZ",
+            minx=x,
+            miny=y,
+            maxx=x + 1000.0,
+            maxy=y + 1000.0,
+            crs_epsg=3763,
+            point_count=19_000_000,
+            flight_date="2024-11-22T00:00:00Z",
+            file_size=130_000_000,
+            href="https://example.invalid/t",
+        )
+        for x in (48000.0, 49000.0, 50000.0)
+        for y in (169000.0, 170000.0, 171000.0)
+    ]
+
+
+def _aoi_file(tmp_path: Path, name: str, bounds: list[float], epsg: int) -> Path:
+    aoi = tmp_path / name
+    aoi.write_text(
+        json.dumps(
+            {
+                "type": "Feature",
+                "properties": {"bounds": bounds, "bounds_epsg": epsg},
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [[[0, 0], [0, 1], [1, 1], [1, 0], [0, 0]]],
+                },
+            }
+        )
+    )
+    return aoi
+
+
+def test_an_aoi_and_tiles_in_different_crss_are_refused_before_the_overlap_test(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """D-3(b). A genuine UTM 29N box against PT-TM06 tiles: the ranges are disjoint in BOTH
+    axes, so every `_overlap_area` is zero and `select_tiles` would die on 'no tile intersects'
+    — sending the reader to hunt a coverage problem they do not have. The refusal has to name
+    the real cause, and it has to happen at the composition root, before the arithmetic."""
+    import microrelief.cli as cli
+
+    monkeypatch.setattr(cli, "_dgt", lambda: _provider_serving(_pt_tm06_tiles()))
+    aoi = _aoi_file(tmp_path, "utm.geojson", [500000.0, 4600000.0, 502000.0, 4602000.0], 32629)
+
+    assert cli.main(["select", "--aoi", str(aoi), "--out", str(tmp_path / "sel.json")]) == 2
+    err = capsys.readouterr().err
+    assert "32629" in err and "3763" in err
+    assert "no tile intersects" not in err  # the old, misleading message must NOT be what speaks
+
+
+def test_a_matching_crs_still_selects(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Positive control on the guard. Same tiles, same code path, AOI in the tiles' own CRS:
+    the selection must complete and write its record. Without this, the refusal above is
+    indistinguishable from a guard that blocks everything, and from a selection that came back
+    empty for some unrelated reason (§A1/s256)."""
+    import microrelief.cli as cli
+
+    monkeypatch.setattr(cli, "_dgt", lambda: _provider_serving(_pt_tm06_tiles()))
+    aoi = _aoi_file(tmp_path, "ptm.geojson", [48200.0, 169200.0, 50200.0, 171200.0], 3763)
+    out = tmp_path / "sel.json"
+
+    assert cli.main(["select", "--aoi", str(aoi), "--out", str(out)]) == 0
+    assert json.loads(out.read_text())["covered_fraction"] == pytest.approx(1.0)
 
 
 def test_declared_bounds_that_are_not_a_box_of_four_numbers_are_refused(tmp_path: Path) -> None:
@@ -137,7 +378,7 @@ def test_declared_bounds_that_are_not_a_box_of_four_numbers_are_refused(tmp_path
         json.dumps(
             {
                 "type": "Feature",
-                "properties": {"bounds_epsg3763": [-20990.0, 255010.0, -19010.0]},
+                "properties": {"bounds": [500000.0, 4600000.0, 502000.0], "bounds_epsg": 32629},
                 "geometry": {"type": "Polygon", "coordinates": [[[-8.38, 41.96]]]},
             }
         )
@@ -237,6 +478,8 @@ def test_the_density_denominator_is_the_grid_not_the_requested_aoi(tmp_path: Pat
                 str(out),
                 "--cell",
                 "0.5",
+                "--attribution",
+                ATTRIBUTION,
             ]
         )
         == 0

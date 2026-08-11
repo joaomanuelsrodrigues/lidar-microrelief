@@ -7,21 +7,28 @@ holes,
 deliberately. The inputs are the four raw DGT LAZ tiles of the AOI (845,372,695 bytes, one sortie,
 flown 2026-03-30); DGT's own published rasters are **not an input** to anything here — nothing in
 this repository reads them at all. The only official product used is the ASPRS classification the
-LAZ returns already carry: it gates acceptance (a tile with no official ground class is refused),
-names the noise classes excluded from every surface (7 and 18), travels per cell as the published
-`n_ground_asprs` band, and anchors the comparison below. What it never does is decide which cells
-are ground in these surfaces — that decision is re-derived from the raw returns by our own filter.
+LAZ returns already carry: it names the noise classes excluded from every surface (7 and 18),
+travels per cell as the published `n_ground_asprs` band, and anchors the comparison below. A
+delivery carrying no class 2 at all is not refused — the record publishes `agreement: null` and
+names the tile, because a missing official comparison is a fact about the file, not a failure of
+the surface. What the classification never does is decide which cells are ground in these
+surfaces — that decision is re-derived from the raw returns by our own filter.
 
 ## The picture
 
-Open `viewer/index.html` and drag the wipe between any two of DSM, DTM, CHM and basis. Each band
-is transparent exactly where it has nothing it can honestly publish, and the rules differ by band:
-the **DTM** on undetermined cells — nothing in the cell qualifies as measured ground, either no
-return at all or only returns the filter rejects, and no measured cell lies within 2 m to borrow
-from; the **CHM** wherever the cell's own ground was not measured, because a height against
-borrowed ground is a difference between a measurement and somewhere else; the **DSM** only where
-no return landed at all. The holes are on purpose. The basis layer is the exact per-cell answer:
-green = measured, orange = interpolated, red = undetermined.
+Open `viewer/index.html` and drag the wipe between any two of DSM, DTM, CHM and basis. Each of the
+three **surface** bands is transparent exactly where it has nothing it can honestly publish, and
+the rules differ by band: the **DTM** on undetermined cells — nothing in the cell qualifies as
+measured ground, either no return at all or only returns the filter rejects, and no measured cell
+lies within 2 m to borrow from; the **CHM** wherever the cell's own ground was not measured,
+because a height against borrowed ground is a difference between a measurement and somewhere else;
+the **DSM** only where no return landed at all. The holes are on purpose.
+
+**The basis layer is never transparent**, and that is the point: it is the exact per-cell answer —
+green = measured, orange = interpolated, red = undetermined — so `undetermined` reaches you as a
+published value, not as a hole. A band whose job is to say "we looked and there was nothing to
+measure" would erase its own admission by declaring that cell NoData; its NoData code is 255, one
+the band never produces (`test_the_undetermined_code_is_a_value_not_a_hole`).
 
 ## How to reproduce
 
@@ -29,23 +36,52 @@ green = measured, orange = interpolated, red = undetermined.
 microrelief select   --aoi aoi/aoi.geojson --out outputs/selection.json
 microrelief precheck --aoi aoi/aoi.geojson --cell 0.5 --ground-fraction 0.4
 microrelief run      --aoi aoi/aoi.geojson --laz ~/data/dgt-laz --out outputs/ \
-                     --cell 0.5 --selection outputs/selection.json
+                     --cell 0.5 --selection outputs/selection.json \
+                     --attribution "Source: Direção-Geral do Território (DGT), Centro de Dados, LiDAR point clouds, licensed CC BY 4.0. Derived products (ground classification, DTM, DSM, CHM) produced by microrelief; not reviewed or endorsed by DGT."
 ```
+
+`--attribution` is required and has no default: a record that names a source the caller never
+declared is a false provenance claim, and this package will not make one on your behalf. The
+string above is DGT's, because these are DGT's tiles; on your own data, write your own.
+
+**`--crs` is not in that command, and when you need it is a property of your AOI file, not of
+the command line.** `aoi/aoi.geojson` declares its own projected CRS (`bounds` + a sibling
+`bounds_epsg`), so the CRS is read from the file. An AOI that is a bare WGS84 ring declaring no
+CRS of its own is refused rather than guessed at — the package will not decide which national
+grid you are on — and `--crs <epsg>` on `select`, `precheck` and `run` is one of the two ways out
+the refusal names. Whichever way it arrives, a CRS that is not projected with metre axes is
+refused: every threshold in this package is in metres.
 
 `select` and `precheck` reach the DGT STAC catalogue and need no account; `run` touches no network
 at all. Only the LAZ download itself needs an account, and it is manual: the provider's direct
 token grant is closed to this client, so acceptance was the artefact — each file's size checked
 byte-for-byte against the catalogue's `file:size` — never a status code (`SITE.md` §Acquisition).
 
-## The numbers, from the run of 2026-08-08 (0.3.0)
+## What has been exercised
+
+The offline core — reading classified LAS/LAZ, the ground filter, the common grid, the basis
+layer, the record — carries no network dependency and no provider's conventions. **DGT is the one
+provider this package has been run against**, behind the optional `dgt` extra
+(`pip install microrelief[dgt]`); `microrelief/providers/dgt/` is where its catalogue's
+conventions live, and the import edge points core ← providers only, locked by a test.
+
+Any other provider, and any other delivery, is **untested rather than unsupported** — this
+repository's own standard is that a path is unvalidated until it has been exercised end to end
+against the real thing, and no second one has been. The core's site-independence is enforced
+negatively instead: the tests that bind this package to Sistelo live in `tests/case_study/`, and
+with `aoi/aoi.geojson` removed from the tree the rest of the suite still passes.
+
+## The numbers, from the run of 2026-08-10 (0.4.0)
 
 Every figure below is quoted from `docs/live-smoke.md`, which carries the commands and their
 verbatim output. The machine-readable record is `viewer/provenance.json` (a tracked copy of the
-run's `outputs/provenance.json`). The values are unchanged from the 2026-08-05 run — 0.3.0
-widened the footprint guard and recalibrated a cap the default windows never reach, and the
-run's byte-identity with its own second pass, plus value-identity with 0.2.0's bands, is
-demonstrated in `docs/live-smoke.md` (the provenance record carries no cross-run comparison;
-comparisons live where the commands and their output do).
+run's `outputs/provenance.json`). The values are unchanged from the 2026-08-08 run: 0.4.0
+decoupled the core from its one provider and changed no measurement, and that is a **measured**
+claim rather than an argued one — all six bands are identical to 0.3.0's cell for cell,
+94,089,600 cells compared, with only `package_version`, `created_utc`, `reproducibility_hash`
+and two added `known_limitations` differing (`scripts/compare_runs.py`, output in
+`docs/live-smoke.md`). The hash moved because the package version is inside it, which is the
+designed way a code change reaches the artefacts.
 
 | What | Value |
 |---|---|
@@ -53,8 +89,8 @@ comparisons live where the commands and their output do).
 | Cell basis | measured 74.6% · interpolated 25.2% · undetermined 0.2% |
 | Closed-form void expectation | 0.117% of cells empty, given the measured 27.0 pts/m² and every return reaching the ground — read beside the cells with no measured basis (the 25.2% interpolated plus the 0.2% undetermined); the gap between the two is the combined effect of canopy interception and the ground filter's own rejections — a cell is measured only when the filter calls it ground (`density.py`) |
 | Agreement with the official classification | ground recall 0.999 · non-ground recall 0.495 · accuracy 0.749 · **majority-class null 0.503** |
-| Reproducibility hash | `c69dd559d915c3f02d00f91bda65759c7cafce48f2a3bfd6c64c2badc0192f33` |
-| Cost | 41.3 s wall clock, 4.4 GiB peak resident |
+| Reproducibility hash | `8e8fee5b271caedd2c006b64a8d6a195b47029240766fdced65af084aaba14a4` |
+| Cost | 43.3 s wall clock, 4.4 GiB peak resident |
 
 ASPRS noise classes 7 and 18 (Low Point / High Noise) are excluded from every surface and counted
 per tile as `point_count_noise_excluded` — 0.228% of returns here. This delivery's class 7 spans
@@ -90,7 +126,9 @@ The comparison against the official ASPRS classification exists to **quantify th
 to beat the DGT** — the official ground class never decides a cell in these surfaces; here it is
 the reference being quantified against, **not an input** to the filter. Two other official labels
 *are* inputs upstream of it: classes 7 and 18 are removed before the minimum surface the filter
-reads is formed, and a tile carrying no class 2 at all is refused outright (`read.py`). Ground recall 0.999,
+reads is formed, and a tile carrying no class 2 at all is read normally but recorded as carrying
+no official ground, which makes `agreement` absent for the whole product (`read.py`,
+`cli.py`). Ground recall 0.999,
 non-ground recall 0.495, accuracy 0.749, majority-class null 0.503; the number to read beside
 those is `fp = 3,889,074` — 0.2505 of compared cells are cells where this filter says ground and
 the official classification has no ground return, which is the expected shape of a minimum-surface
@@ -133,6 +171,12 @@ filter under canopy, declared rather than tuned away.
 - The AOI is a single sortie (2026-03-30), so `mixed_epochs = false`. An AOI mixing flight dates
   would be a mosaic of moments; the pipeline refuses one unless told to accept it, and the record
   declares it.
+- **The AOI-vs-tile CRS check lives at the CLI's composition root, so calling `select_tiles` as a
+  library function goes around it.** No caller does today; the gap becomes reachable exactly when
+  someone uses this as a library, which is what 0.4.0 makes possible. Declared here and in the
+  record rather than fixed by duplicating the check into the provider.
+- **`scripts/measure_risers.py` takes no `--crs`**, so it can only work an AOI that declares its
+  own projected CRS. It is a measurement script, not part of the package's interface.
 
 ## Attribution
 

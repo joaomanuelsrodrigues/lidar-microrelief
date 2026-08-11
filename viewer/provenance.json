@@ -12,7 +12,7 @@
     "tp": 7809752
   },
   "attribution": "Source: Direção-Geral do Território (DGT), Centro de Dados, LiDAR point clouds, licensed CC BY 4.0. Derived products (ground classification, DTM, DSM, CHM) produced by microrelief; not reviewed or endorsed by DGT.",
-  "created_utc": "2026-08-08T17:56:37.333764+00:00",
+  "created_utc": "2026-08-10T20:44:29.521368+00:00",
   "flight_dates": [
     "2026-03-30T00:00:00Z"
   ],
@@ -79,10 +79,12 @@
     "Byte-identical replay on real data is not established: one corrupted and one failed read of four on 2026-08-05, neither reproduced in 192 controlled re-reads across backends, memory pressure and cold caches; root cause open (docs/live-smoke.md 2026-08-08).",
     "Cross-machine replay is unverified.",
     "The reproducibility hash sees code only through the package version; the bump is enforced only by a warn-class CI check.",
-    "The ground-fraction term of the void expectation is a reference model, not a measurement."
+    "The ground-fraction term of the void expectation is a reference model, not a measurement.",
+    "Calling select_tiles as a library function bypasses the AOI-vs-tile CRS check, which lives at the CLI's composition root.",
+    "scripts/measure_risers.py takes no --crs, so it can only work an AOI that declares its own projected CRS."
   ],
   "mixed_epochs": false,
-  "package_version": "0.3.0",
+  "package_version": "0.4.0",
   "parameters": {
     "cell": 0.5,
     "d_max_interp_m": 2.0,
@@ -92,7 +94,7 @@
     "max_window_m": 4.0,
     "slope_threshold": 0.3
   },
-  "reproducibility_hash": "c69dd559d915c3f02d00f91bda65759c7cafce48f2a3bfd6c64c2badc0192f33",
+  "reproducibility_hash": "8e8fee5b271caedd2c006b64a8d6a195b47029240766fdced65af084aaba14a4",
   "uncalibrated_thresholds": [
     "cell",
     "d_max_interp_m",

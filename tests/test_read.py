@@ -34,11 +34,23 @@ def test_a_file_without_a_crs_refuses_rather_than_assuming_the_national_one(tmp_
         read_laz(path, expect_epsg=3763)
 
 
-def test_a_file_with_no_ground_class_at_all_refuses(tmp_path) -> None:
+def test_a_cloud_with_no_official_ground_class_is_read_and_declares_the_absence(
+    tmp_path: Path,
+) -> None:
+    """Unclassified, self-classified and drone clouds are readable products. What is absent is
+    the official comparison, and absence is a field — the same pattern as
+    `point_count_catalogue=None`. Crashing here refused the data over a missing comparison."""
     path = tmp_path / "unclassified.laz"
-    write_las(path, n=100, epsg=3763, classification=1)
-    with pytest.raises(ReadError, match="no points carry ASPRS class 2"):
-        read_laz(path, expect_epsg=3763)
+    write_las(path, n=100, epsg=3763, classification=5)  # vegetation only, no class 2 anywhere
+    batch = read_laz(path, expect_epsg=3763)
+    assert batch.has_official_ground is False
+    assert batch.n_points > 0
+
+
+def test_a_cloud_with_official_ground_says_so(tmp_path: Path) -> None:
+    path = tmp_path / "classified.laz"
+    write_las(path, n=100, epsg=3763, classification=ASPRS_GROUND)
+    assert read_laz(path, expect_epsg=3763).has_official_ground is True
 
 
 def test_source_hash_is_recorded_for_provenance(tmp_path) -> None:

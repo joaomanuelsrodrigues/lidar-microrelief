@@ -22,13 +22,7 @@ from datetime import UTC, datetime
 
 from microrelief import __version__
 from microrelief.grid import Grid
-from microrelief.tiles import group_sorties
-
-ATTRIBUTION = (
-    "Source: Direção-Geral do Território (DGT), Centro de Dados, LiDAR point clouds, "
-    "licensed CC BY 4.0. Derived products (ground classification, DTM, DSM, CHM) produced "
-    "by microrelief; not reviewed or endorsed by DGT."
-)
+from microrelief.sorties import group_sorties
 
 
 class ProvenanceError(ValueError):
@@ -73,7 +67,7 @@ class Provenance:
     flight_dates: tuple[str, ...]
     mixed_epochs: bool
     honesty: dict[str, float]
-    agreement: dict[str, float | int]
+    agreement: dict[str, float | int] | None
     attribution: str
     uncalibrated_thresholds: tuple[str, ...]
     known_limitations: tuple[str, ...]
@@ -98,11 +92,19 @@ def build_provenance(
     parameters: Mapping[str, object],
     inputs: Sequence[InputRef],
     honesty: Mapping[str, float],
-    agreement: Mapping[str, float | int],
+    agreement: Mapping[str, float | int] | None,
+    attribution: str,
     flight_dates: Sequence[str],
     uncalibrated: Sequence[str],
     limitations: Sequence[str],
 ) -> Provenance:
+    # Required, and required to say something. The package cannot know whose data this is,
+    # and a default naming one provider would publish a false source claim on every other.
+    if not attribution.strip():
+        raise ProvenanceError(
+            "attribution must name the source of the data and its licence; "
+            "an empty field in a published record reads as 'this product has no source'"
+        )
     grid_doc: dict[str, float | int] = {
         "origin_x": grid.origin_x,
         "origin_y": grid.origin_y,
@@ -136,13 +138,16 @@ def build_provenance(
         flight_dates=tuple(sorted(set(flight_dates))),
         # Sorties, not distinct stamps. The catalogue stamps each tile with the moment it was
         # acquired, so one pass over four tiles arrives as four stamps minutes apart; counting
-        # those would publish `mixed_epochs: True` for a single-flight product. `tiles.py` already
-        # answers this question when it selects, and it has to be answered the same way here —
-        # one definition, not two that can drift.
+        # those would publish `mixed_epochs: True` for a single-flight product. A provider's
+        # selection already answers this question when it chooses tiles, and it has to be
+        # answered the same way here — which is why the clustering lives in core (`sorties.py`)
+        # and both callers reach for it. One definition, not two that can drift.
         mixed_epochs=len(group_sorties(flight_dates)) > 1,
         honesty=dict(honesty),
-        agreement=dict(agreement),
-        attribution=ATTRIBUTION,
+        # `None`, never an all-zero comparison: a record showing recall 0.0 claims the filter
+        # was measured against the official classification and lost. It was never measured.
+        agreement=dict(agreement) if agreement is not None else None,
+        attribution=attribution,
         uncalibrated_thresholds=tuple(sorted(uncalibrated)),
         known_limitations=tuple(limitations),
         reproducibility_hash=digest,

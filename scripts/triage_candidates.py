@@ -20,7 +20,7 @@ import sys
 from pyproj import Transformer
 
 from microrelief.precheck import estimate_tiles
-from microrelief.tiles import SelectionError, TileRef, search_tiles, select_tiles
+from microrelief.providers.dgt import SelectionError, TileRef, search_tiles, select_tiles
 
 # 2 x 2 km boxes over publicly documented terraced landscapes.
 #

@@ -2,8 +2,8 @@ import math
 
 import pytest
 
-from microrelief.precheck import PrecheckRefusal, check_selection, expected_void_fraction
-from microrelief.tiles import TileRef, select_tiles
+from microrelief.precheck import PrecheckRefusal, check_tiles, expected_void_fraction
+from microrelief.providers.dgt import TileRef, select_tiles
 from tests.test_selection import AOI, full_cover, tile
 
 
@@ -36,19 +36,19 @@ def _nominal_spec_density_tiles() -> list[TileRef]:
 def test_a_sparse_selection_refuses_with_the_number_in_the_message() -> None:
     sel = select_tiles(_nominal_spec_density_tiles(), AOI)
     with pytest.raises(PrecheckRefusal, match="36.8%"):
-        check_selection(sel, cell=0.5, ground_fraction=0.4, max_void_fraction=0.35)
+        check_tiles(sel.tiles, cell=0.5, ground_fraction=0.4, max_void_fraction=0.35)
 
 
 def test_allow_sparse_is_a_named_exit_not_a_silent_one() -> None:
     sel = select_tiles(_nominal_spec_density_tiles(), AOI)
-    estimates = check_selection(
-        sel, cell=0.5, ground_fraction=0.4, max_void_fraction=0.35, allow_sparse=True
+    estimates = check_tiles(
+        sel.tiles, cell=0.5, ground_fraction=0.4, max_void_fraction=0.35, allow_sparse=True
     )
     assert len(estimates) == 9
 
 
 def test_a_healthy_selection_passes_and_reports_per_tile() -> None:
     sel = select_tiles(full_cover(), AOI)
-    estimates = check_selection(sel, cell=0.5, ground_fraction=0.4)
+    estimates = check_tiles(sel.tiles, cell=0.5, ground_fraction=0.4)
     assert len(estimates) == 9
     assert all(e.void_open_ground < 0.01 for e in estimates)

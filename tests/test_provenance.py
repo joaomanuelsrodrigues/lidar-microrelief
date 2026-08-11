@@ -20,6 +20,11 @@ def a_provenance(**kw: Any) -> Any:
         inputs=(an_input(),),
         honesty={"fraction_measured": 0.91},
         agreement={"recall_ground": 0.88, "majority_class_null": 0.79},
+        attribution=(
+            "Source: Direção-Geral do Território (DGT), Centro de Dados, LiDAR point clouds, "
+            "licensed CC BY 4.0. Derived products (ground classification, DTM, DSM, CHM) produced "
+            "by microrelief; not reviewed or endorsed by DGT."
+        ),
         flight_dates=("2024-11-22T00:00:00Z",),
         uncalibrated=("max_window_m", "k_min_returns"),
         limitations=("interpolation is nearest-measured, not smoothed",),
@@ -178,7 +183,9 @@ def test_a_single_epoch_says_so() -> None:
 def test_four_stamps_from_one_sortie_are_not_mixed_epochs() -> None:
     """The AOI this package was built for: four tiles acquired minutes apart in one pass.
 
-    `tiles.py` already decides this question, by sortie, and refuses a selection that spans two.
+    A provider's selection already decides this question, by sortie, and refuses one that spans
+    two; both it and the record read the same `sorties.group_sorties` in core, which is what
+    makes "the same way" mechanical rather than a promise.
     Deciding it a second time here — by counting distinct stamps — makes the two modules disagree
     about a published field, and the disagreement runs the wrong way: the record and every GeoTIFF
     tag would announce `mixed_epochs: True` for a product made of a single flight. One definition,
@@ -211,3 +218,39 @@ def test_the_record_reports_how_many_points_it_actually_read() -> None:
     (one,) = doc["inputs"]
     assert one["point_count_catalogue"] == 21184681
     assert one["point_count_measured"] == 21184681
+
+
+def test_attribution_is_supplied_by_the_caller_not_baked_into_the_package() -> None:
+    """A constant naming one provider, written unconditionally into every output, is a false
+    source-and-licence claim on anyone else's data. The record must say what it was told."""
+    doc = json.loads(a_provenance(attribution="Source: Someone Else, licensed ODbL.").to_json())
+    assert doc["attribution"] == "Source: Someone Else, licensed ODbL."
+    assert "Direção-Geral do Território" not in doc["attribution"]
+
+
+def test_an_empty_attribution_is_refused_rather_than_published() -> None:
+    """An empty attribution field reads as 'this product has no source', which is never true."""
+    with pytest.raises(ProvenanceError, match="attribution"):
+        a_provenance(attribution="   ")
+
+
+def test_the_package_ships_no_provider_attribution_constant() -> None:
+    """The lock on the defect itself: core must not hold a string it could fall back to."""
+    import microrelief.provenance as provenance_module
+
+    assert not hasattr(provenance_module, "ATTRIBUTION")
+
+
+def test_agreement_is_absent_rather_than_zeroed_when_nothing_was_classified() -> None:
+    """A record carrying recall 0.0 would claim the filter was compared and lost. It was
+    never compared. Absent, like `point_count_catalogue`, is the only honest shape."""
+    doc = json.loads(a_provenance(agreement=None).to_json())
+    assert doc["agreement"] is None
+
+
+def test_attribution_stays_out_of_the_reproducibility_hash() -> None:
+    """Two runs of the same data under different attributions are the same run. If this ever
+    starts failing, the hash payload grew a field and every published hash is invalidated."""
+    a = a_provenance(attribution="Source: A.")
+    b = a_provenance(attribution="Source: B, licensed CC BY 4.0.")
+    assert a.reproducibility_hash == b.reproducibility_hash
