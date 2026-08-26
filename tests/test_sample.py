@@ -47,7 +47,7 @@ def test_the_sample_carries_the_official_ground_class() -> None:
 
 
 def test_the_sample_aoi_declares_its_crs() -> None:
-    doc = json.loads((SAMPLE / "aoi.geojson").read_text(encoding="utf-8"))
+    doc = json.loads((SAMPLE / "aoi.geojson").read_bytes())
     assert doc["properties"]["bounds"] == list(WINDOW)
     assert doc["properties"]["bounds_epsg"] == 3763
 
@@ -68,8 +68,8 @@ def test_running_the_sample_reproduces_the_expected_record(tmp_path: Path) -> No
         ]
     )
     assert rc in (0, None)
-    got = json.loads((out / "provenance.json").read_text(encoding="utf-8"))
-    expected = json.loads((SAMPLE / "expected" / "provenance.json").read_text(encoding="utf-8"))
+    got = json.loads((out / "provenance.json").read_bytes())
+    expected = json.loads((SAMPLE / "expected" / "provenance.json").read_bytes())
     for key in (
         "grid",
         "honesty",
@@ -83,7 +83,7 @@ def test_running_the_sample_reproduces_the_expected_record(tmp_path: Path) -> No
 
     # Band identity across machines is UNVERIFIED for this package (README §What this does not
     # support). Warn-class until CI has shown it green once; then promote to assert.
-    want = json.loads((SAMPLE / "expected" / "bands.sha256.json").read_text(encoding="utf-8"))
+    want = json.loads((SAMPLE / "expected" / "bands.sha256.json").read_bytes())
     for name, digest in want.items():
         with rasterio.open(out / f"{name}.tif") as src:
             here = hashlib.sha256(src.read(1).tobytes()).hexdigest()

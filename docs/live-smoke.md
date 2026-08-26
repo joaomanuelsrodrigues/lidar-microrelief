@@ -915,3 +915,25 @@ clean scratch repo                         → exit 0
 + sub/.env force-added to the index        → exit 1  "tracked .env file:"
 tracked clean.md deleted from the tree     → exit 1  "tracked but missing from the working tree (not scanned): clean.md"
 ```
+
+**Gate, round three (2026-08-27).** The third review round was cut short by a session limit
+(one of eight angles reported: reuse — no correctness finding; the `.env` rule was encoded twice,
+regex and `find` globs, and they disagreed on a trailing-dot name; now one pattern drives both).
+One question its dead sibling had raised was measured instead of argued: **a private path inside a
+file `grep -I` calls binary is invisible by design** — a path planted in a PNG text chunk was not
+found (`grep -I` → not found; `grep -a` → found). Over every byte of every tracked file, `grep -a`
+found the private-path pattern **0** times in 0.06 s; the e-mail pattern fired **once**, inside a
+PNG's compressed bytes (`docs/figures/riser/f01-terrace-2.98m.png:1389`) — a coincidence of
+random bytes, so that scan stays on text files. The summary now names both scopes:
+
+```
+self-test: private path caught
+self-test: private path behind a NUL byte caught
+self-test: e-mail caught
+self-test: .env pattern matches .env.local and sub/dir/.env, not .envrc
+neutrality: scanned 122 tracked files for private paths (all bytes), 109 text files for e-mails (13 binary or empty skipped), 0 hits
+```
+
+A planted path inside a binary file in a scratch repository is a test now
+(`test_a_private_path_inside_a_binary_file_is_caught`). `LC_ALL=C` is exported by the script so
+what counts as binary no longer depends on the machine's locale.
