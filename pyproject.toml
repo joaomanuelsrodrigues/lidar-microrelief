@@ -63,7 +63,7 @@ testpaths = ["tests"]
 [tool.hatch.build.targets.sdist]
 # The sdist is the package, not the piece: the viewer (under docs/), the judge rounds, the sample,
 # the styles and the skill live in the repository and in the Release, not in every `pip download`.
-# The tests go with them: they read viewer/provenance.json, docs/live-smoke.md, aoi/ and the git
+# The tests go with them: they read docs/viewer/provenance.json, docs/live-smoke.md, aoi/ and the git
 # index, so a tests/ directory shipped without those would be a suite that cannot run. The
 # repository is where the tests run (README §Install). Measured 2026-08-26: 35.6 MB -> 163 KB.
 exclude = [

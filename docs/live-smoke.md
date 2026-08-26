@@ -896,3 +896,22 @@ self-test: .env pattern matches .env.local, not .envrc
 with .envrc                                             → exit 0
 neutrality: scanned 108 text files of 121 tracked (13 binary or empty skipped), 0 hits  (root, and from docs/)
 ```
+
+**Gate, round two.** A second review over the fix found the `.env` checks root-only (a
+`sub/.env`, tracked or not, passed), the denominator's test deriving its expectation with the
+script's own pipeline (a control agreeing with itself), and a tracked file deleted from the
+working tree counted as read. Now: the `.env` pattern matches a path segment at any depth over
+`git ls-files`, the working tree is walked with `find` (skipping `.git` and `.venv`), a
+tracked-but-missing file refuses the scan before any count (without that, `xargs` returned
+**123** and the summary never printed — the same silent-instrument shape as the count itself),
+and the test derives the skipped set independently (size 0 or a NUL byte: the same 13 files).
+The planted-file controls live in the suite, on a throwaway git repository:
+
+```
+clean scratch repo                         → exit 0
++ .envrc                                   → exit 0
++ .env.local (untracked)                   → exit 1  ".env file present in the working tree: ./.env.local"
++ sub/.env (untracked)                     → exit 1  "./sub/.env"
++ sub/.env force-added to the index        → exit 1  "tracked .env file:"
+tracked clean.md deleted from the tree     → exit 1  "tracked but missing from the working tree (not scanned): clean.md"
+```

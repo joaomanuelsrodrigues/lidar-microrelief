@@ -26,10 +26,10 @@ cd "$(git rev-parse --show-toplevel)"
 
 PRIVATE_PATH='/home/[A-Za-z0-9._-]+/|C:\\+Users\\+'
 EMAIL='[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}'
-# `.env` and `.env.<anything>` (`.env.local`, `.env.production`), matching .gitignore's `.env*`
-# as far as secrets go — but not `.envrc` (direnv), which is not a secrets file and would make the
-# gate fail on a developer's untracked checkout for nothing.
-ENV_FILE='^\.env(\..+)?$'
+# `.env` and `.env.<anything>` (`.env.local`, `.env.production`) as a path segment anywhere in the
+# tree — matching .gitignore's `.env*` as far as secrets go — but not `.envrc` (direnv), which is
+# not a secrets file and would make the gate fail on a developer's untracked checkout for nothing.
+ENV_FILE='(^|/)\.env(\..+)?$'
 
 scan() {  # scan <pattern> <label>  — reads NUL-separated paths on stdin
   local hits
@@ -58,13 +58,22 @@ if [ "${1:-}" = "--self-test" ]; then
   if ! printf '.env.local\n' | grep -qE "$ENV_FILE"; then
     echo "self-test: .env.local NOT matched"; exit 1
   fi
+  if ! printf 'sub/dir/.env\n' | grep -qE "$ENV_FILE"; then
+    echo "self-test: sub/dir/.env NOT matched"; exit 1
+  fi
   if printf '.envrc\n' | grep -qE "$ENV_FILE"; then
     echo "self-test: .envrc wrongly matched"; exit 1
   fi
-  echo "self-test: .env pattern matches .env.local, not .envrc"
+  echo "self-test: .env pattern matches .env.local and sub/dir/.env, not .envrc"
   exit 0
 fi
 
+# A tracked file deleted from the working tree is read by nobody — grep's error would be swallowed,
+# `grep -IL` would not list it, and it would be reported as read. Refuse before counting anything.
+missing=$(git ls-files -d)
+if [ -n "$missing" ]; then
+  echo "tracked but missing from the working tree (not scanned):"; echo "$missing"; exit 1
+fi
 n_tracked=$(git ls-files | wc -l)
 n_skipped=$(git ls-files -z | xargs -0 -r grep -IL . | wc -l)   # binary or empty: grep reads nothing
 n_read=$((n_tracked - n_skipped))
@@ -72,11 +81,11 @@ status=0
 git ls-files -z | scan "$PRIVATE_PATH" 'private path leak:' || status=1
 git ls-files -z | scan "$EMAIL" 'e-mail leak:' || status=1
 if git ls-files | grep -qE "$ENV_FILE"; then echo "tracked .env file:"; git ls-files | grep -E "$ENV_FILE"; status=1; fi
-# A loop, not `ls .env .env.*`: ls exits non-zero when any ONE operand is missing, so with no
-# `.env` a present `.env.local` read as absent (positive control, 2026-08-26).
-for f in .env .env.*; do
-  if [ -e "$f" ]; then echo ".env file present in the working tree: $f"; status=1; fi
-done
+# The working tree, at any depth, skipping .git and the virtualenv: `find`, not `ls .env .env.*`
+# (ls exits non-zero when any ONE operand is missing, so with no `.env` a present `.env.local`
+# read as absent — positive control, 2026-08-26) and not a root-only glob (a `sub/.env` passed).
+present=$(find . \( -path ./.git -o -path ./.venv \) -prune -o \( -name .env -o -name '.env.*' \) -print)
+if [ -n "$present" ]; then echo ".env file present in the working tree:"; echo "$present"; status=1; fi
 if [ "$status" -eq 0 ]; then
   echo "neutrality: scanned $n_read text files of $n_tracked tracked ($n_skipped binary or empty skipped), 0 hits"
 fi

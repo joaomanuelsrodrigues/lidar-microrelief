@@ -24,7 +24,7 @@ WINDOW = (-20210.0, 256245.0, -20060.0, 256395.0)
 SIZE_CAP_BYTES = 6_000_000  # declared in examples/sistelo-sample/README.md, not a pipeline number
 # The string the README command reads; the record must carry it verbatim (it is outside the
 # reproducibility hash, so only this comparison notices a reworded file).
-DGT = (SAMPLE / "attribution.txt").read_text().strip()
+DGT = (SAMPLE / "attribution.txt").read_text(encoding="utf-8").strip()
 
 
 def test_the_sample_is_small_enough_to_be_a_first_run() -> None:
@@ -47,7 +47,7 @@ def test_the_sample_carries_the_official_ground_class() -> None:
 
 
 def test_the_sample_aoi_declares_its_crs() -> None:
-    doc = json.loads((SAMPLE / "aoi.geojson").read_text())
+    doc = json.loads((SAMPLE / "aoi.geojson").read_text(encoding="utf-8"))
     assert doc["properties"]["bounds"] == list(WINDOW)
     assert doc["properties"]["bounds_epsg"] == 3763
 
@@ -68,8 +68,8 @@ def test_running_the_sample_reproduces_the_expected_record(tmp_path: Path) -> No
         ]
     )
     assert rc in (0, None)
-    got = json.loads((out / "provenance.json").read_text())
-    expected = json.loads((SAMPLE / "expected" / "provenance.json").read_text())
+    got = json.loads((out / "provenance.json").read_text(encoding="utf-8"))
+    expected = json.loads((SAMPLE / "expected" / "provenance.json").read_text(encoding="utf-8"))
     for key in (
         "grid",
         "honesty",
@@ -83,7 +83,7 @@ def test_running_the_sample_reproduces_the_expected_record(tmp_path: Path) -> No
 
     # Band identity across machines is UNVERIFIED for this package (README §What this does not
     # support). Warn-class until CI has shown it green once; then promote to assert.
-    want = json.loads((SAMPLE / "expected" / "bands.sha256.json").read_text())
+    want = json.loads((SAMPLE / "expected" / "bands.sha256.json").read_text(encoding="utf-8"))
     for name, digest in want.items():
         with rasterio.open(out / f"{name}.tif") as src:
             here = hashlib.sha256(src.read(1).tobytes()).hexdigest()

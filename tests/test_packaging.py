@@ -14,7 +14,9 @@ def test_version_is_exposed_and_the_two_sources_agree() -> None:
     wrong — they live in different files and nothing else ties them together.
     """
     root = Path(__file__).resolve().parents[1]
-    declared = tomllib.loads((root / "pyproject.toml").read_text())["project"]["version"]
+    declared = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))["project"][
+        "version"
+    ]
     assert microrelief.__version__ == declared
     assert microrelief.__version__, "an empty version would hash and tag as an empty string"
 
@@ -31,7 +33,7 @@ def test_the_human_facing_version_copies_agree_with_the_package() -> None:
     """CITATION.cff and the skill's frontmatter carry the version for readers and agent hosts; the
     bump guard watches only src/, so this is the only thing that ties them to the code."""
     root = Path(__file__).resolve().parents[1]
-    cff = (root / "CITATION.cff").read_text()
-    skill = (root / "skills" / "microrelief" / "SKILL.md").read_text()
+    cff = (root / "CITATION.cff").read_text(encoding="utf-8")
+    skill = (root / "skills" / "microrelief" / "SKILL.md").read_text(encoding="utf-8")
     assert f"version: {microrelief.__version__}\n" in cff
     assert f'version: "{microrelief.__version__}"' in skill
