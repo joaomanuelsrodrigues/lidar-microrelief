@@ -87,7 +87,7 @@ surfaces — that decision is re-derived from the raw returns by our own filter.
 
 ## The picture
 
-Open `viewer/index.html` and drag the wipe between any two of DSM, DTM, CHM and basis. Each of the
+Open `docs/viewer/index.html` and drag the wipe between any two of DSM, DTM, CHM and basis. Each of the
 three **surface** bands is transparent exactly where it has nothing it can honestly publish, and
 the rules differ by band: the **DTM** on undetermined cells — nothing in the cell qualifies as
 measured ground, either no return at all or only returns the filter rejects, and no measured cell
@@ -145,7 +145,7 @@ with `aoi/aoi.geojson` removed from the tree the rest of the suite still passes.
 ## The numbers, from the run of 2026-08-10 (0.4.0)
 
 Every figure below is quoted from `docs/live-smoke.md`, which carries the commands and their
-verbatim output. The machine-readable record is `viewer/provenance.json` (a tracked copy of the
+verbatim output. The machine-readable record is `docs/viewer/provenance.json` (a tracked copy of the
 run's `outputs/provenance.json`). The values are unchanged from the 2026-08-08 run: 0.4.0
 decoupled the core from its one provider and changed no measurement, and that is a **measured**
 claim rather than an argued one — all six bands are identical to 0.3.0's cell for cell,
@@ -254,5 +254,5 @@ filter under canopy, declared rather than tuned away.
 Source: Direção-Geral do Território (DGT), Centro de Dados, LiDAR point clouds, licensed
 **CC BY 4.0**. Derived products (ground classification, DTM, DSM, CHM) produced by `microrelief`;
 **not reviewed or endorsed by DGT**. The attribution travels inside every exported GeoTIFF's tags
-and in `viewer/provenance.json`, so it reaches whoever holds the file, not only whoever found this
+and in `docs/viewer/provenance.json`, so it reaches whoever holds the file, not only whoever found this
 page.

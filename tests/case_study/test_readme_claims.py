@@ -8,8 +8,8 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_the_readme_quotes_the_hash_that_the_run_actually_produced() -> None:
-    # viewer/provenance.json is the tracked copy of the run's record (outputs/ is gitignored).
-    prov = json.loads((ROOT / "viewer" / "provenance.json").read_text())
+    # docs/viewer/provenance.json is the tracked copy of the run's record (outputs/ is gitignored).
+    prov = json.loads((ROOT / "docs" / "viewer" / "provenance.json").read_text())
     assert prov["reproducibility_hash"][:12] in (ROOT / "README.md").read_text()
 
 

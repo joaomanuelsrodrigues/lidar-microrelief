@@ -614,3 +614,83 @@ but a mismatch **warns** rather than fails: the README's "cross-machine replay i
 still true until CI — the first non-author machine — has run this test once and its log has been
 read. On the author's machine the test ran with `-W error::UserWarning` so that a warning here
 would have failed it.
+
+## 2026-08-26 — the viewer moves under `docs/` for Pages, and its PNGs lose no cell
+
+Branch-based GitHub Pages publishes `/` or `/docs`, nothing else, so `viewer/` becomes
+`docs/viewer/` (`git mv`; one path in the README test, three in the README; `docs/.nojekyll` so
+Pages serves the directory raw). The alternative — an Actions deploy workflow with `pages: write`
+and `id-token: write` — is a new deploy handler and a new permission surface; not taken. The four
+PNGs weighed 31,715,528 bytes, 17,982,028 of them the CHM.
+
+### 1. The quantiser tried first, and what it did
+
+The plan said `Image.quantize(256, FASTOCTREE)`: truecolour RGBA down to a 256-colour palette.
+Measured against the old PNGs before being trusted:
+
+```
+mdt: OLD alpha-values [0, 255] opaque-colours 256 holes 29845 | FASTOCTREE opaque-colours 50
+mds: OLD alpha-values [0, 255] opaque-colours 256 holes 159131 | FASTOCTREE opaque-colours 52
+chm: OLD alpha-values [0, 255] opaque-colours 235 holes 3982774 | FASTOCTREE opaque-colours 27
+basis: OLD alpha-values [255] opaque-colours 3 holes 0 | FASTOCTREE opaque-colours 1
+  old colours: [(77, 175, 74, 255), (228, 26, 28, 255), (255, 127, 0, 255)]
+  new colours: [(77, 175, 74, 254), (228, 26, 28, 255), (254, 127, 0, 254)]
+```
+
+The transparent-cell counts matched — the check the plan named — and the basis layer's three
+colours did not survive: two came back at alpha 254, one shifted a unit in red. A legend that says
+"green = measured" cannot ship a green that is 99.6 % opaque, and the terrain ramps had lost four
+fifths of their colours. Dropped.
+
+### 2. The palette is the colour set
+
+The colormaps are 256-entry tables, so a band's opaque colours number at most 256. Sampled at 255
+(`PALETTE_LEVELS`), they plus one transparent index fit a PNG palette exactly; `_save_palette`
+builds the palette from the image's own colours and refuses an image that does not fit rather than
+merging two colours. Four tests, one with a mutation control: with the table at 256 levels
+`test_to_rgba_never_needs_more_than_255_opaque_colours` fails (`1 failed, 10 deselected`); at 255
+it passes. Re-rendered from `outputs/` (the 0.4.0 run) and compared cell for cell with
+`to_rgba`/`basis_rgba` in memory, hole for hole with the old PNGs at HEAD:
+
+```
+mdt: P (3960, 3960) | holes old/new 29845/29845 same-mask True | colours old/new 256/255 | lossless vs in-memory: True
+mds: P (3960, 3960) | holes old/new 159131/159131 same-mask True | colours old/new 256/255 | lossless vs in-memory: True
+chm: P (3960, 3960) | holes old/new 3982774/3982774 same-mask True | colours old/new 235/62 | lossless vs in-memory: True
+basis: P (3960, 3960) | holes old/new 0/0 same-mask True | colours old/new 3/3 | lossless vs in-memory: True
+  basis colour set old == new: True
+```
+
+### 3. The CHM against the cap
+
+At 255 levels the CHM's palette PNG weighed 7,938,879 bytes, over the 5,000,000
+`tests/test_viewer_assets.py` caps a page image at. Canopy varies cell to cell, and fewer distinct
+colours compress better. Measured on the real band, exact palette each time:
+
+```
+levels 255:   7938879 bytes  colours 235
+levels 128:   6368771 bytes  colours 121
+levels  64:   4960664 bytes  colours  62
+levels  32:   3812681 bytes  colours  32
+webp lossless 255 levels: 7474512 bytes (reference only)
+chm range: 0.0 43.04 m  -> m per level at 255/128/64: 0.169 0.336 0.672
+```
+
+The CHM ramp runs at 64 levels (`LAYERS` in `render.py`): 0.67 m per colour step over 0–43 m,
+39 KB under the cap. The terrain ramps stay at 255. Fewer levels sampled from the colormap, never
+colours merged afterwards — the lossless check in §2 is over the 64-level render. Final:
+basis 1,458,725 · mdt 2,536,793 · mds 4,418,810 · chm 4,960,664 = 13,374,992 bytes, from
+31,715,528.
+
+### 4. The page, in a browser
+
+`docs/` served on loopback (`python3 -m http.server 8765 --bind 127.0.0.1`): every asset answered
+HTTP 200 at its byte size. Then headless Chromium (gstack `browse`) on `/viewer/`:
+
+```
+images: base mdt.png complete 3960x3960 | over mds.png complete 3960x3960
+wipe 50 -> clip-path inset(0px 50% 0px 0px); wipe 20 -> inset(0px 80% 0px 0px)
+left=chm right=basis -> over chm.png, base basis.png, both complete at 3960
+attribution: "Source: Direção-Geral do Território (DGT), ... — reproducibility hash 8e8fee5b271c"
+console: (no console messages)
+network: 6 requests, 6 x HTTP 200
+```
