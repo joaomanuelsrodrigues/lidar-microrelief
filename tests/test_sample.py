@@ -22,11 +22,9 @@ SAMPLE = ROOT / "examples" / "sistelo-sample"
 LAZ = SAMPLE / "sistelo-terraces-150m.laz"
 WINDOW = (-20210.0, 256245.0, -20060.0, 256395.0)
 SIZE_CAP_BYTES = 6_000_000  # declared in examples/sistelo-sample/README.md, not a pipeline number
-DGT = (
-    "Source: Direção-Geral do Território (DGT), Centro de Dados, LiDAR point clouds, licensed "
-    "CC BY 4.0. Derived products (ground classification, DTM, DSM, CHM) produced by microrelief; "
-    "not reviewed or endorsed by DGT."
-)
+# The string the README command reads; the record must carry it verbatim (it is outside the
+# reproducibility hash, so only this comparison notices a reworded file).
+DGT = (SAMPLE / "attribution.txt").read_text().strip()
 
 
 def test_the_sample_is_small_enough_to_be_a_first_run() -> None:
@@ -72,7 +70,14 @@ def test_running_the_sample_reproduces_the_expected_record(tmp_path: Path) -> No
     assert rc in (0, None)
     got = json.loads((out / "provenance.json").read_text())
     expected = json.loads((SAMPLE / "expected" / "provenance.json").read_text())
-    for key in ("grid", "honesty", "agreement", "parameters", "reproducibility_hash"):
+    for key in (
+        "grid",
+        "honesty",
+        "agreement",
+        "parameters",
+        "reproducibility_hash",
+        "attribution",
+    ):
         assert got[key] == expected[key], key
     assert got["inputs"][0]["sha256"] == expected["inputs"][0]["sha256"]
 

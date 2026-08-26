@@ -1,27 +1,39 @@
 #!/usr/bin/env bash
-# The neutrality gate: no private path, no e-mail address, no .env in the tracked tree.
+# The neutrality gate: no private path, no e-mail address, no .env file in the tracked tree.
 #
 # Members are enumerated from `git ls-files` — the registry of what the repository contains —
 # never from a name pattern: the previous selector `'*.py' '*.md'` left 13 tracked text files
 # unscanned (CODEOWNERS, provenance.json, pyproject.toml, uv.lock, ...). `grep -I` skips binaries
-# (PNG, LAZ), which is the only exclusion, and it is by content, not by name.
+# (PNG, LAZ) and reads nothing from empty files, so the denominator printed is the number of files
+# grep actually read, beside the number it skipped — not the number of tracked files, which read
+# 11 % too high on 2026-08-26 (121 tracked, 13 never read).
 #
 # Silence is this gate's pass condition, and silence is also what a scan of nothing prints. So:
 # the scan reports its denominator, and `--self-test` plants one violation of each class in a
-# temporary file and requires each to be caught. Cite the green only beside a green self-test.
+# temporary file and requires each to be caught, and checks the .env pattern both ways.
+# Cite the green only beside a green self-test.
 #
 # The planted strings are assembled at run time from pieces (`%s`), never written whole in this
 # file: this script is itself a tracked file the scan reads, and a literal violation here would
 # fail the gate it exists to prove. Measured on 2026-08-26 — the first version carried the
 # literals, read clean while untracked, and failed the moment it entered the index.
+#
+# The scan runs from the repository root whatever the caller's directory: `git ls-files` lists
+# only paths under the current directory, and from `docs/` this script once reported 32 files
+# scanned, 0 hits, exit 0 — a plausible green over a quarter of the tree (2026-08-26).
 set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
 
 PRIVATE_PATH='/home/[A-Za-z0-9._-]+/|C:\\+Users\\+'
 EMAIL='[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}'
+# `.env` and `.env.<anything>` (`.env.local`, `.env.production`), matching .gitignore's `.env*`
+# as far as secrets go — but not `.envrc` (direnv), which is not a secrets file and would make the
+# gate fail on a developer's untracked checkout for nothing.
+ENV_FILE='^\.env(\..+)?$'
 
 scan() {  # scan <pattern> <label>  — reads NUL-separated paths on stdin
   local hits
-  hits=$(xargs -0 -r grep -nIE -- "$1" || true)
+  hits=$(xargs -0 -r grep -nHIE -- "$1" || true)
   if [ -n "$hits" ]; then
     echo "$2"
     echo "$hits"
@@ -43,13 +55,29 @@ if [ "${1:-}" = "--self-test" ]; then
     echo "self-test: e-mail NOT caught"; exit 1
   fi
   echo "self-test: e-mail caught"
+  if ! printf '.env.local\n' | grep -qE "$ENV_FILE"; then
+    echo "self-test: .env.local NOT matched"; exit 1
+  fi
+  if printf '.envrc\n' | grep -qE "$ENV_FILE"; then
+    echo "self-test: .envrc wrongly matched"; exit 1
+  fi
+  echo "self-test: .env pattern matches .env.local, not .envrc"
   exit 0
 fi
 
-n=$(git ls-files | wc -l)
+n_tracked=$(git ls-files | wc -l)
+n_skipped=$(git ls-files -z | xargs -0 -r grep -IL . | wc -l)   # binary or empty: grep reads nothing
+n_read=$((n_tracked - n_skipped))
 status=0
 git ls-files -z | scan "$PRIVATE_PATH" 'private path leak:' || status=1
 git ls-files -z | scan "$EMAIL" 'e-mail leak:' || status=1
-if ls .env* >/dev/null 2>&1; then echo '.env* is present'; status=1; fi
-if [ "$status" -eq 0 ]; then echo "neutrality: scanned $n tracked files, 0 hits"; fi
+if git ls-files | grep -qE "$ENV_FILE"; then echo "tracked .env file:"; git ls-files | grep -E "$ENV_FILE"; status=1; fi
+# A loop, not `ls .env .env.*`: ls exits non-zero when any ONE operand is missing, so with no
+# `.env` a present `.env.local` read as absent (positive control, 2026-08-26).
+for f in .env .env.*; do
+  if [ -e "$f" ]; then echo ".env file present in the working tree: $f"; status=1; fi
+done
+if [ "$status" -eq 0 ]; then
+  echo "neutrality: scanned $n_read text files of $n_tracked tracked ($n_skipped binary or empty skipped), 0 hits"
+fi
 exit "$status"

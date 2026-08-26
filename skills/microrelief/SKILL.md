@@ -67,11 +67,13 @@ delivery's ground class: accuracy 0.837 against a majority-class null of 0.587 (
 
 ## When it refuses
 
-A non-zero exit with the reason on stderr: **2** when the AOI or its CRS breaks the contract
-(no `bounds_epsg`, a geographic CRS, a ring with no working CRS, a tile missing from the
-selection); **1** when a file is refused (`ReadError: … declares no CRS`, a CRS with no EPSG
-code, non-finite coordinates, a return outside the box its catalogue entry declares). Relay the
-reason verbatim and ask the user; do not retry with a guessed flag.
+A non-zero exit with the reason on stderr. The reason is the message to relay — verbatim — and
+the exit code only says who refused: **2** when the CLI refused the AOI's shape or a CRS it was
+not told (`bounds` without `bounds_epsg`, a ring with no working CRS, a tile missing from the
+selection); **1** for everything the package refused with a named error — `CRSError` for a
+geographic or non-metre CRS (also when it comes from `--crs`), `ReadError` for a file that
+declares no CRS or no EPSG code, non-finite coordinates, or a return outside the box its
+catalogue entry declares. Do not retry with a guessed flag; ask the user.
 
 ## Output files
 

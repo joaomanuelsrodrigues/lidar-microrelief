@@ -22,7 +22,11 @@ from matplotlib import colormaps
 from microrelief.density import BASIS_INTERPOLATED, BASIS_MEASURED, BASIS_UNDETERMINED
 from microrelief.render import BASIS_PALETTE, LAYERS
 
-STOPS = 9  # colour stops per continuous ramp; QGIS interpolates between them
+STOPS = 9  # colour stops per continuous ramp; QGIS interpolates between them (CALIBRATIONS.md)
+# Channels truncate as `render.to_rgba` does (`(lut(x) * 255).astype(np.uint8)`); rounding put
+# 5 of the 9 terrain stops one unit off (measured 2026-08-26). The stops are the named colormap's
+# own values; the viewer PNG additionally quantises to PALETTE_LEVELS (64 for the CHM), so a
+# viewer pixel can sit up to 3 (terrain) or 8 (viridis at 64) units per channel from a stop.
 COUNT_BANDS = ("n_all", "n_ground_asprs")
 LABELS = {
     BASIS_UNDETERMINED: "undetermined",
@@ -71,7 +75,7 @@ def basis_qml() -> str:
 def continuous_qml(cmap: str) -> str:
     lut = colormaps[cmap]
     stops = [
-        (i / (STOPS - 1), tuple(int(round(c * 255)) for c in lut(i / (STOPS - 1))[:3]))
+        (i / (STOPS - 1), tuple(int(c * 255) for c in lut(i / (STOPS - 1))[:3]))
         for i in range(STOPS)
     ]
     items = "\n".join(

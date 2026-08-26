@@ -93,7 +93,9 @@ the rules differ by band: the **DTM** on undetermined cells — nothing in the c
 measured ground, either no return at all or only returns the filter rejects, and no measured cell
 lies within 2 m to borrow from; the **CHM** wherever the cell's own ground was not measured,
 because a height against borrowed ground is a difference between a measurement and somewhere else;
-the **DSM** only where no return landed at all. The holes are on purpose.
+the **DSM** only where no return landed at all. The holes are on purpose. The viewer's CHM is
+drawn at 64 colour levels (about 0.67 m per step over its 0–43 m) so the page stays under its
+5 MB image cap; the GeoTIFF is not quantised.
 
 **The basis layer is never transparent**, and that is the point: it is the exact per-cell answer —
 green = measured, orange = interpolated, red = undetermined — so `undetermined` reaches you as a

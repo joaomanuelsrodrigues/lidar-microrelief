@@ -37,13 +37,20 @@ science — the science lives in `RUBRIC.md`, `CALIBRATIONS.md`, and `ATTRIBUTIO
 
 ## Commands
 
-    uv sync --extra dev --extra site --extra dgt
+The block below mirrors `.github/workflows/ci.yml` step for step (`tests/test_agents_commands.py`
+locks it: same install line, `uv run <tool>` becomes `.venv/bin/<tool>`, no `&&`); when they
+disagree, `ci.yml` is the gate and this block is the one that is wrong.
+
+    uv sync --locked --extra dev --extra site
     .venv/bin/ruff check src tests scripts
     .venv/bin/ruff format --check src tests scripts
     .venv/bin/mypy
-    .venv/bin/python -m pytest -q
+    .venv/bin/pytest -q
     bash scripts/check_version_bump.sh      # warn-class
-    bash scripts/neutrality.sh --self-test && bash scripts/neutrality.sh
+    bash scripts/neutrality.sh --self-test
+    bash scripts/neutrality.sh
 
-Run each separately and report each exit code. The agent-facing skill for *using* the CLI is
-`skills/microrelief/SKILL.md`; this file is about *changing* the code.
+Run each separately and report each exit code. `--locked` fails when `uv.lock` has drifted from
+`pyproject.toml`, which is what CI does; an unlocked `uv sync` would rewrite the lock in silence.
+Add `--extra dgt` only to exercise the DGT catalogue commands. The agent-facing skill for *using*
+the CLI is `skills/microrelief/SKILL.md`; this file is about *changing* the code.

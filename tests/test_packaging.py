@@ -25,3 +25,13 @@ def test_rubric_is_committed_before_pipeline_code() -> None:
     assert (root / "RUBRIC.md").exists()
     assert (root / "CALIBRATIONS.md").exists()
     assert (root / "ATTRIBUTION.md").exists()
+
+
+def test_the_human_facing_version_copies_agree_with_the_package() -> None:
+    """CITATION.cff and the skill's frontmatter carry the version for readers and agent hosts; the
+    bump guard watches only src/, so this is the only thing that ties them to the code."""
+    root = Path(__file__).resolve().parents[1]
+    cff = (root / "CITATION.cff").read_text()
+    skill = (root / "skills" / "microrelief" / "SKILL.md").read_text()
+    assert f"version: {microrelief.__version__}\n" in cff
+    assert f'version: "{microrelief.__version__}"' in skill

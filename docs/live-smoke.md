@@ -850,3 +850,49 @@ the measured density reads 16.9 pts/m² against 17.3 and the measured share 55.3
 PDAL's warning about three extra-byte VLRs (RIEGL and TerraScan extras) is about dimensions
 `microrelief` never reads. The `filters.crop` stage of the recipe was not needed here (the
 sample is already cut) and was not exercised.
+
+### Addendum — after the pre-merge review (same day)
+
+An adversarial review of the branch (high effort, 17 candidates: 15 confirmed, 2 plausible,
+0 refuted) touched the styles and the gate; both were re-exercised.
+
+**Styles.** The generator rounded channels where `render.to_rgba` truncates, which put 5 of the 9
+terrain stops one unit off the viewer's colours; it now truncates, and every stop equals the named
+colormap's own value (0 of 27 stops differ). The viewer PNG additionally quantises to 255 levels
+(64 for the CHM), so a viewer pixel can sit up to 3 (terrain) or 8 (viridis at 64) units per
+channel from a stop — measured, and written into the generator rather than claimed away. QGIS
+3.44.11 on the regenerated files, same harness as above:
+
+```
+basis: loadNamedStyle ok=True renderer=paletted classes=[(0, '#e41a1c', 'undetermined'), (1, '#4daf4a', 'measured'), (2, '#ff7f00', 'interpolated')]
+   code 0 at (14,0): rendered (228, 26, 28) alpha=255 want (228, 26, 28)
+   code 1 at (1,0): rendered (77, 175, 74) alpha=255 want (77, 175, 74)
+   code 2 at (0,0): rendered (255, 127, 0) alpha=255 want (255, 127, 0)
+mdt: loadNamedStyle ok=True renderer=singlebandpseudocolor before-render min=0 max=1 | after-render min=0.00 max=1.00 raster[min=244.26 max=315.62] lowest cell -> (51, 51, 153), highest cell -> (255, 255, 255), distinct colours in render=1228, nodata alpha=0 (want 0)
+mds: loadNamedStyle ok=True renderer=singlebandpseudocolor before-render min=0 max=1 | after-render min=0.00 max=1.00 raster[min=245.02 max=334.70] lowest cell -> (51, 51, 153), highest cell -> (255, 255, 255), distinct colours in render=1347, nodata alpha=0 (want 0)
+chm: loadNamedStyle ok=True renderer=singlebandpseudocolor before-render min=0 max=1 | after-render min=0.00 max=1.00 raster[min=0.00 max=39.84] lowest cell -> (68, 1, 84), highest cell -> (253, 231, 36), distinct colours in render=532, nodata alpha=0 (want 0)
+n_all: loadNamedStyle ok=True renderer=singlebandpseudocolor before-render min=0 max=1 | after-render min=0.00 max=1.00 raster[min=0.00 max=24.00] lowest cell -> (68, 1, 84), highest cell -> (253, 231, 36), distinct colours in render=25
+n_ground_asprs: loadNamedStyle ok=True renderer=singlebandpseudocolor before-render min=0 max=1 | after-render min=0.00 max=1.00 raster[min=0.00 max=8.00] lowest cell -> (68, 1, 84), highest cell -> (253, 231, 36), distinct colours in render=9
+```
+
+**Gate.** Three defects in `scripts/neutrality.sh`, each with a control that now fails without
+the fix: (1) it was cwd-scoped — from `docs/` it printed `scanned 32 tracked files, 0 hits`, exit
+0, over a quarter of the tree; it now `cd`s to the repository root, and the test runs it from
+`docs/` and requires the full denominator. (2) The denominator counted tracked files, but `grep -I`
+reads no binary and nothing from an empty file — 13 of 121 (10 PNG/LAZ, 3 empty `__init__.py`)
+were reported as scanned and never read; the summary now says `scanned 108 text files of 121
+tracked (13 binary or empty skipped)`. (3) The `.env*` check I had added in the morning read the
+working directory with a glob that also matched `.envrc` (direnv), and the version written to fix
+that — `ls .env .env.*` — exited non-zero whenever `.env` alone was absent, so a planted
+`.env.local` **passed**: the s271 `ls a b` shape, caught by the positive control before commit.
+Now: tracked `.env` / `.env.<x>` fail by pattern, a working-tree `.env` / `.env.<x>` fails by a
+loop, `.envrc` passes, and the self-test checks the pattern both ways.
+
+```
+self-test: private path caught
+self-test: e-mail caught
+self-test: .env pattern matches .env.local, not .envrc
+.env file present in the working tree: .env.local      → exit 1 (planted)
+with .envrc                                             → exit 0
+neutrality: scanned 108 text files of 121 tracked (13 binary or empty skipped), 0 hits  (root, and from docs/)
+```
