@@ -512,3 +512,105 @@ of both over a tree that did not change between them. The tree was fingerprinted
 `1e8b839dc8193efb1c2aedba6f6cd23b83df4d5f` both times — so "unchanged" is measured, not asserted.
 Two clean rounds buy coverage, not absence: E-006 puts per-round recall near 0.1 on a converged
 artefact.
+
+## 2026-08-26 — the shipped sample: 150 m around the tallest riser
+
+A stranger's first run should not start with an 845 MB download, and no machine other than the
+author's had ever run this pipeline. Both close with one file: a 150 m × 150 m cut of tile
+`LO-179557-07-2025` around the tallest verified riser (−20132.8, 256319.2;
+`docs/riser-measurement.md`), tracked in `examples/sistelo-sample/` beside the record and the
+per-band digests of the author's run. `tests/test_sample.py` reproduces that record on every CI
+run — the suite's only test on real returns, and the repository's first cross-machine replay probe.
+
+### 1. The cut
+
+```
+$ .venv/bin/python scripts/make_sample.py ~/data/dgt-laz/LO-179557-07-2025.laz examples/sistelo-sample
+points 390450  bytes 3174006  epsg 3763
+x -20210.00..-20060.00  y 256245.00..256395.00  z 161.96..386.40
+class 2 present: True
+sha256 9d65a09170f7085263d933c1d04a08a302db274a41d89b27983500755269202b
+wall 3.64s  maxrss 2454728 KB
+```
+
+Fewer points than the tile's mean predicts (27.7 pts/m² × 22,500 m² ≈ 623 k): this window runs
+17.3 pts/m². The 6 MB cap has 2.8 MB of room. The header's free text, which the neutrality gate
+cannot read (`grep -I` skips binaries), was printed with a positive control before the file was
+staged: `system_identifier 'AL;'`, `generating_software 'TerraScan'`, VLR descriptions
+`'RIEGL Extra Bytes'`, `'TerraScan Extra Bytes'`, `'http://laszip.org'`; the control — a
+planted home-directory path and a planted e-mail address, assembled in the probe, not written
+here — matched both; no marker in the file.
+
+### 2. The run, twice
+
+`$OUT` is a scratch directory outside the repository; everything else is as typed.
+
+```
+$ .venv/bin/microrelief run --aoi examples/sistelo-sample/aoi.geojson --laz examples/sistelo-sample \
+    --out "$OUT/sample-run-1" --attribution "$(cat examples/sistelo-sample/attribution.txt)"
+grid 300 x 300 cells of 0.5 m (0.0225 km2), 1 tile(s), 1 return(s) outside the AOI
+measured 56.2% | interpolated 43.1% | undetermined 0.7%
+expected void at f=1: 1.312% (measured density 17.3 pts/m2)
+ground recall 0.999 | non-ground recall 0.723 | accuracy 0.837 | majority-class null 0.587
+flight dates (none declared) | mixed epochs False
+reproducibility_hash 9df5586d283e969fd30718760eb8c7fa7dc8e502d9746c1759dd576c0f147fe1
+wall 0.78s  maxrss 171860 KB
+exit=0
+```
+
+The one return outside the AOI is the single point at exactly y = 256245.000: the cut keeps
+`[min, max)` on both axes, the grid runs rows downward from `origin_y = 256395` so its y-interval
+is open at the bottom, and that point maps to row 300 of 300. The six returns at exactly
+x = −20210.000 land in column 0 and are inside. Of the 390,450 returns, 316,927 (81 %) carry
+ASPRS class 5 (high vegetation), 72,380 class 2, 736 class 6, 407 class 7 — the 407 is the
+record's `point_count_noise_excluded`.
+
+The second run printed the same six lines (`wall 0.52s  maxrss 172176 KB`, `exit=0`). The
+attribution file was checked byte-for-byte against the provider's `DGT_ATTRIBUTION` constant
+before the first run (`True`, 213 characters). No `--selection`, so the record declares what it
+does not know: `flight_date: null`, `point_count_catalogue: null`, `flight dates (none declared)`.
+
+### 3. Identity, and the frozen record
+
+`jq` is not installed here; the record comparison was Python over both files with `created_utc`
+popped. Then the six bands:
+
+```
+record identical minus created_utc: True
+mdt byte-identical
+mds byte-identical
+chm byte-identical
+basis byte-identical
+n_all byte-identical
+n_ground_asprs byte-identical
+```
+
+Frozen to `examples/sistelo-sample/expected/`: `provenance.json` from run 1, and
+`bands.sha256.json` — the SHA-256 of each band's cell array (`src.read(1).tobytes()`), which is
+what the test compares, not the file bytes (GeoTIFF tags carry the timestamp-free
+`package_version` and hash, but a file-level digest would still be the wrong instrument for
+"the same cells").
+
+```
+mdt: 8f4ff857e3d2a8bfd8c385a6fbe16530cd5e90a8862bcb33a439518327c69be1
+mds: bf28b2a80e476fbddcec88bc6a986ae5b85672c14b66c3897ff97c56b5a907b2
+chm: 4bbfa90b0c95821985ca60af47fcd8130b8d11c2f76a8303f43ebd434cb4ebec
+basis: f19afc329de43eaa8ae1e28138f954aa39f7d55bdfa6229b0c0d7fadb10c6252
+n_all: b6d411761eed0226fc3ceb52cfdf92acf5b85993fcb6efb45bceb649fc50f7a7
+n_ground_asprs: dece09c098a8e733984faafc3e9527d0a4697df83b99d3cdb1ebff49ee92a9b9
+```
+
+Record: `grid {cell 0.5, crs_epsg 3763, 300 × 300, origin (−20210, 256395)}` · `honesty
+{measured 0.5622, interpolated 0.4311, undetermined 0.0067, expected_void 0.0131, density 17.34}`
+· `agreement {n_cells 87978, recall_ground 0.9988, recall_nonground 0.7227, accuracy 0.8367,
+majority_class_null 0.5872}` · `inputs[0] {point_count_measured 390450, noise_excluded 407}`.
+
+### 4. What the test locks, and what stays warn-class
+
+Five tests: size ≤ cap · CRS + extents inside the window + > 100 k points · class 2 present · the
+AOI declares `bounds_epsg` · a `run` over the directory reproduces `grid`, `honesty`, `agreement`,
+`parameters`, `reproducibility_hash` and the input's sha256. The per-band digests are compared too,
+but a mismatch **warns** rather than fails: the README's "cross-machine replay is unverified" is
+still true until CI — the first non-author machine — has run this test once and its log has been
+read. On the author's machine the test ran with `-W error::UserWarning` so that a warning here
+would have failed it.

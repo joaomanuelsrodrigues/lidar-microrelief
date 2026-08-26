@@ -1,0 +1,74 @@
+{
+  "agreement": {
+    "accuracy": 0.8366523449044079,
+    "fn": 44,
+    "fp": 14327,
+    "ground_prevalence": 0.41276228147946076,
+    "majority_class_null": 0.5872377185205393,
+    "n_cells": 87978,
+    "recall_ground": 0.9987883460924162,
+    "recall_nonground": 0.7226889129761536,
+    "tn": 37337,
+    "tp": 36270
+  },
+  "attribution": "Source: Direção-Geral do Território (DGT), Centro de Dados, LiDAR point clouds, licensed CC BY 4.0. Derived products (ground classification, DTM, DSM, CHM) produced by microrelief; not reviewed or endorsed by DGT.",
+  "created_utc": "2026-08-26T17:03:09.713491+00:00",
+  "flight_dates": [],
+  "grid": {
+    "cell": 0.5,
+    "crs_epsg": 3763,
+    "n_cols": 300,
+    "n_rows": 300,
+    "origin_x": -20210.0,
+    "origin_y": 256395.0
+  },
+  "honesty": {
+    "expected_void_fraction": 0.01311760575900303,
+    "fraction_interpolated": 0.43106666666666665,
+    "fraction_measured": 0.5621888888888888,
+    "fraction_undetermined": 0.006744444444444444,
+    "measured_density_pts_m2": 17.3352
+  },
+  "inputs": [
+    {
+      "density_measured": 17.335475583347208,
+      "file_name": "sistelo-terraces-150m.laz",
+      "flight_date": null,
+      "item_id": "sistelo-terraces-150m",
+      "point_count_catalogue": null,
+      "point_count_measured": 390450,
+      "point_count_noise_excluded": 407,
+      "sha256": "9d65a09170f7085263d933c1d04a08a302db274a41d89b27983500755269202b"
+    }
+  ],
+  "known_limitations": [
+    "Interpolated cells borrow the nearest measured value; no smoothing is applied.",
+    "Ground is decided per cell, not per return; n_ground_asprs is the official count, not ours.",
+    "Byte-identical replay on real data is not established: one corrupted and one failed read of four on 2026-08-05, neither reproduced in 192 controlled re-reads across backends, memory pressure and cold caches; root cause open (docs/live-smoke.md 2026-08-08).",
+    "Cross-machine replay is unverified.",
+    "The reproducibility hash sees code only through the package version; the bump is enforced only by a warn-class CI check.",
+    "The ground-fraction term of the void expectation is a reference model, not a measurement.",
+    "Calling select_tiles as a library function bypasses the AOI-vs-tile CRS check, which lives at the CLI's composition root.",
+    "scripts/measure_risers.py takes no --crs, so it can only work an AOI that declares its own projected CRS."
+  ],
+  "mixed_epochs": false,
+  "package_version": "0.4.0",
+  "parameters": {
+    "cell": 0.5,
+    "d_max_interp_m": 2.0,
+    "elevation_threshold_m": 0.3,
+    "k_min_returns": 1,
+    "max_elevation_m": 3.5,
+    "max_window_m": 4.0,
+    "slope_threshold": 0.3
+  },
+  "reproducibility_hash": "9df5586d283e969fd30718760eb8c7fa7dc8e502d9746c1759dd576c0f147fe1",
+  "uncalibrated_thresholds": [
+    "cell",
+    "d_max_interp_m",
+    "elevation_threshold_m",
+    "k_min_returns",
+    "max_window_m",
+    "slope_threshold"
+  ]
+}
