@@ -17,7 +17,7 @@ jobs:
         with:
           fetch-depth: 2 # the version-bump guard diffs HEAD~1..HEAD
       - uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4
-      - run: uv sync --extra dev --extra site
+      - run: uv sync --locked --extra dev --extra site
       - run: uv run ruff check src tests scripts
       - run: uv run ruff format --check src tests scripts
       - run: uv run mypy

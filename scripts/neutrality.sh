@@ -50,6 +50,6 @@ n=$(git ls-files | wc -l)
 status=0
 git ls-files -z | scan "$PRIVATE_PATH" 'private path leak:' || status=1
 git ls-files -z | scan "$EMAIL" 'e-mail leak:' || status=1
-if [ -f .env ]; then echo '.env is present'; status=1; fi
+if ls .env* >/dev/null 2>&1; then echo '.env* is present'; status=1; fi
 if [ "$status" -eq 0 ]; then echo "neutrality: scanned $n tracked files, 0 hits"; fi
 exit "$status"
