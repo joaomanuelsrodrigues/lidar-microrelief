@@ -30,6 +30,26 @@ published value, not as a hole. A band whose job is to say "we looked and there 
 measure" would erase its own admission by declaring that cell NoData; its NoData code is 255, one
 the band never produces (`test_the_undetermined_code_is_a_value_not_a_hole`).
 
+## Install
+
+Python ≥ 3.12. Not on PyPI yet — install from the repository:
+
+```
+git clone https://github.com/joaomanuelsrodrigues/lidar-microrelief
+cd lidar-microrelief
+uv sync --extra dgt          # or plain `uv sync` if you bring your own LAZ and never touch the DGT catalogue
+uv run microrelief --help
+```
+
+With pip instead of `uv`:
+
+```
+pip install "microrelief[dgt] @ git+https://github.com/joaomanuelsrodrigues/lidar-microrelief"
+```
+
+The `dgt` extra adds the one network dependency (`requests`) used by `select` and `precheck` to
+read the DGT catalogue. `run` needs no network and no extra.
+
 ## How to reproduce
 
 ```
@@ -62,7 +82,7 @@ byte-for-byte against the catalogue's `file:size` — never a status code (`SITE
 The offline core — reading classified LAS/LAZ, the ground filter, the common grid, the basis
 layer, the record — carries no network dependency and no provider's conventions. **DGT is the one
 provider this package has been run against**, behind the optional `dgt` extra
-(`pip install microrelief[dgt]`); `microrelief/providers/dgt/` is where its catalogue's
+(the `dgt` extra — see Install); `microrelief/providers/dgt/` is where its catalogue's
 conventions live, and the import edge points core ← providers only, locked by a test.
 
 Any other provider, and any other delivery, is **untested rather than unsupported** — this

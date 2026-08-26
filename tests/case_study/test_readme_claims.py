@@ -45,3 +45,12 @@ def test_every_percentage_in_the_readme_appears_in_the_live_smoke_record() -> No
     assert percentages, "a README about a measured run should quote at least one percentage"
     for value in percentages:
         assert value in smoke, value
+
+
+def test_the_readme_never_tells_a_stranger_to_pip_install_from_pypi() -> None:
+    """`pip install microrelief[dgt]` fails: the package is not on PyPI. The only install lines
+    allowed are a clone + `uv sync`, or pip against the git URL."""
+    text = (ROOT / "README.md").read_text()
+    for line in text.splitlines():
+        if "pip install" in line and "microrelief" in line:
+            assert "git+https://" in line, line
