@@ -19,7 +19,7 @@ def test_the_readme_declares_the_unverified_cross_machine_replay() -> None:
 
 
 def test_the_readme_declares_the_replay_instability_on_real_data() -> None:
-    # s260: of four reads of the 845 MB, one corrupted coordinate and one IoError.
+    # 2026-08-05: of four reads of the 845 MB, one corrupted coordinate and one IoError.
     # The README must say the words, not claim a stability the data does not support.
     text = (ROOT / "README.md").read_text().lower()
     assert "not established" in text

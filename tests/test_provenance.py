@@ -204,7 +204,7 @@ def test_four_stamps_from_one_sortie_are_not_mixed_epochs() -> None:
 
 def test_no_flight_dates_at_all_is_not_a_claim_of_one_epoch(tmp_path: Any) -> None:
     """An offline run has no catalogue and so knows no stamps. `flight_dates: []` beside
-    `mixed_epochs: false` is the denominator beside the number (§A1/s258): the reader can see the
+    `mixed_epochs: false` is the denominator beside the number (2026-08-04): the reader can see the
     field is empty rather than reading `false` as a measurement that was taken."""
     doc = json.loads(a_provenance(flight_dates=()).to_json())
     assert doc["flight_dates"] == []
@@ -212,7 +212,7 @@ def test_no_flight_dates_at_all_is_not_a_claim_of_one_epoch(tmp_path: Any) -> No
 
 
 def test_the_record_reports_how_many_points_it_actually_read() -> None:
-    """Denominator beside the number (§A1/s258): the catalogue's count and the count we measured
+    """Denominator beside the number (2026-08-04): the catalogue's count and the count we measured
     are separate fields, so a reader can see whether the file we read is the file it described."""
     doc = json.loads(a_provenance().to_json())
     (one,) = doc["inputs"]

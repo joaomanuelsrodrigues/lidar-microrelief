@@ -20,9 +20,10 @@ Protocol, pre-registered before the first run:
 - Decision rule: A >= 2 events and B = 0 -> H1 confirmed; remedy is pinning the single-thread
   backend in `read_laz`. Events in both -> H1 refuted; re-run both configs under induced memory
   pressure to probe H2. Zero events anywhere -> run config C (parallel, under ~24 GiB of induced
-  pressure) before concluding anything: the s260 events happened under load, and "0 events idle"
-  must not be read as "stable" (a zero without its conditions is the instrument's zero, not the
-  world's). H3 is not directly testable here; it survives only if the data kills H1 and H2.
+  pressure) before concluding anything: the 2026-08-05 events happened under load, and "0
+  events idle" must not be read as "stable" (a zero without its conditions is the instrument's
+  zero, not the world's). H3 is not directly testable here; it survives only if the data kills
+  H1 and H2.
 - Every count is reported with its denominator. A config that did not run to completion reports
   how far it got, not a clean-looking subset.
 

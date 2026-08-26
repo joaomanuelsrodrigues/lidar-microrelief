@@ -76,7 +76,7 @@ def test_terraces_are_destroyed_once_the_tolerance_falls_below_one_riser() -> No
 
 
 def test_a_monotone_staircase_cannot_be_damaged_by_any_window() -> None:
-    """Pins the finding that retired the previous version of this test file (s256).
+    """Pins the finding that retired the previous version of this test file (2026-08-03).
 
     An opening removes local maxima; a staircase that only ever climbs has none. So `terraced`
     reads as entirely ground at a window four times its tread, and any test using it to

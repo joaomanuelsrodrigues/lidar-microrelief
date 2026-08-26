@@ -148,7 +148,7 @@ def test_one_unclassified_tile_makes_agreement_absent_for_the_whole_product(
 ) -> None:
     """All-or-nothing on purpose. Agreement over a mosaic where only some tiles carry class 2
     mixes 'measured non-ground' with 'never classified' into one number — a statistic over a
-    denominator it was not taken from (§A1/s258). The tile is named, not just counted."""
+    denominator it was not taken from (2026-08-04). The tile is named, not just counted."""
     code, out = _synthetic_run(tmp_path, unclassified_tile=True)
     assert code == 0
     assert json.loads((out / "provenance.json").read_text())["agreement"] is None
@@ -175,7 +175,7 @@ RING = [
 against it below. Those numbers are known to hold for this ring because that test has been
 passing on them; inventing a nearby ring and keeping the inherited bounds would be asserting
 numbers nobody measured, and a fixture whose expected values are guessed cannot tell you whether
-a failure is the code or the fixture (§A1/s256)."""
+a failure is the code or the fixture (2026-08-03)."""
 
 
 def test_the_aoi_declares_its_own_crs_rather_than_the_cli_assuming_one(tmp_path: Path) -> None:
@@ -266,7 +266,7 @@ def test_a_ring_only_wgs84_aoi_refuses_rather_than_assuming_a_national_grid(
 def test_a_ring_only_aoi_is_projected_into_the_crs_it_was_given(tmp_path: Path) -> None:
     """Case 4, and the positive control for the refusal above: the same file that is refused
     without a CRS must succeed with one, or the refusal is untestable as a discriminator
-    (§A1/s256).
+    (2026-08-03).
 
     This is the capability operator ruling D-1 preserves. Preferring the declared bounds must not
     delete the path for an AOI that has none, which is what a reader drawing their own polygon
@@ -361,7 +361,7 @@ def test_a_matching_crs_still_selects(tmp_path: Path, monkeypatch: pytest.Monkey
     """Positive control on the guard. Same tiles, same code path, AOI in the tiles' own CRS:
     the selection must complete and write its record. Without this, the refusal above is
     indistinguishable from a guard that blocks everything, and from a selection that came back
-    empty for some unrelated reason (§A1/s256)."""
+    empty for some unrelated reason (2026-08-03)."""
     import microrelief.cli as cli
 
     monkeypatch.setattr(cli, "_dgt", lambda: _provider_serving(_pt_tm06_tiles()))
@@ -443,7 +443,7 @@ def test_the_density_denominator_is_the_grid_not_the_requested_aoi(tmp_path: Pat
     """`grid_for_bounds` snaps outward to whole cells, so an AOI that is not a multiple of the
     cell yields a grid larger than what was asked for. The honesty report counts cells of that
     grid; dividing by the requested area instead would put a count over the wrong denominator —
-    the §A1/s258 lesson, one module along."""
+    the 2026-08-04 lesson, one module along."""
     laz = tmp_path / "laz"
     laz.mkdir()
     write_las(laz / "SYNTH-1.laz", cloud=ramp(size_m=50.0, spacing=0.5), epsg=3763)

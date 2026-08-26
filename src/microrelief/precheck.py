@@ -2,7 +2,7 @@
 
 Treats returns landing in a cell as a Poisson process of rate density x cell_area x
 ground_fraction, so the share of cells with no return at all is exp(-lambda) in closed form.
-Predicted 8.209% against 8.203% measured over 4M cells (s250), so the form is trustworthy;
+Predicted 8.209% against 8.203% measured over 4M cells (2026-07-30), so the form is trustworthy;
 `ground_fraction` under a specific canopy is not -- see the disclosure in `estimate_tiles`.
 
 Because `pc:count` is published without authentication, this runs on any tile in the country

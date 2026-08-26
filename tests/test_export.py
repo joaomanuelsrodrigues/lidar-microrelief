@@ -196,7 +196,7 @@ def test_provenance_json_is_written_and_parses(tmp_path: Path) -> None:
 
 
 def test_the_sidecar_carries_every_field_the_record_holds(tmp_path: Path) -> None:
-    """The sibling shape (§A3/s246), on the boundary where the record leaves the process: a field
+    """The sibling shape (2026-07-28), on the boundary where the record leaves the process: a field
     added to `Provenance` and not serialised would be missed by every test naming its own keys."""
     _g, _s, surf = pipeline(ramp())
     export(surf, a_provenance(), tmp_path)

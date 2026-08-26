@@ -27,7 +27,7 @@ def test_an_all_nodata_band_refuses_rather_than_dividing_by_zero() -> None:
 
 
 def test_a_rectangular_band_keeps_its_own_shape() -> None:
-    # Every raster fixture in this repo is square (s259); this one is not, on purpose.
+    # Every raster fixture in this repo is square (2026-08-05); this one is not, on purpose.
     band = np.arange(6, dtype=np.float32).reshape(2, 3)
     rgba = to_rgba(band, nodata=-9999.0)
     assert rgba.shape == (2, 3, 4)
