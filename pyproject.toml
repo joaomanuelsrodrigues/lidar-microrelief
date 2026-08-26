@@ -67,6 +67,6 @@ testpaths = ["tests"]
 # index, so a tests/ directory shipped without those would be a suite that cannot run. The
 # repository is where the tests run (README §Install). Measured 2026-08-26: 35.6 MB -> 163 KB.
 exclude = [
-    "/viewer", "/docs", "/examples", "/styles", "/outputs*", "/aoi", "/scripts", "/tests",
+    "/viewer", "/docs", "/examples", "/styles", "/skills", "/outputs*", "/aoi", "/scripts", "/tests",
     "/.github", "/.impeccable",
 ]

@@ -723,3 +723,42 @@ attribution: "Source: Direção-Geral do Território (DGT), ... — reproducibil
 console: (no console messages)
 network: 6 requests, 6 x HTTP 200
 ```
+
+## 2026-08-26 — the skill file, driven by an agent host
+
+`skills/microrelief/SKILL.md` was linked into `.claude/skills/` (untracked; removed afterwards)
+and a **fresh, headless** Claude Code session (`claude -p`, model `claude-opus-5`, tools limited
+to `Read`, `Skill`, `ls`, `cat` and `uv run microrelief …`) was asked, in this repository:
+
+> build a DTM from the sample and tell me how much of it is measured
+
+What the transcript shows, in order (6 turns, 38 s):
+
+1. The host listed `microrelief` among its skills; the agent's first action was `Skill microrelief`
+   — discovered, not named in the prompt.
+2. It read `attribution.txt` and `aoi.geojson` and stated the input contract before running:
+   "AOI carries `bounds_epsg: 3763` (ETRS89/PT-TM06, projected metres), attribution is verbatim
+   from the sample."
+3. It ran exactly the skill's worked example:
+
+```
+uv run microrelief run --aoi examples/sistelo-sample/aoi.geojson --laz examples/sistelo-sample \
+    --out outputs/sample --attribution "$(cat examples/sistelo-sample/attribution.txt)"
+grid 300 x 300 cells of 0.5 m (0.0225 km2), 1 tile(s), 1 return(s) outside the AOI
+measured 56.2%  interpolated 43.1%  undetermined 0.7%
+expected void at f=1: 1.312% (measured density 17.3 pts/m2)
+ground recall 0.999  non-ground recall 0.723  accuracy 0.837  majority-class null 0.587
+```
+
+4. It read `outputs/sample/provenance.json` and reported, in the skill's order: the three basis
+   fractions (56.2 / 43.1 / 0.7 %); the null beside them ("expected void is 1.3 % … the
+   undetermined + interpolated share is 43.8 % — far above what point density alone predicts");
+   agreement with the majority-class null in the same sentence ("accuracy 0.837 against a
+   majority-class null of 0.587 … recalls: ground 0.999, non-ground 0.723"); the six
+   `known_limitations` verbatim; the six `uncalibrated_thresholds` by name, and `max_elevation_m`
+   as the one measured; the record hash `9df5586d283e969f…` and the input's sha256 for
+   reproduction.
+
+Nothing was guessed and no flag was invented; the `uv` build lines and the working directory
+are omitted here because they name the author's machine. One host, one model, one prompt: the
+door opens; how other hosts read the frontmatter is untested.
