@@ -9,6 +9,11 @@
 # Silence is this gate's pass condition, and silence is also what a scan of nothing prints. So:
 # the scan reports its denominator, and `--self-test` plants one violation of each class in a
 # temporary file and requires each to be caught. Cite the green only beside a green self-test.
+#
+# The planted strings are assembled at run time from pieces (`%s`), never written whole in this
+# file: this script is itself a tracked file the scan reads, and a literal violation here would
+# fail the gate it exists to prove. Measured on 2026-08-26 — the first version carried the
+# literals, read clean while untracked, and failed the moment it entered the index.
 set -euo pipefail
 
 PRIVATE_PATH='/home/[A-Za-z0-9._-]+/|C:\\+Users\\+'
@@ -28,12 +33,12 @@ scan() {  # scan <pattern> <label>  — reads NUL-separated paths on stdin
 if [ "${1:-}" = "--self-test" ]; then
   tmp=$(mktemp)
   trap 'rm -f "$tmp"' EXIT
-  printf 'x = "/home/someone/secret"\n' > "$tmp"
+  printf 'x = "/home/%s/secret"\n' someone > "$tmp"
   if printf '%s\0' "$tmp" | scan "$PRIVATE_PATH" 'planted:' > /dev/null; then
     echo "self-test: private path NOT caught"; exit 1
   fi
   echo "self-test: private path caught"
-  printf 'contact: someone@example.org\n' > "$tmp"
+  printf 'contact: someone%sexample.org\n' @ > "$tmp"
   if printf '%s\0' "$tmp" | scan "$EMAIL" 'planted:' > /dev/null; then
     echo "self-test: e-mail NOT caught"; exit 1
   fi
