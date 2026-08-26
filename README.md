@@ -1,5 +1,76 @@
 # microrelief
 
+[![ci](https://github.com/joaomanuelsrodrigues/lidar-microrelief/actions/workflows/ci.yml/badge.svg)](https://github.com/joaomanuelsrodrigues/lidar-microrelief/actions/workflows/ci.yml)
+![licence](https://img.shields.io/badge/licence-Apache--2.0-blue)
+![python](https://img.shields.io/badge/python-%E2%89%A5%203.12-blue)
+
+DTM, DSM and CHM from raw airborne LiDAR, plus a **basis** band that says for each cell whether it
+was measured, interpolated from a neighbour, or left undetermined, and a provenance record that
+names the inputs, the parameters and the known limitations. For anyone who needs a terrain model
+that admits where it has nothing to say. Worked example: DGT LiDAR over the terraces of Sistelo,
+Portugal.
+
+![Basis layer over Sistelo](docs/viewer/basis.png)
+*Basis layer: green = measured, orange = interpolated, red = undetermined. Drag the comparison
+yourself: [live viewer](https://joaomanuelsrodrigues.github.io/lidar-microrelief/viewer/).*
+
+## Install
+
+Python ≥ 3.12. Not on PyPI yet — install from the repository:
+
+```
+git clone https://github.com/joaomanuelsrodrigues/lidar-microrelief
+cd lidar-microrelief
+uv sync --extra dgt          # or plain `uv sync` if you bring your own LAZ and never touch the DGT catalogue
+uv run microrelief --help
+```
+
+With pip instead of `uv`:
+
+```
+pip install "microrelief[dgt] @ git+https://github.com/joaomanuelsrodrigues/lidar-microrelief"
+```
+
+The `dgt` extra adds the one network dependency (`requests`) used by `select` and `precheck` to
+read the DGT catalogue. `run` needs no network and no extra.
+
+## Try it — two minutes, real data
+
+A 150 m × 150 m sample of DGT LiDAR ships in the repository (`examples/sistelo-sample/`, CC BY 4.0):
+
+```
+uv run microrelief run --aoi examples/sistelo-sample/aoi.geojson --laz examples/sistelo-sample \
+    --out outputs/sample --attribution "$(cat examples/sistelo-sample/attribution.txt)"
+```
+
+You get six GeoTIFFs (`mdt`, `mds`, `chm`, `basis`, `n_all`, `n_ground_asprs`) and
+`provenance.json`. On the author's machine the record's hash is `9df5586d283e` and the basis is
+56.2% measured · 43.1% interpolated · 0.7% undetermined; `tests/test_sample.py` reproduces the
+record on every CI run. Open the rasters in QGIS with the styles in `styles/` (`docs/recipes.md`).
+
+## Your own data
+
+`run` reads every `.laz` directly inside `--laz` (not `.las`, not subdirectories). The contract,
+each line a refusal with its reason when unmet:
+
+- Anything laspy opens as LAS/LAZ; exercised so far: LAS 1.4, point format 8 (the DGT delivery).
+  Other versions and point formats are untested rather than unsupported.
+- The header declares a CRS that resolves to an EPSG code — **projected, in metres** — and it is
+  the AOI's. No reprojection happens here; `docs/recipes.md` shows PDAL or LAStools doing it first.
+- Every coordinate is finite: a header scale/offset that decodes to NaN or inf refuses the file.
+- The classification dimension is read. **Class 2 is optional** — present, the record reports
+  agreement against it; absent, `agreement: null` and the tile is named. Classes 7 and 18 (noise)
+  are excluded from every surface and counted.
+- The AOI is a GeoJSON Polygon; `properties.bounds` + `properties.bounds_epsg` is what the CLI
+  uses. A bare WGS84 ring needs `--crs <epsg>`.
+- `--attribution` is required and has no default: the record names the source you declare.
+
+Without `--selection` (the DGT catalogue step) the record says it does not know what the provider
+claimed, rather than repeating what it measured. Any provider other than DGT is **untested rather
+than unsupported** — see *What has been exercised*.
+
+## The Sistelo case study
+
 Microrelief over the terraces of Sistelo (Arcos de Valdevez, Portugal), derived from raw airborne
 LiDAR — a 0.5 m DTM, DSM and CHM in which **every cell declares what it is made of**: measured,
 interpolated from the nearest measured cell, or undetermined. Undetermined cells are published as
@@ -29,26 +100,6 @@ green = measured, orange = interpolated, red = undetermined — so `undetermined
 published value, not as a hole. A band whose job is to say "we looked and there was nothing to
 measure" would erase its own admission by declaring that cell NoData; its NoData code is 255, one
 the band never produces (`test_the_undetermined_code_is_a_value_not_a_hole`).
-
-## Install
-
-Python ≥ 3.12. Not on PyPI yet — install from the repository:
-
-```
-git clone https://github.com/joaomanuelsrodrigues/lidar-microrelief
-cd lidar-microrelief
-uv sync --extra dgt          # or plain `uv sync` if you bring your own LAZ and never touch the DGT catalogue
-uv run microrelief --help
-```
-
-With pip instead of `uv`:
-
-```
-pip install "microrelief[dgt] @ git+https://github.com/joaomanuelsrodrigues/lidar-microrelief"
-```
-
-The `dgt` extra adds the one network dependency (`requests`) used by `select` and `precheck` to
-read the DGT catalogue. `run` needs no network and no extra.
 
 ## How to reproduce
 

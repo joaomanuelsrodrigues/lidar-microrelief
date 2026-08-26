@@ -54,3 +54,11 @@ def test_the_readme_never_tells_a_stranger_to_pip_install_from_pypi() -> None:
     for line in text.splitlines():
         if "pip install" in line and "microrelief" in line:
             assert "git+https://" in line, line
+
+
+def test_the_readme_try_it_quotes_the_sample_record() -> None:
+    sample = ROOT / "examples" / "sistelo-sample" / "expected" / "provenance.json"
+    prov = json.loads(sample.read_text())
+    readme = (ROOT / "README.md").read_text()
+    assert prov["reproducibility_hash"][:12] in readme
+    assert "examples/sistelo-sample" in readme
