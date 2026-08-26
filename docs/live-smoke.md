@@ -806,3 +806,47 @@ One QGIS version, one platform, headless: the GUI path (Add Raster Layer → Loa
 same parser and the same renderer, but it was not clicked through here. The Python process
 exits with a segmentation fault in `exitQgis()` after printing — a known teardown artefact of
 offscreen sessions, not a rendering failure; the PNGs and the lines above are the evidence.
+
+## 2026-08-26 — PDAL reprojection recipe, exercised
+
+No PDAL on this machine either, so conda-forge **PDAL 2.10.2** was installed in the same scratch
+environment. The recipe in `docs/recipes.md` was run on the shipped sample: reproject
+EPSG:3763 → EPSG:25829 (ETRS89 / UTM 29N), write LAS 1.4 point format 8 with laszip, then
+`microrelief run` on the result with an AOI transformed the same way.
+
+```
+pdal 2.10.2 (git-version: da2cd8)
+pdal pipeline reproject.json
+(pdal pipeline readers.las Warning) Found 3 extra byte VLRs. Concatanating all extra byte records into one.
+exit=0
+
+pdal info --metadata sample-utm29.laz
+srs.horizontal: PROJCS["ETRS89 / UTM zone 29N",GEOGCS["ETRS89",DATUM["European_Terrestrial_Reference_Syste
+compressed: True minor_version: 4 dataformat_id: 8 count: 390450
+minx,miny,maxx,maxy: 551618.18 4647239.7 551769.58 4647391.1
+
+laspy: epsg 25829, points 390450, version 1.4, point format 8
+
+AOI (four corners through pyproj, then their bounding box):
+bounds 25829: [551618.162, 4647239.662, 551769.616, 4647391.116] size: 151.45 x 151.45 m
+
+microrelief run --aoi aoi-utm29.geojson --laz laz-utm29/ --out out-utm29/ --attribution "..."
+grid 304 x 304 cells of 0.5 m (0.0231 km2), 1 tile(s), 0 return(s) outside the AOI
+measured 55.3% | interpolated 44.0% | undetermined 0.7%
+expected void at f=1: 1.469% (measured density 16.9 pts/m2)
+ground recall 0.999 | non-ground recall 0.720 | accuracy 0.836 | majority-class null 0.586
+flight dates (none declared) | mixed epochs False
+reproducibility_hash 91fea28a72637f53123e6f81ae29418ab50ebd3734ad78aa3de03b5782085d6b
+exit=0
+```
+
+What this shows: PDAL writes a CRS that laspy resolves to the EPSG code `run` requires, the
+390,450 returns and their classification survive the round trip, and `run` accepts the file
+without a flag. The numbers are close to the EPSG:3763 record and not equal to it — the
+reprojected box is 151.45 m on a side rather than 150 because a rotated square's bounding box is
+larger, the grid is 304 × 304 instead of 300 × 300, and the extra 2 % of area has no returns, so
+the measured density reads 16.9 pts/m² against 17.3 and the measured share 55.3 % against
+56.2 %. Same terrain, a different lattice, a different hash: what the recipe says to expect.
+PDAL's warning about three extra-byte VLRs (RIEGL and TerraScan extras) is about dimensions
+`microrelief` never reads. The `filters.crop` stage of the recipe was not needed here (the
+sample is already cut) and was not exercised.
