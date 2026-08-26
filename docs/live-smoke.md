@@ -615,6 +615,35 @@ still true until CI — the first non-author machine — has run this test once 
 read. On the author's machine the test ran with `-W error::UserWarning` so that a warning here
 would have failed it.
 
+### 5. Added after the push — the first machine that is not the author's
+
+Run `32994664328` on `efb5c2d` (GitHub-hosted `ubuntu-latest`, CPython 3.12.3,
+`uv sync --extra dev --extra site`), read from the log, not the tick:
+
+```
+213 passed, 17 warnings in 3.66s
+self-test: private path caught
+self-test: e-mail caught
+neutrality: scanned 106 tracked files, 0 hits
+version-bump guard over HEAD~1..HEAD: 1 file(s) changed under src/, __version__ lines touched: 0
+WARN: src/ changed without a __version__ bump. Two different codes would publish
+the same reproducibility_hash (F-050). Bump src/microrelief/__init__.py and
+pyproject.toml in the same commit as the change.
+```
+
+(The WARN is the one declared for the viewer commit below — a rendering helper changed, no band
+did; the step is `continue-on-error`, so its tick is a mask and the log is what was read.)
+
+`test_running_the_sample_reproduces_the_expected_record` passed, and the band probe did **not**
+warn: the string `differs from the author's machine` occurs 0 times in the log (the two
+`test_sample.py` lines in the warnings summary are NumPy's `DeprecationWarning` from
+`src.read(1)`, the same 17 warnings as locally). So on this sample — 390,450 returns, a 300 × 300
+grid — the record's `grid`, `honesty`, `agreement`, `parameters` and `reproducibility_hash`, the
+input's sha256 and all six band arrays reproduced byte-identically on a machine that is not the
+author's. One sample, one runner, one run: a first datum, not the full-AOI claim.
+"Cross-machine replay is unverified" stays in the README and in the record until the probe is
+promoted to an assertion citing this run.
+
 ## 2026-08-26 — the viewer moves under `docs/` for Pages, and its PNGs lose no cell
 
 Branch-based GitHub Pages publishes `/` or `/docs`, nothing else, so `viewer/` becomes
