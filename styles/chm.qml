@@ -2,7 +2,7 @@
 <qgis version="3.28" styleCategories="AllStyleCategories">
   <pipe>
     <rasterrenderer type="singlebandpseudocolor" band="1" opacity="1" alphaBand="-1" classificationMin="0" classificationMax="1">
-      <minMaxOrigin><limits>MinMax</limits><extent>WholeRaster</extent><statAccuracy>Exact</statAccuracy></minMaxOrigin>
+      <minMaxOrigin><limits>MinMax</limits><extent>UpdatedCanvas</extent><statAccuracy>Exact</statAccuracy></minMaxOrigin>
       <rastershader>
         <colorrampshader colorRampType="INTERPOLATED" classificationMode="1" clip="0" minimumValue="0" maximumValue="1">
         <colorramp type="gradient" name="[source]">

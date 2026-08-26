@@ -48,6 +48,10 @@ def test_the_continuous_styles_stretch_to_the_layer() -> None:
         assert renderer.get("type") == "singlebandpseudocolor", name
         limits = renderer.find("./minMaxOrigin/limits")
         assert limits is not None and limits.text == "MinMax", name
+        # UpdatedCanvas, not WholeRaster: measured 2026-08-26 in QGIS 3.44, only the former
+        # re-stretches a loaded .qml (docs/live-smoke.md); WholeRaster keeps the stored 0-1.
+        extent = renderer.find("./minMaxOrigin/extent")
+        assert extent is not None and extent.text == "UpdatedCanvas", name
         stops = [float(i.get("value", "nan")) for i in renderer.iter("item")]
         assert len(stops) >= 3 and stops == sorted(stops), name
 

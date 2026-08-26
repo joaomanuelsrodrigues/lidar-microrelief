@@ -762,3 +762,47 @@ ground recall 0.999  non-ground recall 0.723  accuracy 0.837  majority-class nul
 Nothing was guessed and no flag was invented; the `uv` build lines and the working directory
 are omitted here because they name the author's machine. One host, one model, one prompt: the
 door opens; how other hosts read the frontmatter is untested.
+
+## 2026-08-26 — the six QGIS styles, loaded and rendered by QGIS itself
+
+No QGIS on this machine, so a conda-forge QGIS **3.44.11** (Python 3.12) was created in a
+scratch directory and driven headless (`QT_QPA_PLATFORM=offscreen`): for each band of the
+sample's output, `QgsRasterLayer.loadNamedStyle(styles/<band>.qml)`, read back what QGIS parsed,
+render the layer at native size through `QgsMapRendererSequentialJob`, and compare pixels against
+the GeoTIFF's values with rasterio. Output, verbatim (the pixel lines are the three basis codes):
+
+```
+basis: loadNamedStyle ok=True renderer=paletted classes=[(0, '#e41a1c', 'undetermined'), (1, '#4daf4a', 'measured'), (2, '#ff7f00', 'interpolated')]
+   code 0 at (14,0): rendered (228, 26, 28) alpha=255 want (228, 26, 28)
+   code 1 at (1,0): rendered (77, 175, 74) alpha=255 want (77, 175, 74)
+   code 2 at (0,0): rendered (255, 127, 0) alpha=255 want (255, 127, 0)
+mdt: loadNamedStyle ok=True renderer=singlebandpseudocolor before-render min=0 max=1 | after-render min=0.00 max=1.00 raster[min=244.26 max=315.62] lowest cell -> (51, 51, 153), highest cell -> (255, 255, 255), distinct colours in render=1234, nodata alpha=0 (want 0)
+mds: loadNamedStyle ok=True renderer=singlebandpseudocolor before-render min=0 max=1 | after-render min=0.00 max=1.00 raster[min=245.02 max=334.70] lowest cell -> (51, 51, 153), highest cell -> (255, 255, 255), distinct colours in render=1347, nodata alpha=0 (want 0)
+chm: loadNamedStyle ok=True renderer=singlebandpseudocolor before-render min=0 max=1 | after-render min=0.00 max=1.00 raster[min=0.00 max=39.84] lowest cell -> (68, 1, 84), highest cell -> (253, 231, 37), distinct colours in render=527, nodata alpha=0 (want 0)
+n_all: loadNamedStyle ok=True renderer=singlebandpseudocolor before-render min=0 max=1 | after-render min=0.00 max=1.00 raster[min=0.00 max=24.00] lowest cell -> (68, 1, 84), highest cell -> (253, 231, 37), distinct colours in render=25
+n_ground_asprs: loadNamedStyle ok=True renderer=singlebandpseudocolor before-render min=0 max=1 | after-render min=0.00 max=1.00 raster[min=0.00 max=8.00] lowest cell -> (68, 1, 84), highest cell -> (253, 231, 37), distinct colours in render=9
+```
+
+Two measurements decided the styles' shape:
+
+- **The basis palette is what the code says.** `paletted`, three classes with the labels and
+  colours of `render.BASIS_PALETTE`, and the rendered pixel at a cell of each code is that code's
+  RGB exactly. The sample has no NoData cell in `basis` (0.7 % *undetermined* is a published
+  state, not an absence), so transparency was checked on the float bands instead: alpha 0 at a
+  NoData cell of `mdt`, `mds` and `chm`.
+- **`WholeRaster` does not stretch a loaded `.qml`; `UpdatedCanvas` does.** The styles were first
+  written with `<extent>WholeRaster</extent>` as the plan said: QGIS loaded them (`ok=True`) and
+  rendered `mdt` (244–316 m) in **2** distinct colours — the stored 0–1 range stayed in place and
+  every cell clipped to the ramp's top. `classificationMin/Max` read 0/1 before and after the
+  render. QGIS recomputes a raster's range on load only for the *updated canvas* origin (the
+  whole-raster figures are what the Symbology dialog writes into the style when a person clicks
+  through it). With `<extent>UpdatedCanvas</extent>` and nothing else changed, the same `mdt`
+  rendered in **1,234** colours, lowest cell the terrain ramp's bottom `(51, 51, 153)`, highest
+  white; `mds` 1,347; `chm` 527; `n_all` 25 (one per count 0–24) and `n_ground_asprs` 9 (0–8).
+  The generator and the test now say `UpdatedCanvas`, and `docs/recipes.md` says what that means
+  for the user: the ramp follows the view.
+
+One QGIS version, one platform, headless: the GUI path (Add Raster Layer → Load Style) is the
+same parser and the same renderer, but it was not clicked through here. The Python process
+exits with a segmentation fault in `exitQgis()` after printing — a known teardown artefact of
+offscreen sessions, not a rendering failure; the PNGs and the lines above are the evidence.

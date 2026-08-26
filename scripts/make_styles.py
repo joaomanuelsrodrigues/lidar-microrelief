@@ -5,8 +5,11 @@ are the colormaps `render.LAYERS` names for the viewer (the counts, which the vi
 draw, take viridis from zero). `tests/test_styles.py` requires the tracked files to equal this
 script's output byte for byte: edit here, run `python scripts/make_styles.py`, commit both.
 
-The continuous styles carry no fixed range: `minMaxOrigin` is MinMax over the whole raster, so
-QGIS stretches the ramp to each layer's own values on load. NoData is the GeoTIFF's to declare.
+The continuous styles carry no fixed range: `minMaxOrigin` is MinMax over the *updated canvas*,
+so QGIS stretches the ramp to the values in view at render time. Measured 2026-08-26 in QGIS
+3.44 headless (docs/live-smoke.md): with `WholeRaster` a loaded .qml keeps its stored 0–1 range
+and the DTM renders in two colours; with `UpdatedCanvas` the same DTM renders in 1,234. NoData
+is the GeoTIFF's to declare.
 """
 
 from __future__ import annotations
@@ -94,7 +97,7 @@ def continuous_qml(cmap: str) -> str:
         + "  <pipe>\n"
         + '    <rasterrenderer type="singlebandpseudocolor" band="1" opacity="1" alphaBand="-1"'
         ' classificationMin="0" classificationMax="1">\n'
-        + "      <minMaxOrigin><limits>MinMax</limits><extent>WholeRaster</extent>"
+        + "      <minMaxOrigin><limits>MinMax</limits><extent>UpdatedCanvas</extent>"
         "<statAccuracy>Exact</statAccuracy></minMaxOrigin>\n"
         + "      <rastershader>\n"
         + '        <colorrampshader colorRampType="INTERPOLATED" classificationMode="1" clip="0"'
