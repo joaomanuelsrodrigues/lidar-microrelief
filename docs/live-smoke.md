@@ -946,7 +946,8 @@ it stood, before touching it:
 text-only repo                 → summary printed, exit 0
 binary-only repo               → exit 123, no summary        (grep -IL under pipefail)
 tracked dangling symlink       → "grep: d: No such file or directory", exit 123, no summary
-newline-only file              → exit 123, no summary        (no character matches `.`)
+newline-only file, as the only
+  text file                    → exit 123, no summary        (no character matches `.`)
 ```
 
 Now: the population is enumerated once, NUL-separated, into a temp file (a bash variable cannot
@@ -962,4 +963,31 @@ this tree:
 
 ```
 neutrality: scanned 122 tracked files for private paths (all bytes), 109 text files for e-mails (13 binary or empty skipped), 0 hits
+```
+
+**Gate, round four (2026-08-27) — the instrument changed.** The fourth review round found sixteen
+more, again on the working-tree scan: a `pyvenv.cfg` at the repository root turned the prune
+prefix into `./` and the `.env` walk went blind with a green summary; a tracked **symlink was
+scanned by its target's bytes** while the blob git publishes is the link text (`ln -s
+/home/<user>/… lnk` → `0 hits`, exit 0); a path named `-n` vanished in an `echo` and the missing
+file was reported as scanned (`dce2132`'s body says the refusal "fired with an empty list" — it
+did not fire; the gate went green); the block parser swallowed a step's sibling keys. Four
+versions of "scan the working tree with `grep`" had each closed one hole and opened the next, so
+the population moved to the **index, read through git**: `git grep --cached` over the blobs
+(`-a` for private paths in every byte, `-I` for e-mails in text blobs — git's own rule, a NUL in
+the first 8000 bytes, applied by the same command to the scan and to the count), `git cat-file`
+for each symlink's link text, `git ls-files -s` for modes (submodules counted as not scanned),
+and `git ls-files -o -i --exclude-standard --directory` for the working-tree `.env` check, where
+an ignored directory collapses to one entry and no marker heuristic exists. Nothing reads the
+checkout, nothing spawns a shell per file, no `find`. The self-test builds a temporary
+repository with one violation of each class and requires each verdict; thirteen scratch-repo
+tests in the suite plant the round's cases. Three drafts of this version failed their own
+controls before commit — a `-z` NUL delimiter dropped by the capture, `if check` consuming the
+failing status (a planted leak printed and exited 0), and a binary-only index making
+`git grep -l` exit 1 under `pipefail` — the same three shapes as the night's earlier fixes, on
+new lines. Measured on the tree, 0.12 s:
+
+```
+self-test: private path behind a NUL byte caught; e-mail caught; symlink target caught; .env.local caught; .venv/ contents ignored; clean repo silent; .env pattern matches .env.local and sub/dir/.env, not .envrc
+neutrality: 122 tracked (122 regular, 0 symlink, 0 submodule not scanned); private paths over all bytes of 122; e-mails over 109 text (13 binary or empty); 0 hits
 ```
