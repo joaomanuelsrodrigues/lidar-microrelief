@@ -21,12 +21,15 @@
 # e-mail-shaped binary blobs itself. Symlinks are scanned by their link text; submodules (gitlinks)
 # are not scanned and are counted as such.
 #
-# The secrets-file rule is the repository's own: no tracked file that the tracked `.gitignore`
-# excludes (`git ls-files -c -i --exclude-per-directory=.gitignore` — git's evaluation, not a
-# regex of mine: a regex for `.env(\..+)?` let `.env-prod`, `.env_local` and `.env/secret` through
-# while `.gitignore`'s `.env*` ignores them, measured 2026-08-27). The gate first requires that
-# `.gitignore` covers `.env` and `.env.local` at all; a repository without that rule is an
-# instrument failure, not a clean tree. What is NOT here: a check of the working tree for
+# The secrets-file rule is the repository's own: no tracked file that the STAGED root `.gitignore`
+# excludes — `git show :.gitignore`, then `git ls-files -c -i --exclude-from=<that copy>` — git's
+# evaluation of the copy that ships, not a regex of mine (a regex for `.env(\..+)?` let `.env-prod`,
+# `.env_local` and `.env/secret` through while `.env*` ignores them) and not the working-tree file
+# (an unstaged edit or an untracked nested `.gitignore` flipped the verdict; a machine's global
+# excludes satisfied the precondition while the scan ignored them — measured 2026-08-27). The
+# gate first requires the literal line `.env*` in that staged copy; without it, exit 2, not a
+# clean tree. Negations in it (`!.env.keep`) exempt by design: an exemption belongs in `.gitignore`.
+# Nested `.gitignore` files are not consulted. What is NOT here: a check of the working tree for
 # untracked `.env` files — one question, one population; `.env*` is where a local secret is
 # provisioned to live. (Dropped 2026-08-27 after it had been red on a sanctioned local `.env`,
 # blind under any ignored directory, and machine-dependent.)
@@ -139,6 +142,9 @@ check() {
   n_regular=0; n_sym=0; n_git=0; n_text=0; n_binary=0; n_mail_binary=0
   run_git "git ls-files" 0 "$work/index" -- ls-files -s -z
   [ -s "$work/index" ] || fail_msg "git listed no tracked file" "empty or unopenable index"
+  # the rule must exist, in the copy that ships, before any scan prints a verdict
+  run_git "git show (.gitignore)" 0 "$work/gitignore" -- show :.gitignore
+  grep -qxF -- '.env*' "$work/gitignore" || fail_msg "the staged .gitignore has no '.env*' line" "the gate's secrets rule is the repository's own; add the line .env* to .gitignore and stage it"
   classify
   scan_pattern "$PRIVATE_PATH" "$work/paths"
   judge_hits "$work/paths" all > "$work/paths.txt"
@@ -156,16 +162,18 @@ check() {
     if grep -qaE -- "$PRIVATE_PATH|$EMAIL" "$work/target"; then printf '%s -> %s\n' "$path" "$(tr '\0' '?' < "$work/target")" >> "$work/links"; fi
   done
   if [ -s "$work/links" ]; then echo "leak in a symlink target:"; cat -- "$work/links"; hit=1; fi
-  # the repository's own rule must exist before it can be applied (one path per call: -q takes one)
-  for name in .env .env.local; do
-    git check-ignore -q --no-index -- "$name" 2> "$work/err" || fail_msg "the tracked .gitignore does not exclude $name" "the gate's secrets rule is the repository's .env* ignore; add it to .gitignore"
-  done
-  run_git "git ls-files (ignored)" 0 "$work/ignored" -- ls-files -z -c -i --exclude-per-directory=.gitignore
-  if [ -s "$work/ignored" ]; then echo "tracked though the repository's .gitignore excludes it:"; tr '\0' '\n' < "$work/ignored"; hit=1; fi
+  run_git "git ls-files (ignored)" 0 "$work/ignored" -- ls-files -z -c -i --exclude-from="$work/gitignore"
+  : > "$work/ignored.txt"
+  # one line per path: %q only for a name holding a newline (it would span two lines); raw
+  # otherwise — %q under LC_ALL=C octal-escapes every non-ASCII byte, and `é/.env` should read as such
+  while IFS= read -r -d '' path; do
+    if [[ $path == *$'\n'* ]]; then printf '%q\n' "$path"; else printf '%s\n' "$path"; fi
+  done < "$work/ignored" > "$work/ignored.txt"
+  if [ -s "$work/ignored.txt" ]; then echo "tracked though the staged .gitignore excludes it:"; cat -- "$work/ignored.txt"; hit=1; fi
 }
 
 summary() {
-  echo "neutrality: $((n_regular + n_sym + n_git)) tracked ($n_regular regular, $n_sym symlink, $n_git submodule not scanned); private paths over all bytes of $n_regular; e-mails judged in $n_text text ($n_binary binary or empty, e-mail-shaped bytes in $n_mail_binary of them not judged); 0 tracked files the .gitignore excludes; 0 hits"
+  echo "neutrality: $((n_regular + n_sym + n_git)) tracked ($n_regular regular, $n_sym symlink, $n_git submodule not scanned); private paths over all bytes of $n_regular; e-mails judged in $n_text text ($n_binary binary or empty, e-mail-shaped bytes in $n_mail_binary of them not judged); 0 tracked files the staged .gitignore excludes; 0 hits"
 }
 
 if [ "${1:-}" = "--self-test" ]; then
@@ -174,7 +182,12 @@ if [ "${1:-}" = "--self-test" ]; then
   export HOME="$work/home"; mkdir -p "$HOME"
   export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
   unset GIT_INDEX_FILE GIT_DIR GIT_WORK_TREE GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES
-  mkdir "$work/repo" && cd "$work/repo" && git init -q
+  # one statement per line: a failing member of an `&&` list escapes both errexit and the ERR
+  # trap (measured), and a failed mkdir/cd would run the rest of this in the CALLER's repository
+  mkdir "$work/repo"
+  cd "$work/repo"
+  [ "$PWD" = "$work/repo" ] || fail_msg "self-test" "not inside the scratch repository: $PWD"
+  git init -q
   printf '.env*\n' > .gitignore
   printf 'clean\n' > clean.md
   printf 'PNG\0\0rendered on /home/%s/\n' someone > figure.png
@@ -193,16 +206,19 @@ if [ "${1:-}" = "--self-test" ]; then
   printf 'maybe someone%sexample.org\0\n' @ > "${PLANTED_BINARY[0]}"
   printf 'x someone%sexample.org\0\n' @ > "${PLANTED_BINARY[1]}"
   printf 'two someone%sexample.org and other%sexample.com\0\n' @ @ > "${PLANTED_BINARY[2]}"
-  git add .gitignore clean.md figure.png notes.md link .gitattributes "$nl_path" "${PLANTED_BINARY[@]}" && git add -f -- "${PLANTED_IGNORED[@]}"
+  git add .gitignore clean.md figure.png notes.md link .gitattributes "$nl_path" "${PLANTED_BINARY[@]}"
+  git add -f -- "${PLANTED_IGNORED[@]}"
   check > "$work/verdicts"
   verdicts=$(<"$work/verdicts")
   expect() {  # whole-string containment: a `grep -F` here read a two-line expectation as a pattern LIST
     [[ $verdicts == *"$1"* ]] || { echo "self-test: expected '$1' NOT in verdicts:"; printf '%s\n' "$verdicts"; exit 1; }; echo "self-test: $2"; }
+  expect_line() {  # a whole verdict LINE — substring containment was satisfied by a neighbouring record
+    [[ $'\n'"$verdicts"$'\n' == *$'\n'"$1"$'\n'* ]] || { echo "self-test: expected line '$1' NOT in verdicts:"; printf '%s\n' "$verdicts"; exit 1; }; echo "self-test: $2"; }
   expect 'figure.png:1:/home/' 'private path behind a NUL byte caught'
   expect 'notes.md:1:someone' 'e-mail caught despite .gitattributes'
   expect 'link -> /home/' 'symlink target caught'
   expect "$nl_path:1:someone" 'e-mail in a path holding a newline caught'
-  for f in "${PLANTED_IGNORED[@]}"; do expect "$f" "tracked file the repository's .gitignore excludes caught: $(printf '%q' "$f")"; done
+  for f in "${PLANTED_IGNORED[@]}"; do expect_line "$(printf '%q' "$f")" "tracked file the staged .gitignore excludes caught: $(printf '%q' "$f")"; done
   for b in "${PLANTED_BINARY[@]}"; do
     case "$verdicts" in *"$b"*) echo "self-test: e-mail-shaped bytes in a binary blob must not be a hit ($b)"; exit 1 ;; esac
   done
@@ -218,10 +234,15 @@ if [ "${1:-}" = "--self-test" ]; then
   rc=0; GIT_INDEX_FILE="$work/no-such-index" bash "$self" > "$work/empty.out" 2> "$work/empty.err" || rc=$?
   [ "$rc" -eq 2 ] && [ ! -s "$work/empty.out" ] || { echo "self-test: an empty population must exit 2 with no summary (got $rc):"; cat -- "$work/empty.out" "$work/empty.err"; exit 1; }
   echo "self-test: empty population exits 2 with no summary"
-  printf '' > .gitignore && git add .gitignore
+  printf '' > .gitignore
+  git add .gitignore
   rc=0; bash "$self" > "$work/norule.out" 2> "$work/norule.err" || rc=$?
-  [ "$rc" -eq 2 ] && [ ! -s "$work/norule.out" ] || { echo "self-test: a repository whose .gitignore does not exclude .env* must exit 2 with no summary (got $rc):"; cat -- "$work/norule.out" "$work/norule.err"; exit 1; }
-  echo "self-test: a .gitignore without .env* is an instrument failure, exit 2 with no summary"
+  [ "$rc" -eq 2 ] && [ ! -s "$work/norule.out" ] || { echo "self-test: a staged .gitignore without .env* must exit 2 with no summary (got $rc):"; cat -- "$work/norule.out" "$work/norule.err"; exit 1; }
+  echo "self-test: a staged .gitignore without .env* is an instrument failure, exit 2 with no summary"
+  printf '.env*\n' > .gitignore   # the working-tree copy has the rule again; the staged one does not
+  rc=0; bash "$self" > "$work/unstaged.out" 2> "$work/unstaged.err" || rc=$?
+  [ "$rc" -eq 2 ] && [ ! -s "$work/unstaged.out" ] || { echo "self-test: the rule in an UNSTAGED .gitignore must not count (got $rc):"; cat -- "$work/unstaged.out" "$work/unstaged.err"; exit 1; }
+  echo "self-test: the rule counts only in the staged .gitignore, not the working-tree file"
   exit 0
 fi
 

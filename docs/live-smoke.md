@@ -1118,3 +1118,29 @@ self-test: tracked file the repository's .gitignore excludes caught: $'sub/.env\
 self-test: a .gitignore without .env* is an instrument failure, exit 2 with no summary
 neutrality: 122 tracked (122 regular, 0 symlink, 0 submodule not scanned); private paths over all bytes of 122; e-mails judged in 109 text (13 binary or empty, e-mail-shaped bytes in 1 of them not judged); 0 tracked files the .gitignore excludes; 0 hits
 ```
+
+
+**Gate, round ten (2026-08-27) — the last under the declared bound.** Ten confirmed (six
+executed, four by mutation), all in the round-nine rule: the precondition (`git check-ignore`)
+read every exclude source while the scan read only `.gitignore`, so a machine's global `.env*`
+satisfied one and not the other; both read the **working-tree** `.gitignore`, so an unstaged
+edit or an untracked nested file flipped the verdict; a failing member of an `&&` list escapes
+the ERR trap, so a failed `mkdir` would have run the self-test inside the caller's repository;
+the newline-name control was substring containment satisfied by a neighbouring record; the
+symlink-target rendering and the unmerged dedup had no failing test (the dedup assertion written
+in round nine had never been applied — the edit missed its formatter-wrapped target); the record
+said `sed '$d'` while the shim still said `head -n -1` (same cause). Now: one source for
+precondition and scan — the **staged** root `.gitignore` (`git show :.gitignore`, then
+`ls-files -c -i --exclude-from=<that copy>`), the literal line `.env*` required, negations
+honoured by design, nested files not consulted, checked before any scan prints; the ignored list
+is `%q`-rendered, one line per path; the self-test's setup is one guarded statement per line with
+a `$PWD` check; tests plant a symlink whose target holds a NUL, an unstaged rule, a global-excludes
+rule, a `!` negation, and require a note for all eight kinds of git call; the shim really uses
+`sed '$d'`. 0.14 s on the tree:
+
+```
+self-test: tracked file the staged .gitignore excludes caught: $'sub/.env\n'
+self-test: a staged .gitignore without .env* is an instrument failure, exit 2 with no summary
+self-test: the rule counts only in the staged .gitignore, not the working-tree file
+neutrality: 122 tracked (122 regular, 0 symlink, 0 submodule not scanned); private paths over all bytes of 122; e-mails judged in 109 text (13 binary or empty, e-mail-shaped bytes in 1 of them not judged); 0 tracked files the staged .gitignore excludes; 0 hits
+```

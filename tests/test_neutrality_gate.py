@@ -75,7 +75,7 @@ def _summary_for(repo: Path, tmp_path: Path) -> str:
         f"neutrality: {regular + symlink + gitlink} tracked ({regular} regular, {symlink} symlink, "
         f"{gitlink} submodule not scanned); private paths over all bytes of {regular}; "
         f"e-mails judged in {text} text ({regular - text} binary or empty, e-mail-shaped bytes in "
-        f"{mail_binary} of them not judged); 0 tracked files the .gitignore excludes; 0 hits"
+        f"{mail_binary} of them not judged); 0 tracked files the staged .gitignore excludes; 0 hits"
     )
 
 
@@ -100,15 +100,16 @@ def test_the_self_test_plants_every_class_in_a_temporary_repository_and_catches_
         "e-mail caught despite .gitattributes",
         "symlink target caught",
         "e-mail in a path holding a newline caught",
-        "tracked file the repository's .gitignore excludes caught: sub/.env",
-        "tracked file the repository's .gitignore excludes caught: .env-prod",
-        "tracked file the repository's .gitignore excludes caught: .env/secret",
-        "tracked file the repository's .gitignore excludes caught: $'sub/.env\\n'",
+        "tracked file the staged .gitignore excludes caught: sub/.env",
+        "tracked file the staged .gitignore excludes caught: .env-prod",
+        "tracked file the staged .gitignore excludes caught: .env/secret",
+        "tracked file the staged .gitignore excludes caught: $'sub/.env\\n'",
         "e-mail-shaped bytes in binary blobs counted as blobs, not judged",
         "clean repo silent",
         "broken instrument exits 2 with no summary",
         "empty population exits 2 with no summary",
-        "a .gitignore without .env* is an instrument failure, exit 2 with no summary",
+        "a staged .gitignore without .env* is an instrument failure, exit 2 with no summary",
+        "the rule counts only in the staged .gitignore, not the working-tree file",
     ):
         assert f"self-test: {phrase}" in result.stdout, (phrase, result.stdout)
 
@@ -169,7 +170,8 @@ def test_an_email_is_caught_even_when_gitattributes_marks_the_file_no_diff(tmp_p
 
 def test_a_binary_only_index_and_a_newline_only_file_are_counted_not_fatal(tmp_path: Path) -> None:
     """On the working-tree version, each killed the script with a bare exit 123 and no summary.
-    (The index also holds `.gitignore`, the rule the gate requires — one text blob.)"""
+    The index also holds `.gitignore` — the rule the gate requires, so an index with no text blob
+    at all cannot pass the precondition; this is the smallest population the gate accepts."""
     repo = _scratch_repo(tmp_path)
     _git(repo, tmp_path, "rm", "-qf", "clean.md")
     (repo / "b.bin").write_bytes(b"x\0y")
@@ -390,7 +392,9 @@ def test_an_unmerged_index_is_an_instrument_failure(tmp_path: Path) -> None:
     )
     result = _run(repo, tmp_path)
     assert result.returncode == 2 and result.stdout == "", result.stdout + result.stderr
-    assert "unmerged" in result.stderr
+    assert (
+        "unmerged" in result.stderr and result.stderr.count("f.md") == 1
+    )  # once per path, not per stage
 
 
 def test_every_git_call_reports_what_it_said_including_the_symlink_read(tmp_path: Path) -> None:
@@ -401,11 +405,14 @@ def test_every_git_call_reports_what_it_said_including_the_symlink_read(tmp_path
     result = _run(repo, tmp_path, GIT_TRACE="1")
     assert result.returncode == 0, result.stdout + result.stderr
     for what in (
+        "git rev-parse",
         "git ls-files",
+        "git show (.gitignore)",
         "git cat-file --batch-check",
         "git grep (NUL scan)",
         "git grep",
         "git cat-file (symlink)",
+        "git ls-files (ignored)",
     ):
         assert f"neutrality: {what} said:" in result.stderr, (what, result.stderr)
 
@@ -428,7 +435,8 @@ def test_a_size_list_shorter_than_the_index_is_an_instrument_failure(tmp_path: P
     drops the last size `cat-file --batch-check` returns."""
     repo = _scratch_repo(tmp_path)
     env = _shim(
-        tmp_path, 'case "$*" in *"cat-file --batch-check"*) exec "$REAL" "$@" | head -n -1 ;; esac'
+        tmp_path,
+        'case "$*" in *"cat-file --batch-check"*) exec "$REAL" "$@" | sed \'$d\' ;; esac',
     )
     result = _run(repo, tmp_path, **env)
     assert result.returncode == 2 and result.stdout == "", result.stdout + result.stderr
@@ -478,9 +486,16 @@ def test_a_tracked_file_the_gitignore_excludes_is_caught_at_any_depth_and_by_any
     )
     result = _run(repo, tmp_path)
     assert result.returncode == 1, result.stdout + result.stderr
-    assert "tracked though the repository's .gitignore excludes it:" in result.stdout
-    for name in ("sub/.env", ".env-prod", ".env_local", ".env/secret", ".env "):
-        assert re.search("^" + re.escape(name) + "$", result.stdout, re.M), (name, result.stdout)
+    assert "tracked though the staged .gitignore excludes it:" in result.stdout
+    for line in (
+        "sub/.env",
+        ".env-prod",
+        ".env_local",
+        ".env/secret",
+        ".env ",
+        "$'sub/.env\\n'",
+    ):
+        assert re.search("^" + re.escape(line) + "$", result.stdout, re.M), (line, result.stdout)
 
 
 def test_a_tracked_env_under_a_non_ascii_path_is_caught(tmp_path: Path) -> None:
@@ -502,6 +517,7 @@ def test_a_tracked_envrc_is_flagged_because_the_repository_ignores_it(tmp_path: 
     _git(repo, tmp_path, "add", "-f", ".envrc")
     result = _run(repo, tmp_path)
     assert result.returncode == 1 and "\n.envrc\n" in result.stdout, result.stdout
+    assert "staged .gitignore excludes it" in result.stdout
 
 
 def test_a_repository_whose_gitignore_lacks_the_env_rule_is_an_instrument_failure(
@@ -512,7 +528,20 @@ def test_a_repository_whose_gitignore_lacks_the_env_rule_is_an_instrument_failur
     _git(repo, tmp_path, "add", ".gitignore")
     result = _run(repo, tmp_path)
     assert result.returncode == 2 and result.stdout == "", result.stdout + result.stderr
-    assert "does not exclude .env" in result.stderr
+    assert "no '.env*' line" in result.stderr
+    # round 10: the rule in the WORKING-TREE file, or in a machine's global excludes, must not count
+    (repo / ".gitignore").write_text(".env*\n", encoding="utf-8")  # unstaged
+    assert _run(repo, tmp_path).returncode == 2
+    excludes = tmp_path / "global-excludes"
+    excludes.write_text(".env*\n", encoding="utf-8")
+    result = _run(
+        repo,
+        tmp_path,
+        GIT_CONFIG_COUNT="1",
+        GIT_CONFIG_KEY_0="core.excludesFile",
+        GIT_CONFIG_VALUE_0=str(excludes),
+    )
+    assert result.returncode == 2 and result.stdout == "", result.stdout + result.stderr
 
 
 def test_an_unguarded_failure_is_exit_2_with_a_message_not_a_silent_hit(tmp_path: Path) -> None:
@@ -535,3 +564,38 @@ def test_an_unguarded_failure_is_exit_2_with_a_message_not_a_silent_hit(tmp_path
     )
     assert result.returncode == 2 and result.stdout == "", result.stdout + result.stderr
     assert "unguarded command failed" in result.stderr
+
+
+def test_a_negation_in_the_staged_gitignore_exempts_by_design(tmp_path: Path) -> None:
+    """The rule is the repository's: `!.env.keep` beside `.env*` is the author's exemption, and
+    the gate honours it rather than carrying a rule of its own."""
+    repo = _scratch_repo(tmp_path)
+    (repo / ".gitignore").write_text(".env*\n!.env.keep\n", encoding="utf-8")
+    (repo / ".env.keep").write_text("KEEP=1\n", encoding="utf-8")
+    (repo / ".env.drop").write_text("TOKEN=x\n", encoding="utf-8")
+    _git(repo, tmp_path, "add", ".gitignore", ".env.keep")
+    assert _run(repo, tmp_path).returncode == 0
+    _git(repo, tmp_path, "add", "-f", ".env.drop")
+    result = _run(repo, tmp_path)
+    assert (
+        result.returncode == 1
+        and "\n.env.drop\n" in result.stdout
+        and ".env.keep" not in result.stdout
+    )
+
+
+def test_a_symlink_target_holding_a_nul_is_rendered_without_a_bash_warning(tmp_path: Path) -> None:
+    """Round 10 (by mutation): `$(cat)` dropped the NUL with a bash warning on stderr — a third
+    voice on the channel the header promises is git's notes only."""
+    repo = _scratch_repo(tmp_path)
+    sha = (
+        _git(repo, tmp_path, "hash-object", "-w", "--stdin", input=HOME_PATH.encode() + b"x\0y\n")
+        .decode()
+        .strip()
+    )
+    _git(repo, tmp_path, "update-index", "--add", "--cacheinfo", f"120000,{sha},lnk")
+    result = _run(repo, tmp_path)
+    assert result.returncode == 1 and "lnk -> /home/" in result.stdout, (
+        result.stdout + result.stderr
+    )
+    assert "x?y" in result.stdout and "warning" not in result.stderr, result.stdout + result.stderr
