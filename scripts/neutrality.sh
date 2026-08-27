@@ -40,7 +40,10 @@ ENV_FILE='(^|/)\.env(\..+)?$'
 
 scan() {  # scan <grep flags> <pattern> <label>  — reads NUL-separated paths on stdin
   local hits
-  hits=$(xargs -0 -r grep -nH"$1"E -- "$2" | tr -d '\0' || true)   # NULs from a binary hit would be dropped by bash with a warning
+  # -o: only the match is printed — a hit inside a binary "line" would otherwise dump the file
+  # (1,993,050 bytes for a 2 MB planted PNG, measured 2026-08-27). NULs stripped: bash drops them
+  # from a capture with a warning. `|| true`: no match is exit 1, not an error.
+  hits=$(xargs -0 -r grep -nHo"$1"E -- "$2" | tr -d '\0' || true)
   if [ -n "$hits" ]; then
     echo "$3"
     echo "$hits"
@@ -79,23 +82,46 @@ if [ "${1:-}" = "--self-test" ]; then
   exit 0
 fi
 
-# A tracked file deleted from the working tree is read by nobody — grep's error would be swallowed
-# and it would be reported as read. Refuse before counting anything.
-missing=$(git ls-files -d)
-if [ -n "$missing" ]; then
-  echo "tracked but missing from the working tree (not scanned):"; echo "$missing"; exit 1
+# The population, once, NUL-separated, in a temporary file: `git ls-files` without -z
+# octal-quotes any path holding a byte >= 0x80 ("\303\251/.env", measured) and the anchored
+# pattern then misses it — and a bash variable cannot hold the NULs (a capture drops them with a
+# warning and every path runs into the next; measured 2026-08-27).
+pop=$(mktemp)
+trap 'rm -f "$pop"' EXIT
+git ls-files -z > "$pop"
+n_tracked=$(tr -dc '\0' < "$pop" | wc -c)
+# A tracked file deleted from the working tree, a dangling symlink or an unreadable file is read by
+# nobody — grep's error would be swallowed and it would be reported as read, or the count below
+# would abort with a bare 123 and no summary (measured on all three, 2026-08-27). Refuse first.
+unreadable=$(xargs -0 -r -n1 sh -c '[ -r "$0" ] && [ -f "$0" ] || echo "$0"' < "$pop")
+if [ -n "$unreadable" ]; then
+  echo "tracked but not a readable file in the working tree (not scanned):"; echo "$unreadable"; exit 1
 fi
-n_tracked=$(git ls-files | wc -l)
-n_skipped=$(git ls-files -z | xargs -0 -r grep -IL . | wc -l)   # binary or empty: grep -I reads nothing
+# What the e-mail scan skips, by an explicit criterion: empty, or holding a NUL byte anywhere —
+# the same criterion tests/test_neutrality_gate.py derives on its own. (`grep -IL .` was the proxy
+# before: it also listed a newline-only file as skipped, and its exit status under pipefail killed
+# the script on a binary-only index.)
+n_skipped=0
+while IFS= read -r -d '' f; do
+  # counted with wc, never captured: a NUL in a command substitution is dropped by bash with a warning
+  if [ ! -s "$f" ] || [ "$(tr -dc '\000' < "$f" | wc -c)" -gt 0 ]; then n_skipped=$((n_skipped + 1)); fi
+done < "$pop"
 n_text=$((n_tracked - n_skipped))
 status=0
-git ls-files -z | scan a "$PRIVATE_PATH" 'private path leak:' || status=1
-git ls-files -z | scan I "$EMAIL" 'e-mail leak:' || status=1
-if git ls-files | grep -qE "$ENV_FILE"; then echo "tracked .env file:"; git ls-files | grep -E "$ENV_FILE"; status=1; fi
-# The working tree at any depth, skipping .git and the virtualenv, through the same pattern —
-# not `ls .env .env.*` (ls exits non-zero when any ONE operand is missing, so with no `.env` a
-# present `.env.local` read as absent — positive control, 2026-08-26), not a root-only glob.
-present=$(find . \( -path ./.git -o -path ./.venv \) -prune -o -type f -print | grep -E "$ENV_FILE" || true)
+scan a "$PRIVATE_PATH" 'private path leak:' < "$pop" || status=1
+scan I "$EMAIL" 'e-mail leak:' < "$pop" || status=1
+tracked_env=$(tr '\0' '\n' < "$pop" | grep -E "$ENV_FILE" || true)   # no -q: under pipefail an early exit is SIGPIPE 141 on a large index
+if [ -n "$tracked_env" ]; then echo "tracked .env file:"; echo "$tracked_env"; status=1; fi
+# The working tree at any depth, files and symlinks (a symlinked .env is the dotenv "shared
+# secrets" pattern; `-type f` alone passed it), through the same pattern — not `ls .env .env.*`
+# (ls exits non-zero when any ONE operand is missing, so with no `.env` a present `.env.local`
+# read as absent — positive control, 2026-08-26), not a root-only glob. Virtualenvs are pruned
+# wherever they are, recognised by their pyvenv.cfg rather than by a name list: a package's
+# shipped .env.example inside site-packages is not this repository's secret.
+venv_dirs=$(find . -path ./.git -prune -o -name pyvenv.cfg -printf '%h/\n' 2>/dev/null || true)
+# `grep .` drops the empty line an empty prefix list would produce — an empty -f pattern matches
+# every line, and -v then removed every hit (measured 2026-08-27: a planted .env.local passed).
+present=$(find . -path ./.git -prune -o \( -type f -o -type l \) -print | grep -E "$ENV_FILE" | grep -vF -f <(printf '%s\n' "$venv_dirs" | grep . || true) || true)
 if [ -n "$present" ]; then echo ".env file present in the working tree:"; echo "$present"; status=1; fi
 if [ "$status" -eq 0 ]; then
   echo "neutrality: scanned $n_tracked tracked files for private paths (all bytes), $n_text text files for e-mails ($n_skipped binary or empty skipped), 0 hits"

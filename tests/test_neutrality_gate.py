@@ -108,3 +108,70 @@ def test_a_private_path_inside_a_binary_file_is_caught(tmp_path: Path) -> None:
     assert result.returncode == 1 and "private path leak:" in result.stdout, (
         result.stdout + result.stderr
     )
+
+
+def _summary_for(repo: Path) -> str:
+    out = subprocess.run(["git", "ls-files", "-z"], cwd=repo, capture_output=True).stdout
+    paths = [p for p in out.decode("utf-8").split("\0") if p]
+    skipped = sum(1 for p in paths if (d := (repo / p).read_bytes()) == b"" or b"\0" in d)
+    return (
+        f"neutrality: scanned {len(paths)} tracked files for private paths (all bytes), "
+        f"{len(paths) - skipped} text files for e-mails ({skipped} binary or empty skipped), 0 hits"
+    )
+
+
+def test_the_count_survives_a_binary_only_index_and_a_newline_only_file(tmp_path: Path) -> None:
+    """Measured 2026-08-27 on the previous count (`grep -IL .` under pipefail): a binary-only index
+    and a newline-only file each killed the script with a bare exit 123 and no summary."""
+    repo = _scratch_repo(tmp_path)
+    (repo / "b.bin").write_bytes(b"x\0y")
+    (repo / "nl.txt").write_text("\n\n", encoding="utf-8")
+    subprocess.run(["git", "add", "b.bin", "nl.txt"], cwd=repo, check=True)
+    result = _run(cwd=repo)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert _summary_for(repo) in result.stdout
+    assert (
+        "1 binary or empty skipped" in result.stdout
+    )  # the newline-only file is text, read by grep
+
+
+def test_a_dangling_symlink_or_unreadable_tracked_file_refuses_the_scan(tmp_path: Path) -> None:
+    repo = _scratch_repo(tmp_path)
+    (repo / "d").symlink_to("nowhere")
+    subprocess.run(["git", "add", "d"], cwd=repo, check=True)
+    result = _run(cwd=repo)
+    assert result.returncode == 1 and "not a readable file" in result.stdout, (
+        result.stdout + result.stderr
+    )
+
+
+def test_a_symlinked_env_file_and_a_tracked_env_under_a_non_ascii_path_are_caught(
+    tmp_path: Path,
+) -> None:
+    repo = _scratch_repo(tmp_path)
+    (repo / ".env").symlink_to("clean.md")
+    result = _run(cwd=repo)
+    assert result.returncode == 1 and "./.env" in result.stdout, result.stdout + result.stderr
+    (repo / ".env").unlink()
+    (repo / "é").mkdir()
+    (repo / "é" / ".env").write_text("TOKEN=x\n", encoding="utf-8")
+    subprocess.run(["git", "add", "-f", "é/.env"], cwd=repo, check=True)
+    result = _run(cwd=repo)
+    assert result.returncode == 1 and "tracked .env file:" in result.stdout, (
+        result.stdout + result.stderr
+    )
+
+
+def test_a_virtualenv_inside_the_tree_is_not_walked(tmp_path: Path) -> None:
+    repo = _scratch_repo(tmp_path)
+    site = repo / "venv" / "lib" / "site-packages" / "somepkg"
+    site.mkdir(parents=True)
+    (repo / "venv" / "pyvenv.cfg").write_text("home = /usr\n", encoding="utf-8")
+    (site / ".env.example").write_text("TOKEN=\n", encoding="utf-8")
+    result = _run(cwd=repo)
+    assert result.returncode == 0, result.stdout + result.stderr
+    # the prune must remove only the virtualenv: a real .env.local beside it still fails
+    (repo / ".env.local").write_text("TOKEN=x\n", encoding="utf-8")
+    result = _run(cwd=repo)
+    assert result.returncode == 1 and "./.env.local" in result.stdout, result.stdout + result.stderr
+    assert "venv/" not in result.stdout

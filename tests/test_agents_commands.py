@@ -8,29 +8,44 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def _ci_steps() -> list[str]:
-    """Every `run:` command in ci.yml, in order; a `run: |` block contributes the lines indented
-    deeper than its own key, and nothing after them."""
-    lines = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8").splitlines()
+BLOCK = {"|", "|-", "|+", ">", ">-", ">+"}
+
+
+def _steps(text: str) -> list[str]:
+    """Every `run:` command, in order; a block scalar (`|`, `|-`, `>`, ...) contributes the
+    non-blank lines indented deeper than its own key — blank lines inside a block are allowed by
+    YAML and must not end it (they did, and the equality test read green over a subset)."""
+    lines = text.splitlines()
     steps: list[str] = []
     i = 0
     while i < len(lines):
         m = re.match(r"(\s*)-?\s*run:\s*(\S.*)$", lines[i])
-        if m and m.group(2).strip() != "|":
+        if m and m.group(2).strip() not in BLOCK:
             steps.append(m.group(2).strip())
         elif m:
             indent = len(lines[i]) - len(lines[i].lstrip())
             i += 1
-            while (
-                i < len(lines)
-                and lines[i].strip()
-                and len(lines[i]) - len(lines[i].lstrip()) > indent
+            while i < len(lines) and (
+                not lines[i].strip() or len(lines[i]) - len(lines[i].lstrip()) > indent
             ):
-                steps.append(lines[i].strip())
+                if lines[i].strip():
+                    steps.append(lines[i].strip())
                 i += 1
             continue
         i += 1
     return steps
+
+
+def _ci_steps() -> list[str]:
+    return _steps((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))
+
+
+def test_the_parser_keeps_commands_after_a_blank_line_inside_a_block() -> None:
+    text = (
+        "steps:\n  - run: uv sync\n  - name: gate\n    run: |\n"
+        "      first\n\n      second\n  - run: last\n"
+    )
+    assert _steps(text) == ["uv sync", "first", "second", "last"]
 
 
 def _commands_block() -> list[str]:
