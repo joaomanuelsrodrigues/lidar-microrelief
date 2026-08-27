@@ -35,6 +35,12 @@ listed here because "no magic number without a label" does not make an exception
 | `NODATA_UINT8 = 255` | `basis` | Deliberately **not 0**. Zero is `undetermined`, which is a published state — we looked and there was nothing to measure — and declaring it NoData would erase exactly the admission the band exists to make. 255 is a code the band never produces |
 | `NODATA_INT32 = -1` | `n_all`, `n_ground_asprs` | No count can be negative, so this cannot collide with a real value either. Again not 0, which is a true count: zero returns fell in that cell |
 
+## The neutrality gate's one rule (`scripts/neutrality.sh`)
+
+| Value | Where | Why this one | What would replace it |
+|---|---|---|---|
+| text = a non-empty blob with **no NUL byte anywhere** | `scripts/neutrality.sh` (`classify`), `tests/test_neutrality_gate.py` (`_summary_for`) | Decides which blobs an e-mail hit is *judged* in (private paths are searched in every byte of every blob regardless). Computed by the gate itself from the bytes, not delegated to `git grep -I` — which obeys `.gitattributes`, so a tracked file could move a blob out of the population (measured 2026-08-27). A hit inside a binary blob is counted in the summary, never hidden | Nothing: any other rule would have to be steerable from somewhere, and this one is not |
+
 ## Presentation constants, not thresholds (viewer, styles, sample)
 
 None of these reaches a band or the record; each is listed because rule 4 admits no exception for

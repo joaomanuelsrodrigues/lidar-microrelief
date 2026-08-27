@@ -47,10 +47,14 @@ def _git(repo: Path, tmp_path: Path, *args: str) -> bytes:
     ).stdout
 
 
-def _summary_for(repo: Path, tmp_path: Path, mail_binary: int = 0) -> str:
+EMAIL = re.compile(rb"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
+
+
+def _summary_for(repo: Path, tmp_path: Path) -> str:
     """Independent of the script: modes from `git ls-files -s`, blobs from `git cat-file`; the
-    text rule is 'non-empty and no NUL in the first 8000 bytes'."""
-    regular = symlink = gitlink = text = 0
+    text rule is 'non-empty and no NUL byte anywhere'; the e-mail-shaped binary blobs are counted
+    here too, never typed."""
+    regular = symlink = gitlink = text = mail_binary = 0
     for rec in _git(repo, tmp_path, "ls-files", "-s", "-z").split(b"\0"):
         if not rec:
             continue
@@ -62,8 +66,10 @@ def _summary_for(repo: Path, tmp_path: Path, mail_binary: int = 0) -> str:
         else:
             regular += 1
             data = _git(repo, tmp_path, "cat-file", "blob", sha.decode())
-            if data and b"\0" not in data[:8000]:
+            if data and b"\0" not in data:
                 text += 1
+            elif EMAIL.search(data):
+                mail_binary += 1
     return (
         f"neutrality: {regular + symlink + gitlink} tracked ({regular} regular, {symlink} symlink, "
         f"{gitlink} submodule not scanned); private paths over all bytes of {regular}; "
@@ -92,9 +98,10 @@ def test_the_self_test_plants_every_class_in_a_temporary_repository_and_catches_
         "e-mail caught despite .gitattributes",
         "symlink target caught",
         "tracked .env at depth caught",
-        "e-mail-shaped bytes in a binary blob counted, not judged",
+        "e-mail-shaped bytes in two binary blobs (one under a non-ASCII path) counted, not judged",
         "clean repo silent",
         "broken instrument exits 2 with no summary",
+        "empty population exits 2 with no summary",
         ".env pattern matches .env.local and sub/dir/.env, not .envrc",
     ):
         assert f"self-test: {phrase}" in result.stdout, (phrase, result.stdout)
@@ -103,15 +110,17 @@ def test_the_self_test_plants_every_class_in_a_temporary_repository_and_catches_
 def test_the_tracked_tree_is_clean_and_the_summary_names_every_denominator(tmp_path: Path) -> None:
     result = _run(ROOT, tmp_path)
     assert result.returncode == 0, result.stdout + result.stderr
-    # one PNG in the tree carries e-mail-shaped bytes by coincidence (measured 2026-08-27)
-    assert _summary_for(ROOT, tmp_path, mail_binary=1) in result.stdout, result.stdout
+    assert _summary_for(ROOT, tmp_path) in result.stdout, result.stdout
+    # one PNG in the tree carries e-mail-shaped bytes by coincidence (measured 2026-08-27); the
+    # count above is derived, and this line only documents why it is not zero today
+    assert "e-mail-shaped bytes in 1 of them not judged" in result.stdout
 
 
 def test_the_scan_covers_the_whole_tree_from_a_subdirectory(tmp_path: Path) -> None:
     """Measured 2026-08-26: without `cd` to the root, `docs/` reported 32 files scanned, exit 0."""
     result = _run(ROOT / "docs", tmp_path)
     assert result.returncode == 0, result.stdout + result.stderr
-    assert _summary_for(ROOT, tmp_path, mail_binary=1) in result.stdout
+    assert _summary_for(ROOT, tmp_path) in result.stdout
 
 
 def test_a_tracked_env_file_at_any_depth_is_caught_and_envrc_is_not(tmp_path: Path) -> None:
@@ -158,7 +167,7 @@ def test_an_email_in_a_binary_blob_is_counted_not_judged(tmp_path: Path) -> None
     _git(repo, tmp_path, "add", "blob.bin")
     result = _run(repo, tmp_path)
     assert result.returncode == 0, result.stdout + result.stderr
-    assert _summary_for(repo, tmp_path, mail_binary=1) in result.stdout
+    assert _summary_for(repo, tmp_path) in result.stdout
 
 
 def test_an_email_is_caught_even_when_gitattributes_marks_the_file_no_diff(tmp_path: Path) -> None:
@@ -230,19 +239,53 @@ def test_a_submodule_is_counted_as_not_scanned(tmp_path: Path) -> None:
     )
 
 
-def test_a_late_nul_file_is_scanned_and_counted_by_the_same_rule(tmp_path: Path) -> None:
-    """The text rule is the first 8000 bytes; a NUL after that leaves the file text for both the
-    e-mail verdict and the count, so they cannot disagree (round 4 had them disagree)."""
+def test_a_file_with_a_late_nul_is_binary_for_the_verdict_and_the_count_alike(
+    tmp_path: Path,
+) -> None:
+    """One rule, the script's own — a NUL anywhere makes a blob binary — applied to the e-mail
+    verdict and to the count, so they cannot disagree (round 4 had `grep -I` read a late-NUL file
+    while the count called it skipped)."""
     repo = _scratch_repo(tmp_path)
     (repo / "big.txt").write_bytes(b"contact: " + MAIL.encode() + b"\n" + b"a" * 9000 + b"\n\0\n")
     _git(repo, tmp_path, "add", "big.txt")
     result = _run(repo, tmp_path)
-    assert result.returncode == 1 and "big.txt:1:someone" in result.stdout, result.stdout
-    (repo / "big.txt").write_bytes(b"plain\n" + b"a" * 9000 + b"\n\0\n")
-    _git(repo, tmp_path, "add", "big.txt")
-    result = _run(repo, tmp_path)
-    assert result.returncode == 0 and _summary_for(repo, tmp_path) in result.stdout, result.stdout
-    assert "e-mails judged in 2 text (0 binary or empty" in result.stdout
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert _summary_for(repo, tmp_path) in result.stdout
+    assert (
+        "e-mails judged in 1 text (1 binary or empty, e-mail-shaped bytes in 1 of them not judged)"
+        in result.stdout
+    )
+
+
+def test_an_email_shaped_binary_blob_under_a_non_ascii_path_is_counted_not_judged(
+    tmp_path: Path,
+) -> None:
+    """Round 6: the hit's path was recovered from ':'-delimited text, so a path git C-quotes never
+    matched the binary list and the blob was judged as text — the verdict flipped with the user's
+    core.quotePath."""
+    repo = _scratch_repo(tmp_path)
+    (repo / "é").mkdir()
+    (repo / "é" / "blob.bin").write_bytes(b"x " + MAIL.encode() + b"\0\n")
+    (repo / "run:2026.bin").write_bytes(b"y " + MAIL.encode() + b"\0\n")
+    _git(repo, tmp_path, "add", "é/blob.bin", "run:2026.bin")
+    result = _run(
+        repo,
+        tmp_path,
+        GIT_CONFIG_COUNT="1",
+        GIT_CONFIG_KEY_0="core.quotePath",
+        GIT_CONFIG_VALUE_0="true",
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "e-mail-shaped bytes in 2 of them not judged" in result.stdout
+
+
+def test_an_empty_or_unopenable_index_exits_2_with_no_summary(tmp_path: Path) -> None:
+    """Round 6: `git ls-files` in a process substitution had its status discarded, and an absent
+    index file printed a green summary over zero blobs."""
+    repo = _scratch_repo(tmp_path)
+    result = _run(repo, tmp_path, GIT_INDEX_FILE=str(tmp_path / "no-such-index"))
+    assert result.returncode == 2, result.stdout + result.stderr
+    assert result.stdout == "" and "instrument failure" in result.stderr
 
 
 def test_a_broken_instrument_exits_2_with_no_summary(tmp_path: Path) -> None:
@@ -264,20 +307,11 @@ def test_a_broken_instrument_exits_2_with_no_summary(tmp_path: Path) -> None:
     )
 
 
-def test_a_git_warning_is_an_instrument_note_not_a_hit(tmp_path: Path) -> None:
-    """Round 5: `2>&1` folded git's stderr into the hit list."""
+def test_what_git_says_on_stderr_is_an_instrument_note_not_a_hit(tmp_path: Path) -> None:
+    """Round 5: `2>&1` folded git's stderr into the hit list. Round 6: the first version of this
+    control could not fail — nothing made git speak. GIT_TRACE makes every git call speak."""
     repo = _scratch_repo(tmp_path)
-    unreadable = tmp_path / "attrs"
-    unreadable.write_text("", encoding="utf-8")
-    unreadable.chmod(0)
-    if os.access(unreadable, os.R_OK):  # root reads everything; the warning cannot be provoked
-        return
-    result = _run(
-        repo,
-        tmp_path,
-        GIT_CONFIG_COUNT="1",
-        GIT_CONFIG_KEY_0="core.attributesFile",
-        GIT_CONFIG_VALUE_0=str(unreadable),
-    )
+    result = _run(repo, tmp_path, GIT_TRACE="1")
     assert result.returncode == 0, result.stdout + result.stderr
     assert "leak" not in result.stdout and _summary_for(repo, tmp_path) in result.stdout
+    assert "neutrality: git grep said:" in result.stderr and "trace:" in result.stderr

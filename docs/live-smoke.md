@@ -1025,3 +1025,24 @@ self-test: broken instrument exits 2 with no summary
 self-test: .env pattern matches .env.local and sub/dir/.env, not .envrc
 neutrality: 122 tracked (122 regular, 0 symlink, 0 submodule not scanned); private paths over all bytes of 122; e-mails judged in 109 text (13 binary or empty, e-mail-shaped bytes in 1 of them not judged); 0 hits
 ```
+
+**Gate, round six (2026-08-27).** Three confirmed by execution: a hit's path recovered from
+`:`-delimited text never matched the binary list when git C-quoted it (`é/blob.bin`) or when it
+held `:<digit>` — a binary blob judged as text, and the verdict flipped with the user's
+`core.quotePath`; `git ls-files`' status was discarded in a process substitution, and
+`GIT_INDEX_FILE=/nonexistent` printed a green summary over **zero** blobs; the git-warning test
+could not fail because nothing made git speak. Now: `git grep -z` records (`path\0line\0match`)
+read field by field, so no path is ever quoted or split; the index is read as a statement and an
+empty or unopenable one is exit 2 with no summary; classification is two git processes
+(`cat-file --batch-check` for sizes, `grep -P '\x00' -l` for NUL-bearing blobs; the rule is
+"non-empty, no NUL anywhere", the same one the tests derive, which also count the e-mail-shaped
+binary blobs instead of typing the number); `--no-recurse-submodules` pinned beside
+`--no-column --no-color`; `GIT_TRACE=1` makes the warning control speak. 0.24 s on the tree:
+
+```
+self-test: … e-mail-shaped bytes in two binary blobs (one under a non-ASCII path) counted, not judged
+self-test: clean repo silent
+self-test: broken instrument exits 2 with no summary
+self-test: empty population exits 2 with no summary
+neutrality: 122 tracked (122 regular, 0 symlink, 0 submodule not scanned); private paths over all bytes of 122; e-mails judged in 109 text (13 binary or empty, e-mail-shaped bytes in 1 of them not judged); 0 hits
+```
