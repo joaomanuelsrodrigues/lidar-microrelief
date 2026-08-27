@@ -1046,3 +1046,21 @@ self-test: broken instrument exits 2 with no summary
 self-test: empty population exits 2 with no summary
 neutrality: 122 tracked (122 regular, 0 symlink, 0 submodule not scanned); private paths over all bytes of 122; e-mails judged in 109 text (13 binary or empty, e-mail-shaped bytes in 1 of them not judged); 0 hits
 ```
+
+**Gate, round seven (2026-08-27).** Three confirmed by execution, all in the joins: a per-path
+`grep -zqxF` read a path holding a newline as a pattern *list*, so a real e-mail in such a file
+matched neither the text nor the binary list and vanished with a green summary; the binary-blob
+count was a count of matches (`2 of them` for one blob with two runs) while the test counts
+blobs; the NUL scan lacked `--no-color`, so `color.grep=always` wrapped every name in ANSI
+escapes, no binary blob matched, and the tree's one PNG became a false red. Now: every join is
+an exact-key lookup in a bash associative array (a path is any bytes but NUL; no process per
+path), the count is of distinct blobs, every `git grep` shares one pinned option list, sizes are
+validated (`<sha> missing` from `cat-file --batch-check` is exit 2, not a size of zero), each
+git call's stderr is echoed as a note, and the tracked-`.env` test is bash's own `=~` over the
+record's path. 0.11 s on the tree; the self-test plants a newline path and a two-run blob:
+
+```
+self-test: e-mail in a path holding a newline caught
+self-test: e-mail-shaped bytes in three binary blobs (one under a non-ASCII path, one with two runs) counted as blobs, not judged
+neutrality: 122 tracked (122 regular, 0 symlink, 0 submodule not scanned); private paths over all bytes of 122; e-mails judged in 109 text (13 binary or empty, e-mail-shaped bytes in 1 of them not judged); 0 hits
+```

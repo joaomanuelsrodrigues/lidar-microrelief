@@ -98,7 +98,9 @@ def test_the_self_test_plants_every_class_in_a_temporary_repository_and_catches_
         "e-mail caught despite .gitattributes",
         "symlink target caught",
         "tracked .env at depth caught",
-        "e-mail-shaped bytes in two binary blobs (one under a non-ASCII path) counted, not judged",
+        "e-mail in a path holding a newline caught",
+        "e-mail-shaped bytes in three binary blobs (one under a non-ASCII path, one with two runs) "
+        "counted as blobs, not judged",
         "clean repo silent",
         "broken instrument exits 2 with no summary",
         "empty population exits 2 with no summary",
@@ -108,6 +110,9 @@ def test_the_self_test_plants_every_class_in_a_temporary_repository_and_catches_
 
 
 def test_the_tracked_tree_is_clean_and_the_summary_names_every_denominator(tmp_path: Path) -> None:
+    """Reads the INDEX, not the working tree: an unstaged edit to a tracked file is invisible here
+    and a staged one is judged before it is committed — stage, then run (measured 2026-08-27:
+    a fixed literal in this very file kept failing until `git add`)."""
     result = _run(ROOT, tmp_path)
     assert result.returncode == 0, result.stdout + result.stderr
     assert _summary_for(ROOT, tmp_path) in result.stdout, result.stdout
@@ -315,3 +320,56 @@ def test_what_git_says_on_stderr_is_an_instrument_note_not_a_hit(tmp_path: Path)
     assert result.returncode == 0, result.stdout + result.stderr
     assert "leak" not in result.stdout and _summary_for(repo, tmp_path) in result.stdout
     assert "neutrality: git grep said:" in result.stderr and "trace:" in result.stderr
+
+
+def test_an_email_in_a_path_holding_a_newline_is_caught(tmp_path: Path) -> None:
+    """Round 7: a per-path `grep -F` join read the path as a pattern LIST, and a real e-mail in
+    such a file vanished from the verdict with a green summary."""
+    repo = _scratch_repo(tmp_path)
+    (repo / "q\nr.md").write_text(f"contact: {MAIL}\n", encoding="utf-8")
+    _git(repo, tmp_path, "add", "q\nr.md")
+    result = _run(repo, tmp_path)
+    assert result.returncode == 1 and "e-mail leak:" in result.stdout, result.stdout + result.stderr
+    assert "r.md:1:someone" in result.stdout
+
+
+def test_two_email_shaped_runs_in_one_binary_blob_count_as_one_blob(tmp_path: Path) -> None:
+    """The summary says 'N of them' — of the binary blobs — so the count is of blobs, the same
+    thing `_summary_for` counts (round 7 had the script count matches)."""
+    repo = _scratch_repo(tmp_path)
+    (repo / "twice.bin").write_bytes(
+        b"a " + MAIL.encode() + b" b other" + b"@" + b"example.com\0\n"
+    )
+    _git(repo, tmp_path, "add", "twice.bin")
+    result = _run(repo, tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert _summary_for(repo, tmp_path) in result.stdout and "in 1 of them" in result.stdout
+
+
+def test_colour_config_does_not_change_the_verdict(tmp_path: Path) -> None:
+    """Round 7: the NUL scan lacked --no-color; `color.grep=always` wrapped every name in ANSI
+    escapes, no binary blob matched the join, and the tree's one PNG became a false red."""
+    repo = _scratch_repo(tmp_path)
+    (repo / "blob.bin").write_bytes(b"maybe " + MAIL.encode() + b"\0\n")
+    _git(repo, tmp_path, "add", "blob.bin")
+    result = _run(
+        repo,
+        tmp_path,
+        GIT_CONFIG_COUNT="1",
+        GIT_CONFIG_KEY_0="color.grep",
+        GIT_CONFIG_VALUE_0="always",
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert _summary_for(repo, tmp_path) in result.stdout
+
+
+def test_an_object_git_cannot_read_is_an_instrument_failure(tmp_path: Path) -> None:
+    """`cat-file --batch-check` says `<sha> missing` and exits 0; round 7 found that fed to an
+    integer test, which errored into the binary branch and the run stayed green."""
+    repo = _scratch_repo(tmp_path)
+    _git(
+        repo, tmp_path, "update-index", "--add", "--cacheinfo", "100644," + "1" * 40 + ",ghost.txt"
+    )
+    result = _run(repo, tmp_path)
+    assert result.returncode == 2 and result.stdout == "", result.stdout + result.stderr
+    assert "instrument failure" in result.stderr
