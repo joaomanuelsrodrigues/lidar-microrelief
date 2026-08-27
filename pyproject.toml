@@ -19,7 +19,9 @@ site = ["matplotlib>=3.8"]
 dgt = ["requests>=2.31"]
 # `requests` is repeated here on purpose: CI runs `uv sync --extra dev --extra site`, so
 # without it the provider tests would be uninstallable in CI while passing locally.
-dev = ["pytest>=8.0", "ruff>=0.5", "mypy>=1.10", "requests>=2.31"]
+# pyyaml: tests/test_agents_commands.py parses ci.yml; three hand-rolled readers each missed a
+# YAML form the next review found (2026-08-27). MIT, test-only.
+dev = ["pytest>=8.0", "ruff>=0.5", "mypy>=1.10", "requests>=2.31", "pyyaml>=6.0"]
 
 [project.scripts]
 microrelief = "microrelief.cli:main"

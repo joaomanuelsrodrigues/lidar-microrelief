@@ -991,3 +991,37 @@ new lines. Measured on the tree, 0.12 s:
 self-test: private path behind a NUL byte caught; e-mail caught; symlink target caught; .env.local caught; .venv/ contents ignored; clean repo silent; .env pattern matches .env.local and sub/dir/.env, not .envrc
 neutrality: 122 tracked (122 regular, 0 symlink, 0 submodule not scanned); private paths over all bytes of 122; e-mails over 109 text (13 binary or empty); 0 hits
 ```
+
+**Gate, round five (2026-08-27) — the redesign's own holes, and the exit contract made real.** Two
+review angles survived a session limit and measured, on the index-based version: an `exit 2`
+inside `$(...)` ended only the subshell, so a broken `git grep` (a bogus `grep.patternType`, a
+corrupt object) produced a **green summary, exit 0**; `2>&1` folded git's warnings into the hit
+list; `git grep -I` obeys `.gitattributes`, so a tracked `*.md -diff` moved a planted e-mail out
+of the scanned population (`0 hits`, exit 0); the self-test's `git init` inherited
+`GIT_INDEX_FILE` from a pre-commit hook and staged its scratch blobs into the caller's index; the
+working-tree `.env` check was red on a sanctioned local `.env`, blind under any ignored directory,
+and answered a machine question inside a publication gate. Now: every scan is a statement into a
+temporary file and the caller reads its status — 0 clean, 1 hit, **2 instrument failure with no
+summary** (the self-test provokes one and requires exactly that); stdout and stderr are kept
+apart, a git warning is printed as an instrument note; the text/binary rule (non-empty, no NUL in
+the first 8000 bytes) is computed by the script over `git cat-file`, so no attribute can move a
+blob — e-mails are searched in every byte and a hit inside a binary blob is **counted, not
+judged** (the summary now says `e-mail-shaped bytes in 1 of them not judged`: the PNG coincidence
+measured earlier, visible instead of silent); the self-test and the pytest scratch repositories
+run under `GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1` with every `GIT_*` variable unset;
+the working-tree `.env` check is gone (the tracked one stays: `.gitignore`'s `.env*` is where a
+local one is provisioned to live), and `AGENTS.md` rule 5 says "tracked". The CI-mirror test
+parses `ci.yml` with PyYAML (dev extra) after three hand-rolled line readers each missed a form
+the next review found. On this tree, 0.7 s:
+
+```
+self-test: private path behind a NUL byte caught
+self-test: e-mail caught despite .gitattributes
+self-test: symlink target caught
+self-test: tracked .env at depth caught
+self-test: e-mail-shaped bytes in a binary blob counted, not judged
+self-test: clean repo silent
+self-test: broken instrument exits 2 with no summary
+self-test: .env pattern matches .env.local and sub/dir/.env, not .envrc
+neutrality: 122 tracked (122 regular, 0 symlink, 0 submodule not scanned); private paths over all bytes of 122; e-mails judged in 109 text (13 binary or empty, e-mail-shaped bytes in 1 of them not judged); 0 hits
+```

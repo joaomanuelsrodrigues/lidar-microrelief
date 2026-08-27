@@ -16,8 +16,10 @@ science — the science lives in `RUBRIC.md`, `CALIBRATIONS.md`, and `ATTRIBUTIO
 4. **Every hardcoded number is declared.** A new threshold or magic constant lands in
    `CALIBRATIONS.md` in the same commit that introduces it — value, where it is used, its origin,
    and what would replace it with an empirical calibration.
-5. **No credentials in this repository, ever.** No `.env` file, no tokens, no keys, not even
-   placeholders. Data source credentials, if ever needed, live outside this repo.
+5. **No credentials in this repository, ever.** No tracked `.env` file, no tokens, no keys, not
+   even placeholders. Data source credentials, if ever needed, live outside the tracked tree —
+   `.gitignore`'s `.env*` is where a local one may sit, and `scripts/neutrality.sh` refuses a
+   tracked one at any depth.
 6. **Mocked tests prove wiring, not behaviour.** Any reader or client that touches a real file or a
    real network endpoint is unvalidated until it has been exercised end-to-end against the real
    source at least once, with the result recorded.
