@@ -937,3 +937,29 @@ neutrality: scanned 122 tracked files for private paths (all bytes), 109 text fi
 A planted path inside a binary file in a scratch repository is a test now
 (`test_a_private_path_inside_a_binary_file_is_caught`). `LC_ALL=C` is exported by the script so
 what counts as binary no longer depends on the machine's locale.
+
+**Gate, round three — the fixes, and what the probes showed first.** The re-run of the third
+review found eight more, each measured on a scratch repository; my own probes on the script as
+it stood, before touching it:
+
+```
+text-only repo                 → summary printed, exit 0
+binary-only repo               → exit 123, no summary        (grep -IL under pipefail)
+tracked dangling symlink       → "grep: d: No such file or directory", exit 123, no summary
+newline-only file              → exit 123, no summary        (no character matches `.`)
+```
+
+Now: the population is enumerated once, NUL-separated, into a temp file (a bash variable cannot
+hold NULs — the first draft captured them and every path ran into the next); a tracked path that
+is not a readable file refuses the scan before any count; skipped files are counted by an explicit
+criterion (empty, or a NUL byte anywhere — the test derives the same one independently; a
+newline-only file is text); the tracked-`.env` check captures instead of `grep -q` (SIGPIPE 141
+under `pipefail` on a large index); the all-bytes scan prints only the match; the walk includes
+symlinks and prunes virtualenvs found by their `pyvenv.cfg`. Two of those fixes failed their own
+control on the first draft — the NUL count captured a NUL, and an empty virtualenv list became an
+empty `-f` pattern that matches every line — and were corrected before commit. After the fix,
+this tree:
+
+```
+neutrality: scanned 122 tracked files for private paths (all bytes), 109 text files for e-mails (13 binary or empty skipped), 0 hits
+```
