@@ -18,8 +18,9 @@ science — the science lives in `RUBRIC.md`, `CALIBRATIONS.md`, and `ATTRIBUTIO
    and what would replace it with an empirical calibration.
 5. **No credentials in this repository, ever.** No tracked `.env` file, no tokens, no keys, not
    even placeholders. Data source credentials, if ever needed, live outside the tracked tree —
-   `.gitignore`'s `.env*` is where a local one may sit, and `scripts/neutrality.sh` refuses a
-   tracked one at any depth.
+   `.gitignore`'s `.env*` is where a local one may sit, and `scripts/neutrality.sh` refuses any
+   tracked file that rule (or any other line of `.gitignore`) excludes, by git's own
+   evaluation — so a force-added `.env`, `.env-prod` or `.env/secret` at any depth.
 6. **Mocked tests prove wiring, not behaviour.** Any reader or client that touches a real file or a
    real network endpoint is unvalidated until it has been exercised end-to-end against the real
    source at least once, with the result recorded.

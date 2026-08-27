@@ -11,6 +11,7 @@ rather than print a summary. The population is the index, read through git, from
 
 import os
 import re
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -74,7 +75,7 @@ def _summary_for(repo: Path, tmp_path: Path) -> str:
         f"neutrality: {regular + symlink + gitlink} tracked ({regular} regular, {symlink} symlink, "
         f"{gitlink} submodule not scanned); private paths over all bytes of {regular}; "
         f"e-mails judged in {text} text ({regular - text} binary or empty, e-mail-shaped bytes in "
-        f"{mail_binary} of them not judged); 0 hits"
+        f"{mail_binary} of them not judged); 0 tracked files the .gitignore excludes; 0 hits"
     )
 
 
@@ -83,8 +84,9 @@ def _scratch_repo(tmp_path: Path) -> Path:
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / "clean.md").write_text("nothing to see\n", encoding="utf-8")
+    (repo / ".gitignore").write_text(".env*\n", encoding="utf-8")  # the gate's secrets rule is this
     _git(repo, tmp_path, "init", "-q")
-    _git(repo, tmp_path, "add", "clean.md")
+    _git(repo, tmp_path, "add", "clean.md", ".gitignore")
     return repo
 
 
@@ -97,14 +99,16 @@ def test_the_self_test_plants_every_class_in_a_temporary_repository_and_catches_
         "private path behind a NUL byte caught",
         "e-mail caught despite .gitattributes",
         "symlink target caught",
-        "tracked .env at depth caught",
         "e-mail in a path holding a newline caught",
+        "tracked file the repository's .gitignore excludes caught: sub/.env",
+        "tracked file the repository's .gitignore excludes caught: .env-prod",
+        "tracked file the repository's .gitignore excludes caught: .env/secret",
+        "tracked file the repository's .gitignore excludes caught: $'sub/.env\\n'",
         "e-mail-shaped bytes in binary blobs counted as blobs, not judged",
         "clean repo silent",
         "broken instrument exits 2 with no summary",
         "empty population exits 2 with no summary",
-        ".env name test (the gate's own) matches .env.local, sub/dir/.env and names carrying a "
-        "newline, not .envrc",
+        "a .gitignore without .env* is an instrument failure, exit 2 with no summary",
     ):
         assert f"self-test: {phrase}" in result.stdout, (phrase, result.stdout)
 
@@ -126,30 +130,6 @@ def test_the_scan_covers_the_whole_tree_from_a_subdirectory(tmp_path: Path) -> N
     result = _run(ROOT / "docs", tmp_path)
     assert result.returncode == 0, result.stdout + result.stderr
     assert _summary_for(ROOT, tmp_path) in result.stdout
-
-
-def test_a_tracked_env_file_at_any_depth_is_caught_and_envrc_is_not(tmp_path: Path) -> None:
-    repo = _scratch_repo(tmp_path)
-    (repo / ".envrc").write_text("use nix\n", encoding="utf-8")
-    _git(repo, tmp_path, "add", ".envrc")
-    assert _run(repo, tmp_path).returncode == 0
-    (repo / "sub").mkdir()
-    (repo / "sub" / ".env").write_text("TOKEN=x\n", encoding="utf-8")
-    assert _run(repo, tmp_path).returncode == 0  # untracked: not this gate's question
-    _git(repo, tmp_path, "add", "-f", "sub/.env")
-    result = _run(repo, tmp_path)
-    assert result.returncode == 1 and "tracked .env file:" in result.stdout, result.stdout
-    assert re.search(r"^sub/\.env$", result.stdout, re.M)
-
-
-def test_a_tracked_env_under_a_non_ascii_path_is_caught(tmp_path: Path) -> None:
-    """`git ls-files` without -z octal-quotes the path; an anchored pattern missed it (round 3)."""
-    repo = _scratch_repo(tmp_path)
-    (repo / "é").mkdir()
-    (repo / "é" / ".env").write_text("TOKEN=x\n", encoding="utf-8")
-    _git(repo, tmp_path, "add", "-f", "é/.env")
-    result = _run(repo, tmp_path)
-    assert result.returncode == 1 and "tracked .env file:" in result.stdout, result.stdout
 
 
 def test_a_private_path_inside_a_binary_blob_is_caught(tmp_path: Path) -> None:
@@ -188,7 +168,8 @@ def test_an_email_is_caught_even_when_gitattributes_marks_the_file_no_diff(tmp_p
 
 
 def test_a_binary_only_index_and_a_newline_only_file_are_counted_not_fatal(tmp_path: Path) -> None:
-    """On the working-tree version, each killed the script with a bare exit 123 and no summary."""
+    """On the working-tree version, each killed the script with a bare exit 123 and no summary.
+    (The index also holds `.gitignore`, the rule the gate requires — one text blob.)"""
     repo = _scratch_repo(tmp_path)
     _git(repo, tmp_path, "rm", "-qf", "clean.md")
     (repo / "b.bin").write_bytes(b"x\0y")
@@ -197,14 +178,14 @@ def test_a_binary_only_index_and_a_newline_only_file_are_counted_not_fatal(tmp_p
     assert result.returncode == 0 and _summary_for(repo, tmp_path) in result.stdout, (
         result.stdout + result.stderr
     )
-    assert "e-mails judged in 0 text (1 binary or empty" in result.stdout
+    assert "e-mails judged in 1 text (1 binary or empty" in result.stdout
     (repo / "nl.txt").write_text("\n\n", encoding="utf-8")
     _git(repo, tmp_path, "add", "nl.txt")
     result = _run(repo, tmp_path)
     assert result.returncode == 0 and _summary_for(repo, tmp_path) in result.stdout, (
         result.stdout + result.stderr
     )
-    assert "e-mails judged in 1 text (1 binary or empty" in result.stdout
+    assert "e-mails judged in 2 text (1 binary or empty" in result.stdout
 
 
 def test_a_tracked_file_deleted_from_the_working_tree_is_still_scanned(tmp_path: Path) -> None:
@@ -257,7 +238,7 @@ def test_a_file_with_a_late_nul_is_binary_for_the_verdict_and_the_count_alike(
     assert result.returncode == 0, result.stdout + result.stderr
     assert _summary_for(repo, tmp_path) in result.stdout
     assert (
-        "e-mails judged in 1 text (1 binary or empty, e-mail-shaped bytes in 1 of them not judged)"
+        "e-mails judged in 2 text (1 binary or empty, e-mail-shaped bytes in 1 of them not judged)"
         in result.stdout
     )
 
@@ -390,19 +371,6 @@ def test_the_self_test_cannot_read_a_broken_instrument_as_a_clean_repo(tmp_path:
     assert "clean repo silent" not in result.stdout and "instrument failure" in result.stderr
 
 
-def test_a_tracked_env_name_carrying_a_newline_is_caught(tmp_path: Path) -> None:
-    """`.gitignore`'s `.env*` ignores such a name, so a force-added one is a tracked secret file;
-    a string-anchored `=~` had let it pass (round 8)."""
-    repo = _scratch_repo(tmp_path)
-    (repo / "sub").mkdir()
-    (repo / "sub" / ".env\n").write_text("TOKEN=x\n", encoding="utf-8")
-    _git(repo, tmp_path, "add", "-f", "--", "sub/.env\n")
-    result = _run(repo, tmp_path)
-    assert result.returncode == 1 and "tracked .env file:" in result.stdout, (
-        result.stdout + result.stderr
-    )
-
-
 def test_an_unmerged_index_is_an_instrument_failure(tmp_path: Path) -> None:
     """`git grep --cached` skips unmerged entries by construction; the count had vouched for
     blobs the scan never read (round 8)."""
@@ -446,9 +414,8 @@ def _shim(tmp_path: Path, body: str) -> dict[str, str]:
     """A `git` on PATH that tampers with one command's output and delegates everything else."""
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(exist_ok=True)
-    real = subprocess.run(
-        ["bash", "-c", "command -v git"], capture_output=True, text=True, check=True
-    ).stdout.strip()
+    real = shutil.which("git")
+    assert real
     (bin_dir / "git").write_text(
         f'#!/usr/bin/env bash\nREAL={real!r}\n{body}\nexec "$REAL" "$@"\n', encoding="utf-8"
     )
@@ -482,3 +449,89 @@ def test_a_hit_under_a_path_the_index_does_not_list_is_an_instrument_failure(
     result = _run(repo, tmp_path, **env)
     assert result.returncode == 2 and result.stdout == "", result.stdout + result.stderr
     assert "does not list" in result.stderr
+
+
+def test_a_tracked_file_the_gitignore_excludes_is_caught_at_any_depth_and_by_any_name(
+    tmp_path: Path,
+) -> None:
+    """The secrets rule is the repository's own `.env*`, evaluated by git: a regex of the gate's
+    (`.env(\\..+)?`) let `.env-prod`, `.env_local` and `.env/secret` through (round 9). An
+    untracked one is not this gate's question; a force-added one is."""
+    repo = _scratch_repo(tmp_path)
+    (repo / "sub").mkdir()
+    (repo / ".env").mkdir()
+    for name in ("sub/.env", ".env-prod", ".env_local", ".env/secret", "sub/.env\n", ".env "):
+        (repo / name).write_text("TOKEN=x\n", encoding="utf-8")
+    assert _run(repo, tmp_path).returncode == 0  # untracked: not this gate's question
+    _git(
+        repo,
+        tmp_path,
+        "add",
+        "-f",
+        "--",
+        "sub/.env",
+        ".env-prod",
+        ".env_local",
+        ".env/secret",
+        "sub/.env\n",
+        ".env ",
+    )
+    result = _run(repo, tmp_path)
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "tracked though the repository's .gitignore excludes it:" in result.stdout
+    for name in ("sub/.env", ".env-prod", ".env_local", ".env/secret", ".env "):
+        assert re.search("^" + re.escape(name) + "$", result.stdout, re.M), (name, result.stdout)
+
+
+def test_a_tracked_env_under_a_non_ascii_path_is_caught(tmp_path: Path) -> None:
+    """`git ls-files` without -z octal-quotes the path; an anchored pattern missed it (round 3)."""
+    repo = _scratch_repo(tmp_path)
+    (repo / "é").mkdir()
+    (repo / "é" / ".env").write_text("TOKEN=x\n", encoding="utf-8")
+    _git(repo, tmp_path, "add", "-f", "é/.env")
+    result = _run(repo, tmp_path)
+    assert result.returncode == 1 and "\né/.env\n" in result.stdout, result.stdout + result.stderr
+
+
+def test_a_tracked_envrc_is_flagged_because_the_repository_ignores_it(tmp_path: Path) -> None:
+    """`.envrc` is not a secrets file, but `.env*` ignores it — the rule is the repository's, and a
+    force-added file it excludes is reported whatever its purpose (add an exemption to
+    .gitignore, not to the gate)."""
+    repo = _scratch_repo(tmp_path)
+    (repo / ".envrc").write_text("use nix\n", encoding="utf-8")
+    _git(repo, tmp_path, "add", "-f", ".envrc")
+    result = _run(repo, tmp_path)
+    assert result.returncode == 1 and "\n.envrc\n" in result.stdout, result.stdout
+
+
+def test_a_repository_whose_gitignore_lacks_the_env_rule_is_an_instrument_failure(
+    tmp_path: Path,
+) -> None:
+    repo = _scratch_repo(tmp_path)
+    (repo / ".gitignore").write_text("", encoding="utf-8")
+    _git(repo, tmp_path, "add", ".gitignore")
+    result = _run(repo, tmp_path)
+    assert result.returncode == 2 and result.stdout == "", result.stdout + result.stderr
+    assert "does not exclude .env" in result.stderr
+
+
+def test_an_unguarded_failure_is_exit_2_with_a_message_not_a_silent_hit(tmp_path: Path) -> None:
+    """Round 9 (by mutation): a bare failing command inside `check` exited 1 — the hit code —
+    with nothing printed; the ERR trap makes it an instrument failure with the line."""
+    repo = _scratch_repo(tmp_path)
+    mutant = tmp_path / "mutant.sh"
+    mutant.write_text(
+        SCRIPT.read_text(encoding="utf-8").replace("  classify\n", "  classify\n  false\n", 1),
+        encoding="utf-8",
+    )
+    result = subprocess.run(
+        ["bash", str(mutant)],
+        cwd=repo,
+        env=_env(tmp_path),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    assert result.returncode == 2 and result.stdout == "", result.stdout + result.stderr
+    assert "unguarded command failed" in result.stderr

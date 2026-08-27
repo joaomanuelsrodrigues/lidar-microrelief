@@ -1065,7 +1065,7 @@ self-test: e-mail-shaped bytes in three binary blobs (one under a non-ASCII path
 neutrality: 122 tracked (122 regular, 0 symlink, 0 submodule not scanned); private paths over all bytes of 122; e-mails judged in 109 text (13 binary or empty, e-mail-shaped bytes in 1 of them not judged); 0 hits
 ```
 
-**Gate, round eight (2026-08-27).** Seven by measurement or mutation: the self-test's `( check )
+**Gate, round eight (2026-08-27).** Ten findings, seven of them correctness by measurement or mutation, one conventions by mutation (three guards without a test that fails when they are deleted: the sizes-count guard, the unlisted-path guard, and the `note_err` calls), two cleanups: the self-test's `( check )
 || true` swallowed `fail_instrument`'s exit inside a subshell, so under a broken `git grep` the
 empty verdict file — the pass condition — printed "clean repo silent" (the subshell existed only
 because `check` never reset its state); `[[ =~ ]]` is string-anchored where `.gitignore`'s
@@ -1079,7 +1079,8 @@ broken instrument exits 2 and never prints "clean repo silent"); the `.env` name
 function applied to every line of a path, shared by production and self-test, with newline
 cases; unmerged entries are exit 2; the planted binary set is an array and its count is
 compared to the array's length; a `git` shim in the suite drops a size line and appends an
-unlisted record, so the two guards have tests that fail without them. 0.16 s on the tree:
+unlisted record, and `GIT_TRACE=1` with a symlink planted requires a note for every kind of git
+call, so all three guards have tests that fail without them. 0.16 s on the tree:
 
 ```
 self-test: e-mail-shaped bytes in binary blobs counted as blobs, not judged
@@ -1088,4 +1089,32 @@ self-test: broken instrument exits 2 with no summary
 self-test: empty population exits 2 with no summary
 self-test: .env name test (the gate's own) matches .env.local, sub/dir/.env and names carrying a newline, not .envrc
 neutrality: 122 tracked (122 regular, 0 symlink, 0 submodule not scanned); private paths over all bytes of 122; e-mails judged in 109 text (13 binary or empty, e-mail-shaped bytes in 1 of them not judged); 0 hits
+```
+
+
+**Gate, round nine (2026-08-27).** Ten reported (13 confirmed, 4 plausible, 3 refuted of 20
+distinct); the three that matter for a flip, all executed: the `.env` regex was **narrower than
+the repository's own `.env*` ignore rule** — `.env-prod`, `.env_local`, `.environment`,
+`.env `, `.env/secret` are ignored by git and passed the gate while its header claimed parity;
+the self-test ran `check` under `|| true`, i.e. with errexit off, a different failure regime from
+production, where a bare failing command exited **1 — the hit code — with nothing printed**
+(by mutation); the self-test's "trailing newline" name was `$(printf 'sub/.env\n')`, which is
+byte-identical to `sub/.env` because command substitution strips the newline. Now: the secrets
+rule is git's own evaluation of the tracked `.gitignore` (`git ls-files -c -i
+--exclude-per-directory=.gitignore` — exactly the force-added set, NUL-delimited, no regex; 0 on
+this tree), after a precondition that `.gitignore` excludes `.env` and `.env.local` at all (a
+repository without the rule is exit 2); `set -E` + an ERR trap make any unguarded failure exit 2
+with the line, in production and in the self-test alike, which now runs `check` bare; the planted
+name is `$'sub/.env\n'` and it is caught; a symlink target is rendered through `tr`, not `$(cat)`
+(a NUL would have been dropped with a bash warning); the unmerged list names a path once, `%q`;
+`rev-parse` goes through `run_git` like every other call; `scan_pattern` is back; the shim uses
+`sed '$d'`. 0.12 s on the tree:
+
+```
+self-test: tracked file the repository's .gitignore excludes caught: sub/.env
+self-test: tracked file the repository's .gitignore excludes caught: .env-prod
+self-test: tracked file the repository's .gitignore excludes caught: .env/secret
+self-test: tracked file the repository's .gitignore excludes caught: $'sub/.env\n'
+self-test: a .gitignore without .env* is an instrument failure, exit 2 with no summary
+neutrality: 122 tracked (122 regular, 0 symlink, 0 submodule not scanned); private paths over all bytes of 122; e-mails judged in 109 text (13 binary or empty, e-mail-shaped bytes in 1 of them not judged); 0 tracked files the .gitignore excludes; 0 hits
 ```
