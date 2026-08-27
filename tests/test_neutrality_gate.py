@@ -136,13 +136,16 @@ def test_the_count_survives_a_binary_only_index_and_a_newline_only_file(tmp_path
 
 
 def test_a_dangling_symlink_or_unreadable_tracked_file_refuses_the_scan(tmp_path: Path) -> None:
+    """The offending path is named `-n`: an `echo "$0"` swallowed it (measured 2026-08-27) and the
+    refusal fired with an empty list."""
     repo = _scratch_repo(tmp_path)
-    (repo / "d").symlink_to("nowhere")
-    subprocess.run(["git", "add", "d"], cwd=repo, check=True)
+    (repo / "-n").symlink_to("nowhere")
+    subprocess.run(["git", "add", "--", "-n"], cwd=repo, check=True)
     result = _run(cwd=repo)
     assert result.returncode == 1 and "not a readable file" in result.stdout, (
         result.stdout + result.stderr
     )
+    assert "\n-n\n" in result.stdout, result.stdout
 
 
 def test_a_symlinked_env_file_and_a_tracked_env_under_a_non_ascii_path_are_caught(

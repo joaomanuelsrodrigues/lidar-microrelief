@@ -46,7 +46,7 @@ scan() {  # scan <grep flags> <pattern> <label>  — reads NUL-separated paths o
   hits=$(xargs -0 -r grep -nHo"$1"E -- "$2" | tr -d '\0' || true)
   if [ -n "$hits" ]; then
     echo "$3"
-    echo "$hits"
+    printf '%s\n' "$hits"
     return 1
   fi
   return 0
@@ -93,9 +93,9 @@ n_tracked=$(tr -dc '\0' < "$pop" | wc -c)
 # A tracked file deleted from the working tree, a dangling symlink or an unreadable file is read by
 # nobody — grep's error would be swallowed and it would be reported as read, or the count below
 # would abort with a bare 123 and no summary (measured on all three, 2026-08-27). Refuse first.
-unreadable=$(xargs -0 -r -n1 sh -c '[ -r "$0" ] && [ -f "$0" ] || echo "$0"' < "$pop")
+unreadable=$(xargs -0 -r -n1 sh -c '[ -r "$0" ] && [ -f "$0" ] || printf "%s\n" "$0"' < "$pop")   # printf: a path named -n or -e would vanish in echo
 if [ -n "$unreadable" ]; then
-  echo "tracked but not a readable file in the working tree (not scanned):"; echo "$unreadable"; exit 1
+  echo "tracked but not a readable file in the working tree (not scanned):"; printf '%s\n' "$unreadable"; exit 1
 fi
 # What the e-mail scan skips, by an explicit criterion: empty, or holding a NUL byte anywhere —
 # the same criterion tests/test_neutrality_gate.py derives on its own. (`grep -IL .` was the proxy
@@ -111,7 +111,7 @@ status=0
 scan a "$PRIVATE_PATH" 'private path leak:' < "$pop" || status=1
 scan I "$EMAIL" 'e-mail leak:' < "$pop" || status=1
 tracked_env=$(tr '\0' '\n' < "$pop" | grep -E "$ENV_FILE" || true)   # no -q: under pipefail an early exit is SIGPIPE 141 on a large index
-if [ -n "$tracked_env" ]; then echo "tracked .env file:"; echo "$tracked_env"; status=1; fi
+if [ -n "$tracked_env" ]; then echo "tracked .env file:"; printf '%s\n' "$tracked_env"; status=1; fi
 # The working tree at any depth, files and symlinks (a symlinked .env is the dotenv "shared
 # secrets" pattern; `-type f` alone passed it), through the same pattern — not `ls .env .env.*`
 # (ls exits non-zero when any ONE operand is missing, so with no `.env` a present `.env.local`
@@ -122,7 +122,7 @@ venv_dirs=$(find . -path ./.git -prune -o -name pyvenv.cfg -printf '%h/\n' 2>/de
 # `grep .` drops the empty line an empty prefix list would produce — an empty -f pattern matches
 # every line, and -v then removed every hit (measured 2026-08-27: a planted .env.local passed).
 present=$(find . -path ./.git -prune -o \( -type f -o -type l \) -print | grep -E "$ENV_FILE" | grep -vF -f <(printf '%s\n' "$venv_dirs" | grep . || true) || true)
-if [ -n "$present" ]; then echo ".env file present in the working tree:"; echo "$present"; status=1; fi
+if [ -n "$present" ]; then echo ".env file present in the working tree:"; printf '%s\n' "$present"; status=1; fi
 if [ "$status" -eq 0 ]; then
   echo "neutrality: scanned $n_tracked tracked files for private paths (all bytes), $n_text text files for e-mails ($n_skipped binary or empty skipped), 0 hits"
 fi
