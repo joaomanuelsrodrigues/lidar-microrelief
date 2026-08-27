@@ -224,7 +224,7 @@ def test_a_noise_return_outside_the_footprint_is_also_a_refusal(tmp_path: Path) 
     coordinate on a class-7/18 return was silently dropped with the noise, not detected. But a
     coordinate that cannot be real is a property of the READ, not of the return's class — if one
     record decoded to garbage, nothing vouches for the records beside it. Verified on the four
-    real tiles before extending (s263): zero noise returns fall outside any declared box, so the
+    tiles before extending (2026-08-08): zero noise returns fall outside any declared box, so the
     guard's wider scope refuses nothing that the provider actually ships."""
     with pytest.raises(ReadError, match="outside its declared footprint"):
         read_laz(

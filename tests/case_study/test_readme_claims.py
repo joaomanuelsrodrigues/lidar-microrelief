@@ -8,8 +8,8 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_the_readme_quotes_the_hash_that_the_run_actually_produced() -> None:
-    # viewer/provenance.json is the tracked copy of the run's record (outputs/ is gitignored).
-    prov = json.loads((ROOT / "viewer" / "provenance.json").read_text())
+    # docs/viewer/provenance.json is the tracked copy of the run's record (outputs/ is gitignored).
+    prov = json.loads((ROOT / "docs" / "viewer" / "provenance.json").read_text())
     assert prov["reproducibility_hash"][:12] in (ROOT / "README.md").read_text()
 
 
@@ -19,7 +19,7 @@ def test_the_readme_declares_the_unverified_cross_machine_replay() -> None:
 
 
 def test_the_readme_declares_the_replay_instability_on_real_data() -> None:
-    # s260: of four reads of the 845 MB, one corrupted coordinate and one IoError.
+    # 2026-08-05: of four reads of the 845 MB, one corrupted coordinate and one IoError.
     # The README must say the words, not claim a stability the data does not support.
     text = (ROOT / "README.md").read_text().lower()
     assert "not established" in text
@@ -45,3 +45,20 @@ def test_every_percentage_in_the_readme_appears_in_the_live_smoke_record() -> No
     assert percentages, "a README about a measured run should quote at least one percentage"
     for value in percentages:
         assert value in smoke, value
+
+
+def test_the_readme_never_tells_a_stranger_to_pip_install_from_pypi() -> None:
+    """`pip install microrelief[dgt]` fails: the package is not on PyPI. The only install lines
+    allowed are a clone + `uv sync`, or pip against the git URL."""
+    text = (ROOT / "README.md").read_text()
+    for line in text.splitlines():
+        if "pip install" in line and "microrelief" in line:
+            assert "git+https://" in line, line
+
+
+def test_the_readme_try_it_quotes_the_sample_record() -> None:
+    sample = ROOT / "examples" / "sistelo-sample" / "expected" / "provenance.json"
+    prov = json.loads(sample.read_text())
+    readme = (ROOT / "README.md").read_text()
+    assert prov["reproducibility_hash"][:12] in readme
+    assert "examples/sistelo-sample" in readme

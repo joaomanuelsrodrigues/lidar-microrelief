@@ -1,0 +1,44 @@
+{
+  "type": "Feature",
+  "properties": {
+    "name": "Sistelo — sample, 150 m around the tallest verified terrace riser",
+    "bounds": [
+      -20210.0,
+      256245.0,
+      -20060.0,
+      256395.0
+    ],
+    "bounds_epsg": 3763,
+    "source_tile": "LO-179557-07-2025",
+    "source": "Direção-Geral do Território, LiDAR 2024/PRR, collection LAZ",
+    "licence": "CC BY 4.0 — see ../../ATTRIBUTION.md",
+    "note_ring": "The ring is the WGS84 image of `bounds` for readers' maps; the CLI uses bounds + bounds_epsg."
+  },
+  "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+      [
+        [
+          -8.3769,
+          41.9755
+        ],
+        [
+          -8.3751,
+          41.9755
+        ],
+        [
+          -8.3751,
+          41.9768
+        ],
+        [
+          -8.377,
+          41.9768
+        ],
+        [
+          -8.3769,
+          41.9755
+        ]
+      ]
+    ]
+  }
+}

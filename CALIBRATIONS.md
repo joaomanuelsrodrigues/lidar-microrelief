@@ -35,6 +35,26 @@ listed here because "no magic number without a label" does not make an exception
 | `NODATA_UINT8 = 255` | `basis` | Deliberately **not 0**. Zero is `undetermined`, which is a published state — we looked and there was nothing to measure — and declaring it NoData would erase exactly the admission the band exists to make. 255 is a code the band never produces |
 | `NODATA_INT32 = -1` | `n_all`, `n_ground_asprs` | No count can be negative, so this cannot collide with a real value either. Again not 0, which is a true count: zero returns fell in that cell |
 
+## The neutrality gate's one rule (`scripts/neutrality.sh`)
+
+| Value | Where | Why this one | What would replace it |
+|---|---|---|---|
+| text = a non-empty blob with **no NUL byte anywhere** | `scripts/neutrality.sh` (`classify`), `tests/test_neutrality_gate.py` (`_summary_for`) | Decides which blobs an e-mail hit is *judged* in (private paths are searched in every byte of every blob regardless). Computed by the gate itself from the bytes, not delegated to `git grep -I` — which obeys `.gitattributes`, so a tracked file could move a blob out of the population (measured 2026-08-27). A hit inside a binary blob is counted in the summary, never hidden | Nothing: any other rule would have to be steerable from somewhere, and this one is not |
+
+## Presentation constants, not thresholds (viewer, styles, sample)
+
+None of these reaches a band or the record; each is listed because rule 4 admits no exception for
+"viewer-only". Their only calibration target is the artefact they size.
+
+| Value | Where | Why this one | What would replace it |
+|---|---|---|---|
+| `PALETTE_LEVELS = 255` | `render.py` | A palette PNG holds 256 entries; 255 opaque colours plus one transparent index is the most an exact (never merged) palette can carry | Nothing — it is the format's ceiling |
+| CHM ramp `64` levels | `render.py` `LAYERS` | Measured 2026-08-26 against the viewer's 5 MB image cap: 255 levels → 7.94 MB, 128 → 6.37 MB, 64 → 4.96 MB; ≈ 0.67 m per colour step over the 0–43 m at Sistelo. The GeoTIFF is untouched | The largest level count under the cap at a new site's CHM range |
+| `CAP_BYTES = 5_000_000` | `tests/test_viewer_assets.py` | A page image a stranger will load on a phone; the 3960² PNGs sit at 0.8–4.96 MB under it (CHM has 0.8 % headroom) | A measured load-time budget, if the page is ever measured |
+| `STOPS = 9` | `scripts/make_styles.py` | Colour stops sampled from the colormap for the `.qml` ramps, truncated as the viewer truncates; each stop equals the named colormap's value. QGIS interpolates between stops, and the viewer PNG quantises to 255 (64 for the CHM) levels, so a viewer pixel can sit up to 3 (terrain) or 8 (viridis at 64) units per channel from a stop (measured 2026-08-26) | More stops if a ramp's curvature ever shows banding in QGIS |
+| `SIZE_CAP_BYTES = 6_000_000` | `tests/test_sample.py` | The shipped sample must not turn a first run into a download; the sample weighs 3,174,006 bytes | Nothing measured — a first-run budget |
+| Sample window −20210…−20060 × 256245…256395 (EPSG:3763) | `scripts/make_sample.py`, `aoi.geojson`, `tests/test_sample.py` | 150 m around the tallest verified terrace riser (`docs/riser-measurement.md`), chosen for what it shows, not measured | Nothing — a choice of subject |
+
 ## Refusals, not thresholds (0.4.0)
 
 `crs.py`'s `require_metric_crs` is a **refusal, not a threshold**, so it owes no row above. It

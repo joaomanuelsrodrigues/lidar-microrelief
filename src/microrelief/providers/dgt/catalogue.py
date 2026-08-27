@@ -74,7 +74,7 @@ def _tile_ref_satisfies_tile_like(tile: TileRef) -> TileLike:
     that parameter — the CLI reaches it through `_selection_for() -> Any` — so mypy returned
     "Success" over a `TileRef` with `density` renamed away: silence about an unchecked
     relationship reads exactly like silence about a sound one. This function is the binding,
-    and it is verified by mutation rather than assumed (§A1/s275).
+    and it is verified by mutation rather than assumed (2026-08-10).
     """
     return tile
 

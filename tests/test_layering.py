@@ -1,7 +1,7 @@
 """The dependency edge points core <- providers, and only that way.
 
 A contract over every core module rather than a test per module: 'we forgot one' is exactly
-what a per-module suite cannot see (§A3/s246). Parsed from the source rather than observed at
+what a per-module suite cannot see (2026-07-28). Parsed from the source rather than observed at
 import time, so a module that is merely never imported during the run is still checked.
 
 The member list is derived by walking the whole package and *subtracting* the two exempt
@@ -130,7 +130,7 @@ def test_a_missing_provider_extra_is_named_rather_than_traced(
     The plan this task came from waved the branch away with `# pragma: no cover - exercised by
     the packaging test`. No such test existed, and this repo measures no coverage at all, so
     the pragma would have been a claim about an instrument that does not run. A guard nothing
-    discriminates is deletable without a red (§A1/s259), so it gets a test instead.
+    discriminates is deletable without a red (2026-08-05), so it gets a test instead.
     """
     monkeypatch.setitem(sys.modules, "microrelief.providers", None)
     with pytest.raises(SystemExit, match=r"microrelief\[dgt\]"):

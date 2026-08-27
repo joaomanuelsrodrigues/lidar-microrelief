@@ -62,7 +62,7 @@ def windows_for(max_window_m: float, cell: float) -> tuple[float, ...]:
     Exposed rather than left implicit in the loop because comparing "the window" to a terrace
     tread means comparing these numbers to it, not the parameter. Reasoning about the parameter
     instead produced a test that claimed a 24 m window against a 6 m tread and was in fact
-    running a 16.5 m one (s256).
+    running a 16.5 m one (2026-08-03).
     """
     return tuple((2 * radius + 1) * cell for radius in _radii(max_window_m, cell))
 
@@ -74,7 +74,7 @@ def classify_ground(
 
     What decides whether a terrace riser survives is `max_elevation_m` against the riser height,
     not `max_window_m` against the tread: the cap is the ceiling on every tolerance, so a riser
-    is excused exactly when the cap exceeds it, at any window (measured s256 -- see
+    is excused exactly when the cap exceeds it, at any window (measured 2026-08-03 -- see
     `CALIBRATIONS.md` and `tests/test_ground.py`).
     """
     invalid = np.isnan(min_z)

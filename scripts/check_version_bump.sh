@@ -8,7 +8,7 @@
 # Declared blindness, per F-050 itself: one commit range only (a multi-commit push is
 # checked as its last step unless a range is passed in), and dirty-tree runs are invisible
 # to any git-based check. Declared over-reach, the other side of the same trade: a
-# comment-only edit under src/ warns too (measured on real history: the s263 wording pass
+# comment-only edit under src/ warns too (measured on real history: the 2026-08-08 wording pass
 # touched only provenance.py's comments and this guard flags it). Warn-class is what makes
 # both sides of that trade liveable.
 set -euo pipefail

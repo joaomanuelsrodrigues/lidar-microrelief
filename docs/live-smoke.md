@@ -512,3 +512,635 @@ of both over a tree that did not change between them. The tree was fingerprinted
 `1e8b839dc8193efb1c2aedba6f6cd23b83df4d5f` both times — so "unchanged" is measured, not asserted.
 Two clean rounds buy coverage, not absence: E-006 puts per-round recall near 0.1 on a converged
 artefact.
+
+## 2026-08-26 — the shipped sample: 150 m around the tallest riser
+
+A stranger's first run should not start with an 845 MB download, and no machine other than the
+author's had ever run this pipeline. Both close with one file: a 150 m × 150 m cut of tile
+`LO-179557-07-2025` around the tallest verified riser (−20132.8, 256319.2;
+`docs/riser-measurement.md`), tracked in `examples/sistelo-sample/` beside the record and the
+per-band digests of the author's run. `tests/test_sample.py` reproduces that record on every CI
+run — the suite's only test on real returns, and the repository's first cross-machine replay probe.
+
+### 1. The cut
+
+```
+$ .venv/bin/python scripts/make_sample.py ~/data/dgt-laz/LO-179557-07-2025.laz examples/sistelo-sample
+points 390450  bytes 3174006  epsg 3763
+x -20210.00..-20060.00  y 256245.00..256395.00  z 161.96..386.40
+class 2 present: True
+sha256 9d65a09170f7085263d933c1d04a08a302db274a41d89b27983500755269202b
+wall 3.64s  maxrss 2454728 KB
+```
+
+Fewer points than the tile's mean predicts (27.7 pts/m² × 22,500 m² ≈ 623 k): this window runs
+17.3 pts/m². The 6 MB cap has 2.8 MB of room. The header's free text, which the neutrality gate
+cannot read (`grep -I` skips binaries), was printed with a positive control before the file was
+staged: `system_identifier 'AL;'`, `generating_software 'TerraScan'`, VLR descriptions
+`'RIEGL Extra Bytes'`, `'TerraScan Extra Bytes'`, `'http://laszip.org'`; the control — a
+planted home-directory path and a planted e-mail address, assembled in the probe, not written
+here — matched both; no marker in the file.
+
+### 2. The run, twice
+
+`$OUT` is a scratch directory outside the repository; everything else is as typed.
+
+```
+$ .venv/bin/microrelief run --aoi examples/sistelo-sample/aoi.geojson --laz examples/sistelo-sample \
+    --out "$OUT/sample-run-1" --attribution "$(cat examples/sistelo-sample/attribution.txt)"
+grid 300 x 300 cells of 0.5 m (0.0225 km2), 1 tile(s), 1 return(s) outside the AOI
+measured 56.2% | interpolated 43.1% | undetermined 0.7%
+expected void at f=1: 1.312% (measured density 17.3 pts/m2)
+ground recall 0.999 | non-ground recall 0.723 | accuracy 0.837 | majority-class null 0.587
+flight dates (none declared) | mixed epochs False
+reproducibility_hash 9df5586d283e969fd30718760eb8c7fa7dc8e502d9746c1759dd576c0f147fe1
+wall 0.78s  maxrss 171860 KB
+exit=0
+```
+
+The one return outside the AOI is the single point at exactly y = 256245.000: the cut keeps
+`[min, max)` on both axes, the grid runs rows downward from `origin_y = 256395` so its y-interval
+is open at the bottom, and that point maps to row 300 of 300. The six returns at exactly
+x = −20210.000 land in column 0 and are inside. Of the 390,450 returns, 316,927 (81 %) carry
+ASPRS class 5 (high vegetation), 72,380 class 2, 736 class 6, 407 class 7 — the 407 is the
+record's `point_count_noise_excluded`.
+
+The second run printed the same six lines (`wall 0.52s  maxrss 172176 KB`, `exit=0`). The
+attribution file was checked byte-for-byte against the provider's `DGT_ATTRIBUTION` constant
+before the first run (`True`, 213 characters). No `--selection`, so the record declares what it
+does not know: `flight_date: null`, `point_count_catalogue: null`, `flight dates (none declared)`.
+
+### 3. Identity, and the frozen record
+
+`jq` is not installed here; the record comparison was Python over both files with `created_utc`
+popped. Then the six bands:
+
+```
+record identical minus created_utc: True
+mdt byte-identical
+mds byte-identical
+chm byte-identical
+basis byte-identical
+n_all byte-identical
+n_ground_asprs byte-identical
+```
+
+Frozen to `examples/sistelo-sample/expected/`: `provenance.json` from run 1, and
+`bands.sha256.json` — the SHA-256 of each band's cell array (`src.read(1).tobytes()`), which is
+what the test compares, not the file bytes (GeoTIFF tags carry the timestamp-free
+`package_version` and hash, but a file-level digest would still be the wrong instrument for
+"the same cells").
+
+```
+mdt: 8f4ff857e3d2a8bfd8c385a6fbe16530cd5e90a8862bcb33a439518327c69be1
+mds: bf28b2a80e476fbddcec88bc6a986ae5b85672c14b66c3897ff97c56b5a907b2
+chm: 4bbfa90b0c95821985ca60af47fcd8130b8d11c2f76a8303f43ebd434cb4ebec
+basis: f19afc329de43eaa8ae1e28138f954aa39f7d55bdfa6229b0c0d7fadb10c6252
+n_all: b6d411761eed0226fc3ceb52cfdf92acf5b85993fcb6efb45bceb649fc50f7a7
+n_ground_asprs: dece09c098a8e733984faafc3e9527d0a4697df83b99d3cdb1ebff49ee92a9b9
+```
+
+Record: `grid {cell 0.5, crs_epsg 3763, 300 × 300, origin (−20210, 256395)}` · `honesty
+{measured 0.5622, interpolated 0.4311, undetermined 0.0067, expected_void 0.0131, density 17.34}`
+· `agreement {n_cells 87978, recall_ground 0.9988, recall_nonground 0.7227, accuracy 0.8367,
+majority_class_null 0.5872}` · `inputs[0] {point_count_measured 390450, noise_excluded 407}`.
+
+### 4. What the test locks, and what stays warn-class
+
+Five tests: size ≤ cap · CRS + extents inside the window + > 100 k points · class 2 present · the
+AOI declares `bounds_epsg` · a `run` over the directory reproduces `grid`, `honesty`, `agreement`,
+`parameters`, `reproducibility_hash` and the input's sha256. The per-band digests are compared too,
+but a mismatch **warns** rather than fails: the README's "cross-machine replay is unverified" is
+still true until CI — the first non-author machine — has run this test once and its log has been
+read. On the author's machine the test ran with `-W error::UserWarning` so that a warning here
+would have failed it.
+
+### 5. Added after the push — the first machine that is not the author's
+
+Run `32994664328` on `efb5c2d` (GitHub-hosted `ubuntu-latest`, CPython 3.12.3,
+`uv sync --extra dev --extra site`), read from the log, not the tick:
+
+```
+213 passed, 17 warnings in 3.66s
+self-test: private path caught
+self-test: e-mail caught
+neutrality: scanned 106 tracked files, 0 hits
+version-bump guard over HEAD~1..HEAD: 1 file(s) changed under src/, __version__ lines touched: 0
+WARN: src/ changed without a __version__ bump. Two different codes would publish
+the same reproducibility_hash (F-050). Bump src/microrelief/__init__.py and
+pyproject.toml in the same commit as the change.
+```
+
+(The WARN is the one declared for the viewer commit below — a rendering helper changed, no band
+did; the step is `continue-on-error`, so its tick is a mask and the log is what was read.)
+
+`test_running_the_sample_reproduces_the_expected_record` passed, and the band probe did **not**
+warn: the string `differs from the author's machine` occurs 0 times in the log (the two
+`test_sample.py` lines in the warnings summary are NumPy's `DeprecationWarning` from
+`src.read(1)`, the same 17 warnings as locally). So on this sample — 390,450 returns, a 300 × 300
+grid — the record's `grid`, `honesty`, `agreement`, `parameters` and `reproducibility_hash`, the
+input's sha256 and all six band arrays reproduced byte-identically on a machine that is not the
+author's. One sample, one runner, one run: a first datum, not the full-AOI claim.
+"Cross-machine replay is unverified" stays in the README and in the record until the probe is
+promoted to an assertion citing this run.
+
+## 2026-08-26 — the viewer moves under `docs/` for Pages, and its PNGs lose no cell
+
+Branch-based GitHub Pages publishes `/` or `/docs`, nothing else, so `viewer/` becomes
+`docs/viewer/` (`git mv`; one path in the README test, three in the README; `docs/.nojekyll` so
+Pages serves the directory raw). The alternative — an Actions deploy workflow with `pages: write`
+and `id-token: write` — is a new deploy handler and a new permission surface; not taken. The four
+PNGs weighed 31,715,528 bytes, 17,982,028 of them the CHM.
+
+### 1. The quantiser tried first, and what it did
+
+The plan said `Image.quantize(256, FASTOCTREE)`: truecolour RGBA down to a 256-colour palette.
+Measured against the old PNGs before being trusted:
+
+```
+mdt: OLD alpha-values [0, 255] opaque-colours 256 holes 29845 | FASTOCTREE opaque-colours 50
+mds: OLD alpha-values [0, 255] opaque-colours 256 holes 159131 | FASTOCTREE opaque-colours 52
+chm: OLD alpha-values [0, 255] opaque-colours 235 holes 3982774 | FASTOCTREE opaque-colours 27
+basis: OLD alpha-values [255] opaque-colours 3 holes 0 | FASTOCTREE opaque-colours 1
+  old colours: [(77, 175, 74, 255), (228, 26, 28, 255), (255, 127, 0, 255)]
+  new colours: [(77, 175, 74, 254), (228, 26, 28, 255), (254, 127, 0, 254)]
+```
+
+The transparent-cell counts matched — the check the plan named — and the basis layer's three
+colours did not survive: two came back at alpha 254, one shifted a unit in red. A legend that says
+"green = measured" cannot ship a green that is 99.6 % opaque, and the terrain ramps had lost four
+fifths of their colours. Dropped.
+
+### 2. The palette is the colour set
+
+The colormaps are 256-entry tables, so a band's opaque colours number at most 256. Sampled at 255
+(`PALETTE_LEVELS`), they plus one transparent index fit a PNG palette exactly; `_save_palette`
+builds the palette from the image's own colours and refuses an image that does not fit rather than
+merging two colours. Four tests, one with a mutation control: with the table at 256 levels
+`test_to_rgba_never_needs_more_than_255_opaque_colours` fails (`1 failed, 10 deselected`); at 255
+it passes. Re-rendered from `outputs/` (the 0.4.0 run) and compared cell for cell with
+`to_rgba`/`basis_rgba` in memory, hole for hole with the old PNGs at HEAD:
+
+```
+mdt: P (3960, 3960) | holes old/new 29845/29845 same-mask True | colours old/new 256/255 | lossless vs in-memory: True
+mds: P (3960, 3960) | holes old/new 159131/159131 same-mask True | colours old/new 256/255 | lossless vs in-memory: True
+chm: P (3960, 3960) | holes old/new 3982774/3982774 same-mask True | colours old/new 235/62 | lossless vs in-memory: True
+basis: P (3960, 3960) | holes old/new 0/0 same-mask True | colours old/new 3/3 | lossless vs in-memory: True
+  basis colour set old == new: True
+```
+
+### 3. The CHM against the cap
+
+At 255 levels the CHM's palette PNG weighed 7,938,879 bytes, over the 5,000,000
+`tests/test_viewer_assets.py` caps a page image at. Canopy varies cell to cell, and fewer distinct
+colours compress better. Measured on the real band, exact palette each time:
+
+```
+levels 255:   7938879 bytes  colours 235
+levels 128:   6368771 bytes  colours 121
+levels  64:   4960664 bytes  colours  62
+levels  32:   3812681 bytes  colours  32
+webp lossless 255 levels: 7474512 bytes (reference only)
+chm range: 0.0 43.04 m  -> m per level at 255/128/64: 0.169 0.336 0.672
+```
+
+The CHM ramp runs at 64 levels (`LAYERS` in `render.py`): 0.67 m per colour step over 0–43 m,
+39 KB under the cap. The terrain ramps stay at 255. Fewer levels sampled from the colormap, never
+colours merged afterwards — the lossless check in §2 is over the 64-level render. Final:
+basis 1,458,725 · mdt 2,536,793 · mds 4,418,810 · chm 4,960,664 = 13,374,992 bytes, from
+31,715,528.
+
+### 4. The page, in a browser
+
+`docs/` served on loopback (`python3 -m http.server 8765 --bind 127.0.0.1`): every asset answered
+HTTP 200 at its byte size. Then headless Chromium (gstack `browse`) on `/viewer/`:
+
+```
+images: base mdt.png complete 3960x3960 | over mds.png complete 3960x3960
+wipe 50 -> clip-path inset(0px 50% 0px 0px); wipe 20 -> inset(0px 80% 0px 0px)
+left=chm right=basis -> over chm.png, base basis.png, both complete at 3960
+attribution: "Source: Direção-Geral do Território (DGT), ... — reproducibility hash 8e8fee5b271c"
+console: (no console messages)
+network: 6 requests, 6 x HTTP 200
+```
+
+## 2026-08-26 — the skill file, driven by an agent host
+
+`skills/microrelief/SKILL.md` was linked into `.claude/skills/` (untracked; removed afterwards)
+and a **fresh, headless** Claude Code session (`claude -p`, model `claude-opus-5`, tools limited
+to `Read`, `Skill`, `ls`, `cat` and `uv run microrelief …`) was asked, in this repository:
+
+> build a DTM from the sample and tell me how much of it is measured
+
+What the transcript shows, in order (6 turns, 38 s):
+
+1. The host listed `microrelief` among its skills; the agent's first action was `Skill microrelief`
+   — discovered, not named in the prompt.
+2. It read `attribution.txt` and `aoi.geojson` and stated the input contract before running:
+   "AOI carries `bounds_epsg: 3763` (ETRS89/PT-TM06, projected metres), attribution is verbatim
+   from the sample."
+3. It ran exactly the skill's worked example:
+
+```
+uv run microrelief run --aoi examples/sistelo-sample/aoi.geojson --laz examples/sistelo-sample \
+    --out outputs/sample --attribution "$(cat examples/sistelo-sample/attribution.txt)"
+grid 300 x 300 cells of 0.5 m (0.0225 km2), 1 tile(s), 1 return(s) outside the AOI
+measured 56.2%  interpolated 43.1%  undetermined 0.7%
+expected void at f=1: 1.312% (measured density 17.3 pts/m2)
+ground recall 0.999  non-ground recall 0.723  accuracy 0.837  majority-class null 0.587
+```
+
+4. It read `outputs/sample/provenance.json` and reported, in the skill's order: the three basis
+   fractions (56.2 / 43.1 / 0.7 %); the null beside them ("expected void is 1.3 % … the
+   undetermined + interpolated share is 43.8 % — far above what point density alone predicts");
+   agreement with the majority-class null in the same sentence ("accuracy 0.837 against a
+   majority-class null of 0.587 … recalls: ground 0.999, non-ground 0.723"); the six
+   `known_limitations` verbatim; the six `uncalibrated_thresholds` by name, and `max_elevation_m`
+   as the one measured; the record hash `9df5586d283e969f…` and the input's sha256 for
+   reproduction.
+
+Nothing was guessed and no flag was invented; the `uv` build lines and the working directory
+are omitted here because they name the author's machine. One host, one model, one prompt: the
+door opens; how other hosts read the frontmatter is untested.
+
+## 2026-08-26 — the six QGIS styles, loaded and rendered by QGIS itself
+
+No QGIS on this machine, so a conda-forge QGIS **3.44.11** (Python 3.12) was created in a
+scratch directory and driven headless (`QT_QPA_PLATFORM=offscreen`): for each band of the
+sample's output, `QgsRasterLayer.loadNamedStyle(styles/<band>.qml)`, read back what QGIS parsed,
+render the layer at native size through `QgsMapRendererSequentialJob`, and compare pixels against
+the GeoTIFF's values with rasterio. Output, verbatim (the pixel lines are the three basis codes):
+
+```
+basis: loadNamedStyle ok=True renderer=paletted classes=[(0, '#e41a1c', 'undetermined'), (1, '#4daf4a', 'measured'), (2, '#ff7f00', 'interpolated')]
+   code 0 at (14,0): rendered (228, 26, 28) alpha=255 want (228, 26, 28)
+   code 1 at (1,0): rendered (77, 175, 74) alpha=255 want (77, 175, 74)
+   code 2 at (0,0): rendered (255, 127, 0) alpha=255 want (255, 127, 0)
+mdt: loadNamedStyle ok=True renderer=singlebandpseudocolor before-render min=0 max=1 | after-render min=0.00 max=1.00 raster[min=244.26 max=315.62] lowest cell -> (51, 51, 153), highest cell -> (255, 255, 255), distinct colours in render=1234, nodata alpha=0 (want 0)
+mds: loadNamedStyle ok=True renderer=singlebandpseudocolor before-render min=0 max=1 | after-render min=0.00 max=1.00 raster[min=245.02 max=334.70] lowest cell -> (51, 51, 153), highest cell -> (255, 255, 255), distinct colours in render=1347, nodata alpha=0 (want 0)
+chm: loadNamedStyle ok=True renderer=singlebandpseudocolor before-render min=0 max=1 | after-render min=0.00 max=1.00 raster[min=0.00 max=39.84] lowest cell -> (68, 1, 84), highest cell -> (253, 231, 37), distinct colours in render=527, nodata alpha=0 (want 0)
+n_all: loadNamedStyle ok=True renderer=singlebandpseudocolor before-render min=0 max=1 | after-render min=0.00 max=1.00 raster[min=0.00 max=24.00] lowest cell -> (68, 1, 84), highest cell -> (253, 231, 37), distinct colours in render=25
+n_ground_asprs: loadNamedStyle ok=True renderer=singlebandpseudocolor before-render min=0 max=1 | after-render min=0.00 max=1.00 raster[min=0.00 max=8.00] lowest cell -> (68, 1, 84), highest cell -> (253, 231, 37), distinct colours in render=9
+```
+
+Two measurements decided the styles' shape:
+
+- **The basis palette is what the code says.** `paletted`, three classes with the labels and
+  colours of `render.BASIS_PALETTE`, and the rendered pixel at a cell of each code is that code's
+  RGB exactly. The sample has no NoData cell in `basis` (0.7 % *undetermined* is a published
+  state, not an absence), so transparency was checked on the float bands instead: alpha 0 at a
+  NoData cell of `mdt`, `mds` and `chm`.
+- **`WholeRaster` does not stretch a loaded `.qml`; `UpdatedCanvas` does.** The styles were first
+  written with `<extent>WholeRaster</extent>` as the plan said: QGIS loaded them (`ok=True`) and
+  rendered `mdt` (244–316 m) in **2** distinct colours — the stored 0–1 range stayed in place and
+  every cell clipped to the ramp's top. `classificationMin/Max` read 0/1 before and after the
+  render. QGIS recomputes a raster's range on load only for the *updated canvas* origin (the
+  whole-raster figures are what the Symbology dialog writes into the style when a person clicks
+  through it). With `<extent>UpdatedCanvas</extent>` and nothing else changed, the same `mdt`
+  rendered in **1,234** colours, lowest cell the terrain ramp's bottom `(51, 51, 153)`, highest
+  white; `mds` 1,347; `chm` 527; `n_all` 25 (one per count 0–24) and `n_ground_asprs` 9 (0–8).
+  The generator and the test now say `UpdatedCanvas`, and `docs/recipes.md` says what that means
+  for the user: the ramp follows the view.
+
+One QGIS version, one platform, headless: the GUI path (Add Raster Layer → Load Style) is the
+same parser and the same renderer, but it was not clicked through here. The Python process
+exits with a segmentation fault in `exitQgis()` after printing — a known teardown artefact of
+offscreen sessions, not a rendering failure; the PNGs and the lines above are the evidence.
+
+## 2026-08-26 — PDAL reprojection recipe, exercised
+
+No PDAL on this machine either, so conda-forge **PDAL 2.10.2** was installed in the same scratch
+environment. The recipe in `docs/recipes.md` was run on the shipped sample: reproject
+EPSG:3763 → EPSG:25829 (ETRS89 / UTM 29N), write LAS 1.4 point format 8 with laszip, then
+`microrelief run` on the result with an AOI transformed the same way.
+
+```
+pdal 2.10.2 (git-version: da2cd8)
+pdal pipeline reproject.json
+(pdal pipeline readers.las Warning) Found 3 extra byte VLRs. Concatanating all extra byte records into one.
+exit=0
+
+pdal info --metadata sample-utm29.laz
+srs.horizontal: PROJCS["ETRS89 / UTM zone 29N",GEOGCS["ETRS89",DATUM["European_Terrestrial_Reference_Syste
+compressed: True minor_version: 4 dataformat_id: 8 count: 390450
+minx,miny,maxx,maxy: 551618.18 4647239.7 551769.58 4647391.1
+
+laspy: epsg 25829, points 390450, version 1.4, point format 8
+
+AOI (four corners through pyproj, then their bounding box):
+bounds 25829: [551618.162, 4647239.662, 551769.616, 4647391.116] size: 151.45 x 151.45 m
+
+microrelief run --aoi aoi-utm29.geojson --laz laz-utm29/ --out out-utm29/ --attribution "..."
+grid 304 x 304 cells of 0.5 m (0.0231 km2), 1 tile(s), 0 return(s) outside the AOI
+measured 55.3% | interpolated 44.0% | undetermined 0.7%
+expected void at f=1: 1.469% (measured density 16.9 pts/m2)
+ground recall 0.999 | non-ground recall 0.720 | accuracy 0.836 | majority-class null 0.586
+flight dates (none declared) | mixed epochs False
+reproducibility_hash 91fea28a72637f53123e6f81ae29418ab50ebd3734ad78aa3de03b5782085d6b
+exit=0
+```
+
+What this shows: PDAL writes a CRS that laspy resolves to the EPSG code `run` requires, the
+390,450 returns and their classification survive the round trip, and `run` accepts the file
+without a flag. The numbers are close to the EPSG:3763 record and not equal to it — the
+reprojected box is 151.45 m on a side rather than 150 because a rotated square's bounding box is
+larger, the grid is 304 × 304 instead of 300 × 300, and the extra 2 % of area has no returns, so
+the measured density reads 16.9 pts/m² against 17.3 and the measured share 55.3 % against
+56.2 %. Same terrain, a different lattice, a different hash: what the recipe says to expect.
+PDAL's warning about three extra-byte VLRs (RIEGL and TerraScan extras) is about dimensions
+`microrelief` never reads. The `filters.crop` stage of the recipe was not needed here (the
+sample is already cut) and was not exercised.
+
+### Addendum — after the pre-merge review (same day)
+
+An adversarial review of the branch (high effort, 17 candidates: 15 confirmed, 2 plausible,
+0 refuted) touched the styles and the gate; both were re-exercised.
+
+**Styles.** The generator rounded channels where `render.to_rgba` truncates, which put 5 of the 9
+terrain stops one unit off the viewer's colours; it now truncates, and every stop equals the named
+colormap's own value (0 of 27 stops differ). The viewer PNG additionally quantises to 255 levels
+(64 for the CHM), so a viewer pixel can sit up to 3 (terrain) or 8 (viridis at 64) units per
+channel from a stop — measured, and written into the generator rather than claimed away. QGIS
+3.44.11 on the regenerated files, same harness as above:
+
+```
+basis: loadNamedStyle ok=True renderer=paletted classes=[(0, '#e41a1c', 'undetermined'), (1, '#4daf4a', 'measured'), (2, '#ff7f00', 'interpolated')]
+   code 0 at (14,0): rendered (228, 26, 28) alpha=255 want (228, 26, 28)
+   code 1 at (1,0): rendered (77, 175, 74) alpha=255 want (77, 175, 74)
+   code 2 at (0,0): rendered (255, 127, 0) alpha=255 want (255, 127, 0)
+mdt: loadNamedStyle ok=True renderer=singlebandpseudocolor before-render min=0 max=1 | after-render min=0.00 max=1.00 raster[min=244.26 max=315.62] lowest cell -> (51, 51, 153), highest cell -> (255, 255, 255), distinct colours in render=1228, nodata alpha=0 (want 0)
+mds: loadNamedStyle ok=True renderer=singlebandpseudocolor before-render min=0 max=1 | after-render min=0.00 max=1.00 raster[min=245.02 max=334.70] lowest cell -> (51, 51, 153), highest cell -> (255, 255, 255), distinct colours in render=1347, nodata alpha=0 (want 0)
+chm: loadNamedStyle ok=True renderer=singlebandpseudocolor before-render min=0 max=1 | after-render min=0.00 max=1.00 raster[min=0.00 max=39.84] lowest cell -> (68, 1, 84), highest cell -> (253, 231, 36), distinct colours in render=532, nodata alpha=0 (want 0)
+n_all: loadNamedStyle ok=True renderer=singlebandpseudocolor before-render min=0 max=1 | after-render min=0.00 max=1.00 raster[min=0.00 max=24.00] lowest cell -> (68, 1, 84), highest cell -> (253, 231, 36), distinct colours in render=25
+n_ground_asprs: loadNamedStyle ok=True renderer=singlebandpseudocolor before-render min=0 max=1 | after-render min=0.00 max=1.00 raster[min=0.00 max=8.00] lowest cell -> (68, 1, 84), highest cell -> (253, 231, 36), distinct colours in render=9
+```
+
+**Gate.** Three defects in `scripts/neutrality.sh`, each with a control that now fails without
+the fix: (1) it was cwd-scoped — from `docs/` it printed `scanned 32 tracked files, 0 hits`, exit
+0, over a quarter of the tree; it now `cd`s to the repository root, and the test runs it from
+`docs/` and requires the full denominator. (2) The denominator counted tracked files, but `grep -I`
+reads no binary and nothing from an empty file — 13 of 121 (10 PNG/LAZ, 3 empty `__init__.py`)
+were reported as scanned and never read; the summary now says `scanned 108 text files of 121
+tracked (13 binary or empty skipped)`. (3) The `.env*` check I had added in the morning read the
+working directory with a glob that also matched `.envrc` (direnv), and the version written to fix
+that — `ls .env .env.*` — exited non-zero whenever `.env` alone was absent, so a planted
+`.env.local` **passed**: the s271 `ls a b` shape, caught by the positive control before commit.
+Now: tracked `.env` / `.env.<x>` fail by pattern, a working-tree `.env` / `.env.<x>` fails by a
+loop, `.envrc` passes, and the self-test checks the pattern both ways.
+
+```
+self-test: private path caught
+self-test: e-mail caught
+self-test: .env pattern matches .env.local, not .envrc
+.env file present in the working tree: .env.local      → exit 1 (planted)
+with .envrc                                             → exit 0
+neutrality: scanned 108 text files of 121 tracked (13 binary or empty skipped), 0 hits  (root, and from docs/)
+```
+
+**Gate, round two.** A second review over the fix found the `.env` checks root-only (a
+`sub/.env`, tracked or not, passed), the denominator's test deriving its expectation with the
+script's own pipeline (a control agreeing with itself), and a tracked file deleted from the
+working tree counted as read. Now: the `.env` pattern matches a path segment at any depth over
+`git ls-files`, the working tree is walked with `find` (skipping `.git` and `.venv`), a
+tracked-but-missing file refuses the scan before any count (without that, `xargs` returned
+**123** and the summary never printed — the same silent-instrument shape as the count itself),
+and the test derives the skipped set independently (size 0 or a NUL byte: the same 13 files).
+The planted-file controls live in the suite, on a throwaway git repository:
+
+```
+clean scratch repo                         → exit 0
++ .envrc                                   → exit 0
++ .env.local (untracked)                   → exit 1  ".env file present in the working tree: ./.env.local"
++ sub/.env (untracked)                     → exit 1  "./sub/.env"
++ sub/.env force-added to the index        → exit 1  "tracked .env file:"
+tracked clean.md deleted from the tree     → exit 1  "tracked but missing from the working tree (not scanned): clean.md"
+```
+
+**Gate, round three (2026-08-27).** The third review round was cut short by a session limit
+(one of eight angles reported: reuse — no correctness finding; the `.env` rule was encoded twice,
+regex and `find` globs, and they disagreed on a trailing-dot name; now one pattern drives both).
+One question its dead sibling had raised was measured instead of argued: **a private path inside a
+file `grep -I` calls binary is invisible by design** — a path planted in a PNG text chunk was not
+found (`grep -I` → not found; `grep -a` → found). Over every byte of every tracked file, `grep -a`
+found the private-path pattern **0** times in 0.06 s; the e-mail pattern fired **once**, inside a
+PNG's compressed bytes (`docs/figures/riser/f01-terrace-2.98m.png:1389`) — a coincidence of
+random bytes, so that scan stays on text files. The summary now names both scopes:
+
+```
+self-test: private path caught
+self-test: private path behind a NUL byte caught
+self-test: e-mail caught
+self-test: .env pattern matches .env.local and sub/dir/.env, not .envrc
+neutrality: scanned 122 tracked files for private paths (all bytes), 109 text files for e-mails (13 binary or empty skipped), 0 hits
+```
+
+A planted path inside a binary file in a scratch repository is a test now
+(`test_a_private_path_inside_a_binary_file_is_caught`). `LC_ALL=C` is exported by the script so
+what counts as binary no longer depends on the machine's locale.
+
+**Gate, round three — the fixes, and what the probes showed first.** The re-run of the third
+review found eight more, each measured on a scratch repository; my own probes on the script as
+it stood, before touching it:
+
+```
+text-only repo                 → summary printed, exit 0
+binary-only repo               → exit 123, no summary        (grep -IL under pipefail)
+tracked dangling symlink       → "grep: d: No such file or directory", exit 123, no summary
+newline-only file, as the only
+  text file                    → exit 123, no summary        (no character matches `.`)
+```
+
+Now: the population is enumerated once, NUL-separated, into a temp file (a bash variable cannot
+hold NULs — the first draft captured them and every path ran into the next); a tracked path that
+is not a readable file refuses the scan before any count; skipped files are counted by an explicit
+criterion (empty, or a NUL byte anywhere — the test derives the same one independently; a
+newline-only file is text); the tracked-`.env` check captures instead of `grep -q` (SIGPIPE 141
+under `pipefail` on a large index); the all-bytes scan prints only the match; the walk includes
+symlinks and prunes virtualenvs found by their `pyvenv.cfg`. Two of those fixes failed their own
+control on the first draft — the NUL count captured a NUL, and an empty virtualenv list became an
+empty `-f` pattern that matches every line — and were corrected before commit. After the fix,
+this tree:
+
+```
+neutrality: scanned 122 tracked files for private paths (all bytes), 109 text files for e-mails (13 binary or empty skipped), 0 hits
+```
+
+**Gate, round four (2026-08-27) — the instrument changed.** The fourth review round found sixteen
+more, again on the working-tree scan: a `pyvenv.cfg` at the repository root turned the prune
+prefix into `./` and the `.env` walk went blind with a green summary; a tracked **symlink was
+scanned by its target's bytes** while the blob git publishes is the link text (`ln -s
+/home/<user>/… lnk` → `0 hits`, exit 0); a path named `-n` vanished in an `echo` and the missing
+file was reported as scanned (`dce2132`'s body says the refusal "fired with an empty list" — it
+did not fire; the gate went green); the block parser swallowed a step's sibling keys. Four
+versions of "scan the working tree with `grep`" had each closed one hole and opened the next, so
+the population moved to the **index, read through git**: `git grep --cached` over the blobs
+(`-a` for private paths in every byte, `-I` for e-mails in text blobs — git's own rule, a NUL in
+the first 8000 bytes, applied by the same command to the scan and to the count), `git cat-file`
+for each symlink's link text, `git ls-files -s` for modes (submodules counted as not scanned),
+and `git ls-files -o -i --exclude-standard --directory` for the working-tree `.env` check, where
+an ignored directory collapses to one entry and no marker heuristic exists. Nothing reads the
+checkout, nothing spawns a shell per file, no `find`. The self-test builds a temporary
+repository with one violation of each class and requires each verdict; thirteen scratch-repo
+tests in the suite plant the round's cases. Three drafts of this version failed their own
+controls before commit — a `-z` NUL delimiter dropped by the capture, `if check` consuming the
+failing status (a planted leak printed and exited 0), and a binary-only index making
+`git grep -l` exit 1 under `pipefail` — the same three shapes as the night's earlier fixes, on
+new lines. Measured on the tree, 0.12 s:
+
+```
+self-test: private path behind a NUL byte caught; e-mail caught; symlink target caught; .env.local caught; .venv/ contents ignored; clean repo silent; .env pattern matches .env.local and sub/dir/.env, not .envrc
+neutrality: 122 tracked (122 regular, 0 symlink, 0 submodule not scanned); private paths over all bytes of 122; e-mails over 109 text (13 binary or empty); 0 hits
+```
+
+**Gate, round five (2026-08-27) — the redesign's own holes, and the exit contract made real.** Two
+review angles survived a session limit and measured, on the index-based version: an `exit 2`
+inside `$(...)` ended only the subshell, so a broken `git grep` (a bogus `grep.patternType`, a
+corrupt object) produced a **green summary, exit 0**; `2>&1` folded git's warnings into the hit
+list; `git grep -I` obeys `.gitattributes`, so a tracked `*.md -diff` moved a planted e-mail out
+of the scanned population (`0 hits`, exit 0); the self-test's `git init` inherited
+`GIT_INDEX_FILE` from a pre-commit hook and staged its scratch blobs into the caller's index; the
+working-tree `.env` check was red on a sanctioned local `.env`, blind under any ignored directory,
+and answered a machine question inside a publication gate. Now: every scan is a statement into a
+temporary file and the caller reads its status — 0 clean, 1 hit, **2 instrument failure with no
+summary** (the self-test provokes one and requires exactly that); stdout and stderr are kept
+apart, a git warning is printed as an instrument note; the text/binary rule (non-empty, no NUL in
+the first 8000 bytes) is computed by the script over `git cat-file`, so no attribute can move a
+blob — e-mails are searched in every byte and a hit inside a binary blob is **counted, not
+judged** (the summary now says `e-mail-shaped bytes in 1 of them not judged`: the PNG coincidence
+measured earlier, visible instead of silent); the self-test and the pytest scratch repositories
+run under `GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1` with every `GIT_*` variable unset;
+the working-tree `.env` check is gone (the tracked one stays: `.gitignore`'s `.env*` is where a
+local one is provisioned to live), and `AGENTS.md` rule 5 says "tracked". The CI-mirror test
+parses `ci.yml` with PyYAML (dev extra) after three hand-rolled line readers each missed a form
+the next review found. On this tree, 0.7 s:
+
+```
+self-test: private path behind a NUL byte caught
+self-test: e-mail caught despite .gitattributes
+self-test: symlink target caught
+self-test: tracked .env at depth caught
+self-test: e-mail-shaped bytes in a binary blob counted, not judged
+self-test: clean repo silent
+self-test: broken instrument exits 2 with no summary
+self-test: .env pattern matches .env.local and sub/dir/.env, not .envrc
+neutrality: 122 tracked (122 regular, 0 symlink, 0 submodule not scanned); private paths over all bytes of 122; e-mails judged in 109 text (13 binary or empty, e-mail-shaped bytes in 1 of them not judged); 0 hits
+```
+
+**Gate, round six (2026-08-27).** Three confirmed by execution: a hit's path recovered from
+`:`-delimited text never matched the binary list when git C-quoted it (`é/blob.bin`) or when it
+held `:<digit>` — a binary blob judged as text, and the verdict flipped with the user's
+`core.quotePath`; `git ls-files`' status was discarded in a process substitution, and
+`GIT_INDEX_FILE=/nonexistent` printed a green summary over **zero** blobs; the git-warning test
+could not fail because nothing made git speak. Now: `git grep -z` records (`path\0line\0match`)
+read field by field, so no path is ever quoted or split; the index is read as a statement and an
+empty or unopenable one is exit 2 with no summary; classification is two git processes
+(`cat-file --batch-check` for sizes, `grep -P '\x00' -l` for NUL-bearing blobs; the rule is
+"non-empty, no NUL anywhere", the same one the tests derive, which also count the e-mail-shaped
+binary blobs instead of typing the number); `--no-recurse-submodules` pinned beside
+`--no-column --no-color`; `GIT_TRACE=1` makes the warning control speak. 0.24 s on the tree:
+
+```
+self-test: … e-mail-shaped bytes in two binary blobs (one under a non-ASCII path) counted, not judged
+self-test: clean repo silent
+self-test: broken instrument exits 2 with no summary
+self-test: empty population exits 2 with no summary
+neutrality: 122 tracked (122 regular, 0 symlink, 0 submodule not scanned); private paths over all bytes of 122; e-mails judged in 109 text (13 binary or empty, e-mail-shaped bytes in 1 of them not judged); 0 hits
+```
+
+**Gate, round seven (2026-08-27).** Three confirmed by execution, all in the joins: a per-path
+`grep -zqxF` read a path holding a newline as a pattern *list*, so a real e-mail in such a file
+matched neither the text nor the binary list and vanished with a green summary; the binary-blob
+count was a count of matches (`2 of them` for one blob with two runs) while the test counts
+blobs; the NUL scan lacked `--no-color`, so `color.grep=always` wrapped every name in ANSI
+escapes, no binary blob matched, and the tree's one PNG became a false red. Now: every join is
+an exact-key lookup in a bash associative array (a path is any bytes but NUL; no process per
+path), the count is of distinct blobs, every `git grep` shares one pinned option list, sizes are
+validated (`<sha> missing` from `cat-file --batch-check` is exit 2, not a size of zero), each
+git call's stderr is echoed as a note, and the tracked-`.env` test is bash's own `=~` over the
+record's path. 0.11 s on the tree; the self-test plants a newline path and a two-run blob:
+
+```
+self-test: e-mail in a path holding a newline caught
+self-test: e-mail-shaped bytes in three binary blobs (one under a non-ASCII path, one with two runs) counted as blobs, not judged
+neutrality: 122 tracked (122 regular, 0 symlink, 0 submodule not scanned); private paths over all bytes of 122; e-mails judged in 109 text (13 binary or empty, e-mail-shaped bytes in 1 of them not judged); 0 hits
+```
+
+**Gate, round eight (2026-08-27).** Ten findings, seven of them correctness by measurement or mutation, one conventions by mutation (three guards without a test that fails when they are deleted: the sizes-count guard, the unlisted-path guard, and the `note_err` calls), two cleanups: the self-test's `( check )
+|| true` swallowed `fail_instrument`'s exit inside a subshell, so under a broken `git grep` the
+empty verdict file — the pass condition — printed "clean repo silent" (the subshell existed only
+because `check` never reset its state); `[[ =~ ]]` is string-anchored where `.gitignore`'s
+`.env*` is not, so a force-added `.env` name carrying a newline byte passed; my `expect` helper
+was `grep -F` with a two-line expectation — a pattern list, the round-7 defect in the control
+written for it; unmerged index entries were counted but never visited by `git grep --cached`;
+the per-symlink `cat-file` was the one git call whose stderr was dropped; three guards had no
+test that fails when they are deleted. Now: one `run_git` wrapper owns status, output and the
+note for every git call; `check` resets its state and runs in-process (the self-test under a
+broken instrument exits 2 and never prints "clean repo silent"); the `.env` name test is one
+function applied to every line of a path, shared by production and self-test, with newline
+cases; unmerged entries are exit 2; the planted binary set is an array and its count is
+compared to the array's length; a `git` shim in the suite drops a size line and appends an
+unlisted record, and `GIT_TRACE=1` with a symlink planted requires a note for every kind of git
+call, so all three guards have tests that fail without them. 0.16 s on the tree:
+
+```
+self-test: e-mail-shaped bytes in binary blobs counted as blobs, not judged
+self-test: clean repo silent
+self-test: broken instrument exits 2 with no summary
+self-test: empty population exits 2 with no summary
+self-test: .env name test (the gate's own) matches .env.local, sub/dir/.env and names carrying a newline, not .envrc
+neutrality: 122 tracked (122 regular, 0 symlink, 0 submodule not scanned); private paths over all bytes of 122; e-mails judged in 109 text (13 binary or empty, e-mail-shaped bytes in 1 of them not judged); 0 hits
+```
+
+
+**Gate, round nine (2026-08-27).** Ten reported (13 confirmed, 4 plausible, 3 refuted of 20
+distinct); the three that matter for a flip, all executed: the `.env` regex was **narrower than
+the repository's own `.env*` ignore rule** — `.env-prod`, `.env_local`, `.environment`,
+`.env `, `.env/secret` are ignored by git and passed the gate while its header claimed parity;
+the self-test ran `check` under `|| true`, i.e. with errexit off, a different failure regime from
+production, where a bare failing command exited **1 — the hit code — with nothing printed**
+(by mutation); the self-test's "trailing newline" name was `$(printf 'sub/.env\n')`, which is
+byte-identical to `sub/.env` because command substitution strips the newline. Now: the secrets
+rule is git's own evaluation of the tracked `.gitignore` (`git ls-files -c -i
+--exclude-per-directory=.gitignore` — exactly the force-added set, NUL-delimited, no regex; 0 on
+this tree), after a precondition that `.gitignore` excludes `.env` and `.env.local` at all (a
+repository without the rule is exit 2); `set -E` + an ERR trap make any unguarded failure exit 2
+with the line, in production and in the self-test alike, which now runs `check` bare; the planted
+name is `$'sub/.env\n'` and it is caught; a symlink target is rendered through `tr`, not `$(cat)`
+(a NUL would have been dropped with a bash warning); the unmerged list names a path once, `%q`;
+`rev-parse` goes through `run_git` like every other call; `scan_pattern` is back; the shim uses
+`sed '$d'`. 0.12 s on the tree:
+
+```
+self-test: tracked file the repository's .gitignore excludes caught: sub/.env
+self-test: tracked file the repository's .gitignore excludes caught: .env-prod
+self-test: tracked file the repository's .gitignore excludes caught: .env/secret
+self-test: tracked file the repository's .gitignore excludes caught: $'sub/.env\n'
+self-test: a .gitignore without .env* is an instrument failure, exit 2 with no summary
+neutrality: 122 tracked (122 regular, 0 symlink, 0 submodule not scanned); private paths over all bytes of 122; e-mails judged in 109 text (13 binary or empty, e-mail-shaped bytes in 1 of them not judged); 0 tracked files the .gitignore excludes; 0 hits
+```
+
+
+**Gate, round ten (2026-08-27) — the last under the declared bound.** Ten confirmed (six
+executed, four by mutation), all in the round-nine rule: the precondition (`git check-ignore`)
+read every exclude source while the scan read only `.gitignore`, so a machine's global `.env*`
+satisfied one and not the other; both read the **working-tree** `.gitignore`, so an unstaged
+edit or an untracked nested file flipped the verdict; a failing member of an `&&` list escapes
+the ERR trap, so a failed `mkdir` would have run the self-test inside the caller's repository;
+the newline-name control was substring containment satisfied by a neighbouring record; the
+symlink-target rendering and the unmerged dedup had no failing test (the dedup assertion written
+in round nine had never been applied — the edit missed its formatter-wrapped target); the record
+said `sed '$d'` while the shim still said `head -n -1` (same cause). Now: one source for
+precondition and scan — the **staged** root `.gitignore` (`git show :.gitignore`, then
+`ls-files -c -i --exclude-from=<that copy>`), the literal line `.env*` required, negations
+honoured by design, nested files not consulted, checked before any scan prints; the ignored list
+is `%q`-rendered, one line per path; the self-test's setup is one guarded statement per line with
+a `$PWD` check; tests plant a symlink whose target holds a NUL, an unstaged rule, a global-excludes
+rule, a `!` negation, and require a note for all eight kinds of git call; the shim really uses
+`sed '$d'`. 0.14 s on the tree:
+
+```
+self-test: tracked file the staged .gitignore excludes caught: $'sub/.env\n'
+self-test: a staged .gitignore without .env* is an instrument failure, exit 2 with no summary
+self-test: the rule counts only in the staged .gitignore, not the working-tree file
+neutrality: 122 tracked (122 regular, 0 symlink, 0 submodule not scanned); private paths over all bytes of 122; e-mails judged in 109 text (13 binary or empty, e-mail-shaped bytes in 1 of them not judged); 0 tracked files the staged .gitignore excludes; 0 hits
+```

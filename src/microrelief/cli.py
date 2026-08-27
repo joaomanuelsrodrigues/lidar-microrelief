@@ -312,7 +312,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
 
     # The grid's own area, not the AOI as asked for: `grid_for_bounds` snaps outward to whole
     # cells, and the honesty report counts cells of that grid. Dividing them by the requested
-    # extent would put the count over a denominator it was never taken from (§A1/s258).
+    # extent would put the count over a denominator it was never taken from (2026-08-04).
     grid_area = grid.n_cells * grid.cell * grid.cell
     honesty = honesty_report(basis.basis, stats, args.cell, grid_area)
     agree = agreement(is_ground, stats) if official_ground else None

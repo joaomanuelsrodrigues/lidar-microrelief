@@ -58,7 +58,7 @@ def compare(old: Path, new: Path, expect_new_limitations: bool = False) -> int:
             # difference between a run and itself. `export._prepare` writes explicit NoData
             # instead of NaN precisely so that cannot happen — this asserts that premise rather
             # than assuming it, because if it ever stopped holding the verdict below would be
-            # wrong in the direction that reads as "investigate", not as "clean" (§A1/s260).
+            # wrong in the direction that reads as "investigate", not as "clean" (2026-08-05).
             nans = [
                 label
                 for label, arr in (("old", ba), ("new", bb))

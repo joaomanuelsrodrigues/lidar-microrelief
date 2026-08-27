@@ -1,0 +1,20 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "microrelief: DTM, DSM and CHM from raw LiDAR that declare, per cell, what they are made of"
+authors:
+  - family-names: Rodrigues
+    given-names: João
+version: 0.4.0
+date-released: 2026-08-11
+license: Apache-2.0
+repository-code: "https://github.com/joaomanuelsrodrigues/lidar-microrelief"
+keywords:
+  - lidar
+  - point-cloud
+  - dtm
+  - dsm
+  - chm
+  - provenance
+  - reproducibility
+  - earth-observation

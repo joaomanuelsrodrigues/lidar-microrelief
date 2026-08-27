@@ -17,7 +17,7 @@ jobs:
         with:
           fetch-depth: 2 # the version-bump guard diffs HEAD~1..HEAD
       - uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4
-      - run: uv sync --extra dev --extra site
+      - run: uv sync --locked --extra dev --extra site
       - run: uv run ruff check src tests scripts
       - run: uv run ruff format --check src tests scripts
       - run: uv run mypy
@@ -30,19 +30,5 @@ jobs:
         run: bash scripts/check_version_bump.sh
       - name: neutrality
         run: |
-          set -euo pipefail
-          # Tracked files only: the constraint is about what the repository
-          # contains, not what the working directory happens to hold.
-          # (`uv sync` above populates .venv with third-party docstrings that
-          #  legitimately contain example home paths.)
-          check() {
-            hits=$(git ls-files -z '*.py' '*.md' | xargs -0 -r grep -nIE "$1" || true)
-            [ -z "$hits" ] || { echo "$2"; echo "$hits"; exit 1; }
-          }
-          # A username is not lowercase-only: `/home/[a-z]+/` silently misses any
-          # account whose name carries a digit, which is the very path this check
-          # exists to keep out of the tree. The character class matches what a
-          # POSIX account name can actually be.
-          check '/home/[A-Za-z0-9._-]+/|C:\\+Users\\+' 'private path leak:'
-          check '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}' 'e-mail leak:'
-          test ! -f .env
+          bash scripts/neutrality.sh --self-test
+          bash scripts/neutrality.sh
