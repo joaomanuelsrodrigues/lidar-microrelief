@@ -41,9 +41,9 @@ def _run(cwd: Path, tmp_path: Path, *args: str, **extra: str) -> subprocess.Comp
     )
 
 
-def _git(repo: Path, tmp_path: Path, *args: str) -> bytes:
+def _git(repo: Path, tmp_path: Path, *args: str, input: bytes | None = None) -> bytes:
     return subprocess.run(
-        ["git", *args], cwd=repo, env=_env(tmp_path), capture_output=True, check=True
+        ["git", *args], cwd=repo, env=_env(tmp_path), capture_output=True, check=True, input=input
     ).stdout
 
 
@@ -99,12 +99,12 @@ def test_the_self_test_plants_every_class_in_a_temporary_repository_and_catches_
         "symlink target caught",
         "tracked .env at depth caught",
         "e-mail in a path holding a newline caught",
-        "e-mail-shaped bytes in three binary blobs (one under a non-ASCII path, one with two runs) "
-        "counted as blobs, not judged",
+        "e-mail-shaped bytes in binary blobs counted as blobs, not judged",
         "clean repo silent",
         "broken instrument exits 2 with no summary",
         "empty population exits 2 with no summary",
-        ".env pattern matches .env.local and sub/dir/.env, not .envrc",
+        ".env name test (the gate's own) matches .env.local, sub/dir/.env and names carrying a "
+        "newline, not .envrc",
     ):
         assert f"self-test: {phrase}" in result.stdout, (phrase, result.stdout)
 
@@ -373,3 +373,112 @@ def test_an_object_git_cannot_read_is_an_instrument_failure(tmp_path: Path) -> N
     result = _run(repo, tmp_path)
     assert result.returncode == 2 and result.stdout == "", result.stdout + result.stderr
     assert "instrument failure" in result.stderr
+
+
+def test_the_self_test_cannot_read_a_broken_instrument_as_a_clean_repo(tmp_path: Path) -> None:
+    """Round 8 (by mutation): `( check ) || true` swallowed fail_instrument's exit inside a
+    subshell and an empty verdict file — the pass condition — printed "clean repo silent"."""
+    result = _run(
+        ROOT,
+        tmp_path,
+        "--self-test",
+        GIT_CONFIG_COUNT="1",
+        GIT_CONFIG_KEY_0="grep.patternType",
+        GIT_CONFIG_VALUE_0="bogus",
+    )
+    assert result.returncode == 2, result.stdout + result.stderr
+    assert "clean repo silent" not in result.stdout and "instrument failure" in result.stderr
+
+
+def test_a_tracked_env_name_carrying_a_newline_is_caught(tmp_path: Path) -> None:
+    """`.gitignore`'s `.env*` ignores such a name, so a force-added one is a tracked secret file;
+    a string-anchored `=~` had let it pass (round 8)."""
+    repo = _scratch_repo(tmp_path)
+    (repo / "sub").mkdir()
+    (repo / "sub" / ".env\n").write_text("TOKEN=x\n", encoding="utf-8")
+    _git(repo, tmp_path, "add", "-f", "--", "sub/.env\n")
+    result = _run(repo, tmp_path)
+    assert result.returncode == 1 and "tracked .env file:" in result.stdout, (
+        result.stdout + result.stderr
+    )
+
+
+def test_an_unmerged_index_is_an_instrument_failure(tmp_path: Path) -> None:
+    """`git grep --cached` skips unmerged entries by construction; the count had vouched for
+    blobs the scan never read (round 8)."""
+    repo = _scratch_repo(tmp_path)
+    sha = (
+        _git(repo, tmp_path, "hash-object", "-w", "--stdin", input=b"see " + MAIL.encode() + b"\n")
+        .decode()
+        .strip()
+    )
+    info = f"100644 {sha} 1\tf.md\n100644 {sha} 2\tf.md\n100644 {sha} 3\tf.md\n"
+    subprocess.run(
+        ["git", "update-index", "--index-info"],
+        cwd=repo,
+        env=_env(tmp_path),
+        input=info.encode(),
+        check=True,
+    )
+    result = _run(repo, tmp_path)
+    assert result.returncode == 2 and result.stdout == "", result.stdout + result.stderr
+    assert "unmerged" in result.stderr
+
+
+def test_every_git_call_reports_what_it_said_including_the_symlink_read(tmp_path: Path) -> None:
+    """Round 8: the per-symlink cat-file was the one call whose stderr was dropped."""
+    repo = _scratch_repo(tmp_path)
+    (repo / "lnk").symlink_to("clean.md")
+    _git(repo, tmp_path, "add", "lnk")
+    result = _run(repo, tmp_path, GIT_TRACE="1")
+    assert result.returncode == 0, result.stdout + result.stderr
+    for what in (
+        "git ls-files",
+        "git cat-file --batch-check",
+        "git grep (NUL scan)",
+        "git grep",
+        "git cat-file (symlink)",
+    ):
+        assert f"neutrality: {what} said:" in result.stderr, (what, result.stderr)
+
+
+def _shim(tmp_path: Path, body: str) -> dict[str, str]:
+    """A `git` on PATH that tampers with one command's output and delegates everything else."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(exist_ok=True)
+    real = subprocess.run(
+        ["bash", "-c", "command -v git"], capture_output=True, text=True, check=True
+    ).stdout.strip()
+    (bin_dir / "git").write_text(
+        f'#!/usr/bin/env bash\nREAL={real!r}\n{body}\nexec "$REAL" "$@"\n', encoding="utf-8"
+    )
+    (bin_dir / "git").chmod(0o755)
+    return {"PATH": f"{bin_dir}:{os.environ['PATH']}"}
+
+
+def test_a_size_list_shorter_than_the_index_is_an_instrument_failure(tmp_path: Path) -> None:
+    """Deleting the sizes-count guard left the suite green (round 8, by mutation): this shim
+    drops the last size `cat-file --batch-check` returns."""
+    repo = _scratch_repo(tmp_path)
+    env = _shim(
+        tmp_path, 'case "$*" in *"cat-file --batch-check"*) exec "$REAL" "$@" | head -n -1 ;; esac'
+    )
+    result = _run(repo, tmp_path, **env)
+    assert result.returncode == 2 and result.stdout == "", result.stdout + result.stderr
+    assert "sizes for" in result.stderr
+
+
+def test_a_hit_under_a_path_the_index_does_not_list_is_an_instrument_failure(
+    tmp_path: Path,
+) -> None:
+    """Deleting the unlisted-path guard left the suite green (round 8, by mutation): this shim
+    appends a record for a path the index does not hold to every pattern scan."""
+    repo = _scratch_repo(tmp_path)
+    env = _shim(
+        tmp_path,
+        'case "$*" in *" -n -o -E "*) "$REAL" "$@"; rc=$?; '
+        'printf "ghost.md\\0007\\000%s\\n" "x"; exit $rc ;; esac',
+    )
+    result = _run(repo, tmp_path, **env)
+    assert result.returncode == 2 and result.stdout == "", result.stdout + result.stderr
+    assert "does not list" in result.stderr

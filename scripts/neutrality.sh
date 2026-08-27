@@ -27,8 +27,8 @@
 # been red on a sanctioned local `.env`, blind under any ignored directory, and machine-dependent.)
 #
 # Exit status: 0 clean · 1 a hit · 2 the instrument failed (git could not list the index, or it
-# listed nothing — publishing zero blobs is never the question — or git grep / cat-file did not
-# run; no summary is printed). Every scan runs as a statement into a temporary file and its status is
+# listed nothing — publishing zero blobs is never the question — or it holds unmerged entries,
+# which `git grep --cached` skips, or git grep / cat-file did not run; no summary is printed). Every scan runs as a statement into a temporary file and its status is
 # read by the caller: an `exit` inside `$(...)` ends only the subshell — measured, that version
 # printed a green summary over an index it never read. stdout and stderr are kept apart: a git
 # warning is an instrument note, never a hit.
@@ -50,7 +50,8 @@ PRIVATE_PATH='/home/[A-Za-z0-9._-]+/|C:\\+Users\\+'
 EMAIL='[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}'
 # `.env` and `.env.<anything>` as a path segment at any depth — matching .gitignore's `.env*` as
 # far as secrets go — but not `.envrc` (direnv), which is not a secrets file.
-ENV_FILE='(^|/)\.env(\..+)?$'   # tested with bash's =~ against the whole path, newlines included
+ENV_FILE='(^|/)\.env(\..+)?$'   # applied to every LINE of a path (is_env_name): `.gitignore`'s `.env*` ignores a name
+                                   # that carries a newline after `.env`, so the gate refuses it too
 
 work=$(mktemp -d)
 trap 'rm -r -- "$work"' EXIT
@@ -61,51 +62,50 @@ fail_instrument() {  # fail_instrument <what> <stderr-file>
   exit 2
 }
 
-note_err() {  # note_err <what>: whatever git said on stderr is an instrument note, never a hit
-  if [ -s "$work/err" ]; then { echo "neutrality: $1 said:"; cat -- "$work/err"; } >&2; fi
+# run_git <what> <max-rc> <out> -- <git args…>: every git call goes through here — status
+# checked against the highest status that is not a failure (0, or 1 for "no match"), stdout to
+# <out>, and whatever git said on stderr echoed as an instrument note, never as a hit. Round 8
+# found the one call that bypassed this pattern (the symlink cat-file) dropping its stderr.
+run_git() {
+  local what=$1 max=$2 out=$3 rc=0; shift 4
+  git "$@" > "$out" 2> "$work/err" || rc=$?
+  [ "$rc" -le "$max" ] || fail_instrument "$what ($rc)" "$work/err"
+  if [ -s "$work/err" ]; then { echo "neutrality: $what said:"; cat -- "$work/err"; } >&2; fi
 }
 
 GIT_GREP_OPTS=(--cached -a -z --no-column --no-color --no-recurse-submodules)
 
-# git_grep <pattern> <out>: `path\0line\0match\n` records for every regular blob in the index.
-# Options a user's git config could otherwise change are pinned. A path is never C-quoted or
-# split on ':' — the previous parser lost a non-ASCII or `:<digit>` path and judged a binary blob
-# as text. Exit 1 = no match; anything above 1 is an instrument failure.
-git_grep() {
-  local rc=0
-  git grep "${GIT_GREP_OPTS[@]}" -n -o -E -e "$1" -- . > "$2" 2> "$work/err" || rc=$?
-  [ "$rc" -le 1 ] || fail_instrument "git grep ($rc)" "$work/err"
-  note_err "git grep"
+is_env_name() {  # is_env_name <path>: ENV_FILE against every line of the path (a name may hold a newline)
+  local line
+  while IFS= read -r line; do [[ $line =~ $ENV_FILE ]] && return 0; done <<< "$1"
+  return 1
 }
 
-# classify: reads $work/index (from `git ls-files -s -z`, a statement whose status the caller
-# read) and fills KIND[path] = text|binary for regular blobs, SYMLINKS (sha<TAB>path records),
-# the counters, and $work/env (tracked .env files). Two git processes: sizes from
-# `cat-file --batch-check`, NUL-bearing blobs from `git grep -P '\x00'`. Joins are exact-key
-# lookups in associative arrays — a path is any bytes but NUL, and a per-path `grep -F` join
-# read a path holding a newline as a pattern LIST (measured 2026-08-27: a real leak vanished).
-declare -A KIND=() ISNUL=()
-SYMLINKS=(); n_regular=0; n_sym=0; n_git=0; n_text=0; n_binary=0
+# classify: reads $work/index (from `git ls-files -s -z`) and fills KIND[path] = text|binary for
+# regular blobs, SYMLINKS (sha stage<TAB>path records), the counters, and $work/env. Two git
+# processes: sizes from `cat-file --batch-check`, NUL-bearing blobs from `git grep -P '\x00'`.
+# Joins are exact-key lookups in associative arrays — a path is any bytes but NUL, and a
+# per-path `grep -F` join read a path holding a newline as a pattern LIST (measured 2026-08-27).
+# Every array and counter is reset here, so `check` can run twice in one shell (the self-test
+# does): a subshell would swallow fail_instrument's exit and turn silence into a pass.
 classify() {
-  : > "$work/shas"; : > "$work/env"
-  local rec path
+  KIND=(); ISNUL=(); SYMLINKS=(); n_regular=0; n_sym=0; n_git=0; n_text=0; n_binary=0
+  : > "$work/shas"; : > "$work/env"; : > "$work/unmerged"
+  local rec path stage
   while IFS= read -r -d '' rec; do
+    stage=${rec#* }; stage=${stage#* }; stage=${stage%%$'\t'*}
+    [ "$stage" = 0 ] || printf '%s\n' "${rec#*$'\t'}" >> "$work/unmerged"   # git grep --cached skips stage>0
     case "${rec%% *}" in
       120000) SYMLINKS+=("${rec#* }"); n_sym=$((n_sym + 1)) ;;   # "sha stage<TAB>path"
       160000) n_git=$((n_git + 1)) ;;
       *) rest=${rec#* }; printf '%s\n' "${rest%% *}" >> "$work/shas"; n_regular=$((n_regular + 1)) ;;
     esac
     path=${rec#*$'\t'}
-    if [[ $path =~ $ENV_FILE ]]; then printf '%s\n' "$path" >> "$work/env"; fi
+    if is_env_name "$path"; then printf '%s\n' "$path" >> "$work/env"; fi
   done < "$work/index"
-  local rc=0
-  git cat-file --batch-check='%(objectsize)' < "$work/shas" > "$work/sizes" 2> "$work/err" || rc=$?
-  [ "$rc" -eq 0 ] || fail_instrument "git cat-file --batch-check ($rc)" "$work/err"
-  note_err "git cat-file"
-  rc=0
-  git grep "${GIT_GREP_OPTS[@]}" -l -P -e '\x00' -- . > "$work/nul" 2> "$work/err" || rc=$?
-  [ "$rc" -le 1 ] || fail_instrument "git grep -P (NUL scan, $rc)" "$work/err"
-  note_err "git grep (NUL scan)"
+  [ ! -s "$work/unmerged" ] || fail_instrument "the index has unmerged entries, which the scan would skip" "$work/unmerged"
+  run_git "git cat-file --batch-check" 0 "$work/sizes" -- cat-file --batch-check='%(objectsize)' < "$work/shas"
+  run_git "git grep (NUL scan)" 1 "$work/nul" -- grep "${GIT_GREP_OPTS[@]}" -l -P -e '\x00' -- .
   while IFS= read -r -d '' path; do ISNUL[$path]=1; done < "$work/nul"
   mapfile -t sizes < "$work/sizes"
   [ "${#sizes[@]}" -eq "$n_regular" ] || { printf 'cat-file returned %s sizes for %s blobs\n' "${#sizes[@]}" "$n_regular" > "$work/err"; fail_instrument "git cat-file --batch-check" "$work/err"; }
@@ -120,11 +120,12 @@ classify() {
     i=$((i + 1))
   done < "$work/index"
 }
+declare -A KIND=() ISNUL=() MAILBIN=()
+SYMLINKS=(); n_regular=0; n_sym=0; n_git=0; n_text=0; n_binary=0; n_mail_binary=0
 
 # judge_hits <records-file> <mode>: `path:line:match` lines for -z records. mode=all prints every
-# hit; mode=text prints hits in text blobs and counts the binary blobs holding one (distinct
+# hit; mode=text prints hits in text blobs and records the binary blobs holding one (distinct
 # paths, in MAILBIN). A hit under a path the index did not list is an instrument failure.
-declare -A MAILBIN=()
 judge_hits() {
   local path lineno match
   while IFS= read -r -d '' path && IFS= read -r -d '' lineno && IFS= read -r match; do
@@ -136,27 +137,23 @@ judge_hits() {
 
 # check: runs every scan in the current repository; prints verdicts; sets $hit (0/1).
 check() {
-  hit=0
-  : > "$work/err"
-  local rc=0
-  git ls-files -s -z > "$work/index" 2> "$work/err" || rc=$?
-  [ "$rc" -eq 0 ] || fail_instrument "git ls-files ($rc)" "$work/err"
-  note_err "git ls-files"
+  hit=0; MAILBIN=()
+  run_git "git ls-files" 0 "$work/index" -- ls-files -s -z
   [ -s "$work/index" ] || { echo "neutrality: instrument failure — git listed no tracked file (empty or unopenable index)" >&2; exit 2; }
   classify
-  git_grep "$PRIVATE_PATH" "$work/paths"
+  run_git "git grep" 1 "$work/paths" -- grep "${GIT_GREP_OPTS[@]}" -n -o -E -e "$PRIVATE_PATH" -- .
   judge_hits "$work/paths" all > "$work/paths.txt"
   if [ -s "$work/paths.txt" ]; then echo "private path leak:"; cat -- "$work/paths.txt"; hit=1; fi
-  git_grep "$EMAIL" "$work/mails"
+  run_git "git grep" 1 "$work/mails" -- grep "${GIT_GREP_OPTS[@]}" -n -o -E -e "$EMAIL" -- .
   judge_hits "$work/mails" text > "$work/mails.txt"
   if [ -s "$work/mails.txt" ]; then echo "e-mail leak:"; cat -- "$work/mails.txt"; hit=1; fi
-  n_mail_binary=${#MAILBIN[@]}; printf '%s\n' "$n_mail_binary" > "$work/mailbin"   # the self-test reads it back from a subshell run
+  n_mail_binary=${#MAILBIN[@]}
   : > "$work/links"
-  local rec sha path target
+  local rec sha path
   for rec in "${SYMLINKS[@]}"; do
     sha=${rec%% *}; path=${rec#*$'\t'}
-    target=$(git cat-file blob "$sha" 2> "$work/err") || fail_instrument "git cat-file (symlink)" "$work/err"
-    if printf '%s\n' "$target" | grep -qE -- "$PRIVATE_PATH|$EMAIL"; then printf '%s -> %s\n' "$path" "$target" >> "$work/links"; fi
+    run_git "git cat-file (symlink)" 0 "$work/target" -- cat-file blob "$sha"
+    if grep -qE -- "$PRIVATE_PATH|$EMAIL" "$work/target"; then printf '%s -> %s\n' "$path" "$(cat -- "$work/target")" >> "$work/links"; fi
   done
   if [ -s "$work/links" ]; then echo "leak in a symlink target:"; cat -- "$work/links"; hit=1; fi
   if [ -s "$work/env" ]; then echo "tracked .env file:"; cat -- "$work/env"; hit=1; fi
@@ -176,27 +173,34 @@ if [ "${1:-}" = "--self-test" ]; then
   printf 'clean\n' > clean.md
   printf 'PNG\0\0rendered on /home/%s/\n' someone > figure.png
   printf 'contact: someone%sexample.org\n' @ > notes.md
-  printf 'maybe someone%sexample.org\0\n' @ > blob.bin
-  mkdir -p "$(printf '\303\251')" && printf 'x someone%sexample.org\0\n' @ > "$(printf '\303\251')/blob.bin"   # a non-ASCII path git would C-quote
   ln -s "/home/$(printf '%s' someone)/x" link
   printf '*.md -diff\n' > .gitattributes   # would move notes.md out of `git grep -I`'s population
   mkdir -p sub && printf 'T=1\n' > sub/.env
-  printf 'contact: someone%sexample.org\n' @ > "$(printf 'q\nr.md')"   # a path holding a newline: a hit here vanished once
-  printf 'two someone%sexample.org and other%sexample.com\0\n' @ @ > twice.bin   # two runs in one binary blob: one "of them"
-  git add clean.md figure.png notes.md blob.bin link .gitattributes "$(printf '\303\251')/blob.bin" twice.bin "$(printf 'q\nr.md')" && git add -f sub/.env
-  ( check ) > "$work/verdicts" || true
-  n_mail_binary=$(cat -- "$work/mailbin")
-  expect() { grep -qF -- "$1" "$work/verdicts" || { echo "self-test: expected '$1' NOT in verdicts:"; cat -- "$work/verdicts"; exit 1; }; echo "self-test: $2"; }
+  nl_path=$(printf 'q\nr.md'); printf 'contact: someone%sexample.org\n' @ > "$nl_path"   # a path holding a newline: a hit here vanished once
+  # e-mail-shaped bytes inside binary blobs: counted as blobs, never judged — one plain, one under
+  # a non-ASCII path git would C-quote, one holding two runs
+  PLANTED_BINARY=(blob.bin "$(printf '\303\251')/blob.bin" twice.bin)
+  mkdir -p "$(printf '\303\251')"
+  printf 'maybe someone%sexample.org\0\n' @ > "${PLANTED_BINARY[0]}"
+  printf 'x someone%sexample.org\0\n' @ > "${PLANTED_BINARY[1]}"
+  printf 'two someone%sexample.org and other%sexample.com\0\n' @ @ > "${PLANTED_BINARY[2]}"
+  git add clean.md figure.png notes.md link .gitattributes "$nl_path" "${PLANTED_BINARY[@]}" && git add -f sub/.env
+  check > "$work/verdicts" || true
+  verdicts=$(<"$work/verdicts")
+  expect() {  # whole-string containment: a `grep -F` here read a two-line expectation as a pattern LIST
+    [[ $verdicts == *"$1"* ]] || { echo "self-test: expected '$1' NOT in verdicts:"; printf '%s\n' "$verdicts"; exit 1; }; echo "self-test: $2"; }
   expect 'figure.png:1:/home/' 'private path behind a NUL byte caught'
   expect 'notes.md:1:someone' 'e-mail caught despite .gitattributes'
   expect 'link -> /home/' 'symlink target caught'
   expect 'sub/.env' 'tracked .env at depth caught'
-  expect "$(printf 'q\nr.md'):1:someone" 'e-mail in a path holding a newline caught'
-  if grep -qF -- 'blob.bin' "$work/verdicts"; then echo "self-test: e-mail-shaped bytes in a binary blob must not be a hit"; exit 1; fi
-  [ "$n_mail_binary" = 3 ] || { echo "self-test: expected 3 e-mail-shaped binary blobs counted (one under a non-ASCII path, one holding two runs), got '$n_mail_binary'"; exit 1; }
-  echo "self-test: e-mail-shaped bytes in three binary blobs (one under a non-ASCII path, one with two runs) counted as blobs, not judged"
-  git rm -q --cached figure.png notes.md link sub/.env blob.bin "$(printf '\303\251')/blob.bin" twice.bin "$(printf 'q\nr.md')"
-  ( check ) > "$work/verdicts" || true
+  expect "$nl_path:1:someone" 'e-mail in a path holding a newline caught'
+  for b in "${PLANTED_BINARY[@]}"; do
+    case "$verdicts" in *"$b"*) echo "self-test: e-mail-shaped bytes in a binary blob must not be a hit ($b)"; exit 1 ;; esac
+  done
+  [ "$n_mail_binary" -eq "${#PLANTED_BINARY[@]}" ] || { echo "self-test: expected ${#PLANTED_BINARY[@]} e-mail-shaped binary blobs counted, got $n_mail_binary"; exit 1; }
+  echo "self-test: e-mail-shaped bytes in binary blobs counted as blobs, not judged"
+  git rm -q --cached figure.png notes.md link sub/.env "$nl_path" "${PLANTED_BINARY[@]}"
+  check > "$work/verdicts" || true
   [ ! -s "$work/verdicts" ] || { echo "self-test: clean planted repo still fires:"; cat -- "$work/verdicts"; exit 1; }
   echo "self-test: clean repo silent"
   rc=0; GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=grep.patternType GIT_CONFIG_VALUE_0=bogus bash "$self" > "$work/broken.out" 2> "$work/broken.err" || rc=$?
@@ -205,11 +209,11 @@ if [ "${1:-}" = "--self-test" ]; then
   rc=0; GIT_INDEX_FILE="$work/no-such-index" bash "$self" > "$work/empty.out" 2> "$work/empty.err" || rc=$?
   [ "$rc" -eq 2 ] && [ ! -s "$work/empty.out" ] || { echo "self-test: an empty population must exit 2 with no summary (got $rc):"; cat -- "$work/empty.out" "$work/empty.err"; exit 1; }
   echo "self-test: empty population exits 2 with no summary"
-  for name in .env.local sub/dir/.env; do
-    printf '%s\n' "$name" | grep -qE -- "$ENV_FILE" || { echo "self-test: $name NOT matched"; exit 1; }
+  for name in .env.local sub/dir/.env "$(printf 'sub/.env\n')" "$(printf '.env\nx')"; do
+    is_env_name "$name" || { echo "self-test: .env name NOT matched: $(printf '%q' "$name")"; exit 1; }
   done
-  if printf '.envrc\n' | grep -qE -- "$ENV_FILE"; then echo "self-test: .envrc wrongly matched"; exit 1; fi
-  echo "self-test: .env pattern matches .env.local and sub/dir/.env, not .envrc"
+  ! is_env_name .envrc || { echo "self-test: .envrc wrongly matched"; exit 1; }
+  echo "self-test: .env name test (the gate's own) matches .env.local, sub/dir/.env and names carrying a newline, not .envrc"
   exit 0
 fi
 

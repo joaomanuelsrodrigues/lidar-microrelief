@@ -1064,3 +1064,28 @@ self-test: e-mail in a path holding a newline caught
 self-test: e-mail-shaped bytes in three binary blobs (one under a non-ASCII path, one with two runs) counted as blobs, not judged
 neutrality: 122 tracked (122 regular, 0 symlink, 0 submodule not scanned); private paths over all bytes of 122; e-mails judged in 109 text (13 binary or empty, e-mail-shaped bytes in 1 of them not judged); 0 hits
 ```
+
+**Gate, round eight (2026-08-27).** Seven by measurement or mutation: the self-test's `( check )
+|| true` swallowed `fail_instrument`'s exit inside a subshell, so under a broken `git grep` the
+empty verdict file — the pass condition — printed "clean repo silent" (the subshell existed only
+because `check` never reset its state); `[[ =~ ]]` is string-anchored where `.gitignore`'s
+`.env*` is not, so a force-added `.env` name carrying a newline byte passed; my `expect` helper
+was `grep -F` with a two-line expectation — a pattern list, the round-7 defect in the control
+written for it; unmerged index entries were counted but never visited by `git grep --cached`;
+the per-symlink `cat-file` was the one git call whose stderr was dropped; three guards had no
+test that fails when they are deleted. Now: one `run_git` wrapper owns status, output and the
+note for every git call; `check` resets its state and runs in-process (the self-test under a
+broken instrument exits 2 and never prints "clean repo silent"); the `.env` name test is one
+function applied to every line of a path, shared by production and self-test, with newline
+cases; unmerged entries are exit 2; the planted binary set is an array and its count is
+compared to the array's length; a `git` shim in the suite drops a size line and appends an
+unlisted record, so the two guards have tests that fail without them. 0.16 s on the tree:
+
+```
+self-test: e-mail-shaped bytes in binary blobs counted as blobs, not judged
+self-test: clean repo silent
+self-test: broken instrument exits 2 with no summary
+self-test: empty population exits 2 with no summary
+self-test: .env name test (the gate's own) matches .env.local, sub/dir/.env and names carrying a newline, not .envrc
+neutrality: 122 tracked (122 regular, 0 symlink, 0 submodule not scanned); private paths over all bytes of 122; e-mails judged in 109 text (13 binary or empty, e-mail-shaped bytes in 1 of them not judged); 0 hits
+```
