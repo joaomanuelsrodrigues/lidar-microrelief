@@ -14,7 +14,8 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_the_declared_bounds_win_over_the_wgs84_ring() -> None:
-    """§A6, and it is not a hypothetical: measured on the committed AOI.
+    """A declared bound beats one inferred from the geometry, and it is not a
+    hypothetical: measured on the committed AOI.
 
     The ring in `aoi/aoi.geojson` is the WGS84 *image* of the working box and, transformed back,
     misses it by up to 3.8 mm — the file says so itself. `grid_for_bounds` floors the origin and

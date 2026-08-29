@@ -1,4 +1,4 @@
-"""The §A1 gate: read real DGT LAZ end to end and measure what the site was chosen on.
+"""Live smoke: read real DGT LAZ end to end and measure what the site was chosen on.
 
 Everything before this ran against files we wrote ourselves, which proves wiring and not
 behaviour. This script is the one place where a claim about reading DGT data is supported.
@@ -16,7 +16,7 @@ Three measurements, in the order in which one can invalidate the next:
    consistent with the terraces themselves being bare. So the per-block distribution is what the
    verdict is read from.
 
-Usage: python scripts/smoke_task9.py [--laz ~/data/dgt-laz]
+Usage: python scripts/smoke_dgt_e2e.py [--laz ~/data/dgt-laz]
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ from microrelief.precheck import expected_void_fraction
 from microrelief.providers.dgt import search_tiles
 from microrelief.read import ASPRS_GROUND, read_laz
 
-# The AOI chosen in Task 6, EPSG:3763 (ETRS89 / PT-TM06). See SITE.md.
+# The AOI chosen in SITE.md, EPSG:3763 (ETRS89 / PT-TM06).
 AOI = (-20990.0, 255010.0, -19010.0, 256990.0)
 FINE_BLOCK_M = 10.0  # local ground reference
 COARSE_BLOCK_M = 100.0  # spatial distribution of the canopy share
@@ -114,7 +114,7 @@ def main() -> int:
         x, y, z, c = b.x[inside], b.y[inside], b.z[inside], b.classification[inside]
         ground = c == ASPRS_GROUND
         # Printed per tile, not only summed: the palette is not guaranteed uniform across tiles
-        # of one sortie, and Task 13 compares our filter against this classification.
+        # of one sortie, and the ground-filter comparison uses this classification.
         present = sorted(int(k) for k in np.unique(c))
         print(f"{'':22s}classes present in AOI: {present}")
         for k, n in zip(*np.unique(c, return_counts=True), strict=True):

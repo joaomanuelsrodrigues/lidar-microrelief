@@ -1,6 +1,6 @@
 """The command line, and the contract between what it is told and what it publishes.
 
-Three of these tests exist because the plan's version of `cli.py` was written before the modules
+Three of these tests exist because an early version of `cli.py` was written before the modules
 it calls were finished, and drifted from them in ways only running it exposes.
 """
 
@@ -98,7 +98,7 @@ def test_run_refuses_when_the_laz_directory_is_empty(tmp_path: Path, capsys: Any
             str(tmp_path),
             "--out",
             str(tmp_path / "o"),
-            # This AOI is a bare WGS84 ring, so from Task 5 onward it names no working CRS and
+            # This AOI is a bare WGS84 ring, so it names no working CRS and
             # `_cmd_run` refuses on its first line — before it ever looks for `.laz` files. The
             # CRS is passed rather than written into the fixture as a `crs_epsg` property: these
             # coordinates are genuinely lon/lat, and declaring them as 3763 would make the

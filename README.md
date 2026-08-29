@@ -258,8 +258,8 @@ filter under canopy, declared rather than tuned away.
 
 ## What this does not support
 
-- **Byte-identical replay on real data is not established — now with a measured bound.** The
-  2026-08-05 session saw, in four reads of the 845 MB dataset, one single corrupted coordinate
+- **Byte-identical replay on real data is not established — now with a measured bound.** A run on
+  2026-08-05 saw, in four reads of the 845 MB dataset, one single corrupted coordinate
   and one outright `IoError: failed to fill whole buffer` (source files intact, `sha256sum`
   stable). A pre-registered hunt (2026-08-08, `docs/live-smoke.md`) then ran **192 controlled
   re-reads** — parallel and single-thread backends, idle and under 20 GiB of active memory

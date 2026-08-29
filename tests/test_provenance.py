@@ -126,7 +126,7 @@ def test_the_hash_ignores_what_the_run_measured() -> None:
     """The other half of the claim: the hash changes when an *input* changes, and only then.
 
     `honesty` and `agreement` are results, not inputs. Folding them in would still give a stable
-    hash for a faithful re-run, so no test in the plan's block can tell the two designs apart —
+    hash for a faithful re-run, so no stability test can tell the two designs apart —
     but it would destroy the hash's only use: a mismatch could then mean either "you ran something
     else" or "you got something else", and the whole point is to separate those two questions.
     """
@@ -143,7 +143,7 @@ def test_the_hash_ignores_what_the_run_measured() -> None:
 def test_a_local_path_is_refused_rather_than_quietly_shortened() -> None:
     """A path in a published record is a leak. Silently taking the basename would hide from the
     caller that it handed over one, and `Path(...).name` does not strip a Windows separator on
-    POSIX anyway (§A5), so the check names both separators and refuses."""
+    POSIX anyway, so the check names both separators and refuses."""
     for leaked in (
         "/var/tmp/tiles/LO-248470-07-2024.laz",  # not a home path: the repo's own gate forbids one
         "data\\LO-248470-07-2024.laz",

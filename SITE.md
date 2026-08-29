@@ -1,16 +1,16 @@
 # Site selection
 
-Criteria fixed in the design spec on 2026-07-30, **before any candidate was examined**. A site
+Criteria fixed on 2026-07-30, **before any candidate was examined**. A site
 enters only by passing all four. If none passes, the site is the blocker; the criteria do not move.
 
 | # | Criterion | How it was checked |
 |---|---|---|
 | 1 | DGT coverage confirmed by a real query | `scripts/triage_candidates.py` against the live catalogue, output pasted below |
-| 2 | Canopy present over the terraces | Provisional from public land cover; **confirmed after Task 9** by measuring the share of returns above 2 m |
+| 2 | Canopy present over the terraces | Provisional from public land cover; **confirmed by measurement** — the share of returns above 2 m |
 | 3 | Terraces already publicly documented | Named source with a link, per candidate |
 | 4 | No sign of non-inventoried structure | Stated explicitly, per candidate |
 
-Criterion 3 is the one that dissolves the tension the earlier design carried: on a landscape that
+Criterion 3 is the one that dissolves a tension this project began with: on a landscape that
 is **already publicly described**, full reproducibility and prudence stop competing — publishing
 the relief reveals nothing that was hidden. Documented is a *pass*, not a disappointment. Criterion
 4 is its safeguard: a landscape where structure is actively being found is excluded, however
@@ -34,7 +34,7 @@ quietly revised to match the data is not a pre-registration.
 
 ### Correction 2 — the triage box was not on the site
 
-The Sistelo box carried in `scripts/triage_candidates.py` since Task 6 was
+The Sistelo box first carried in `scripts/triage_candidates.py` was
 `(-8.375, 41.930, -8.351, 41.948)`. That box lies **1–3 km south of the Sistelo parish boundary**
 and 2.8 km from the village: criterion 1 was being measured somewhere the criterion-3 evidence
 does not reach, because the Portaria names the socalcos of the classified landscape, not of that
@@ -72,7 +72,7 @@ on 2026-08-02, when none of them could be reached at all.
 Two things in that table are worth reading carefully. Côa's refusal is not a coverage failure: its
 ten tiles were flown on three dates spanning 30 days, and `select_tiles` refuses to register a
 30-day mosaic onto one grid without being told to. And Manteigas reads `dates=2025-07-04` only
-because sortie grouping landed in this session — the catalogue publishes four stamps for it,
+because sortie grouping was added — the catalogue publishes four stamps for it,
 6m23s apart, and before the change it was refused for spanning four "epochs" that are one pass of
 one aircraft.
 
@@ -206,7 +206,7 @@ directly rather than accepted second-hand.
 **Sistelo is the site.** It is the only candidate that passes criterion 3 in its strongest available
 form, the only one whose canopy premise is not already contradicted by what the landscape is, and
 the one whose data is densest. Two candidates are excluded outright on criterion 4. Alto Douro is
-the runner-up and would be the fallback if criterion 2 fails at Task 9 — with its own criterion-2
+the runner-up and would be the fallback if criterion 2 failed on measurement — with its own criterion-2
 doubt intact, which is the honest reason it is second and not first.
 
 **What is not settled by this file.** Criterion 2 is provisional for every candidate *except the one
@@ -220,7 +220,7 @@ before being trusted, not promoted on a score of the same kind that had just bee
 ## Acquisition — manual, and why
 
 The four tiles were downloaded **by hand through the portal's browser login on 2026-08-04**, not
-by a fetcher. `scripts/dgt_fetch.py` was specified in the plan and never written, because the
+by a fetcher. `scripts/dgt_fetch.py` was intended and never written, because the
 provider closed the automated path: `POST /token` with `grant_type=password` answers **HTTP 401
 `unauthorized_client`**, and a three-request control settles which side refuses — a real password,
 a junk password and a non-existent user all return the *identical* response, so the credentials are

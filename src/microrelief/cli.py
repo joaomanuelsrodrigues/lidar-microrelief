@@ -62,8 +62,8 @@ LIMITATIONS = (
 def aoi_bounds(path: Path, crs: int | None = None) -> tuple[float, float, float, float, int]:
     """The AOI's working bounds and the CRS they are in.
 
-    A declared `properties.bounds` + `properties.bounds_epsg` wins over the geometry (§A6:
-    explicit structured input beats fuzzy extraction). This is not a preference. A ring written
+    A declared `properties.bounds` + `properties.bounds_epsg` wins over the geometry: an
+    explicit declaration beats a value inferred from one. This is not a preference. A ring written
     as the WGS84 image of a box in a projected CRS does not transform back to that box — on the
     committed AOI it misses by up to 3.8 mm, and the file says so in its own note.
     `grid_for_bounds` floors the origin and ceils the extent, so millimetres become half a cell:
