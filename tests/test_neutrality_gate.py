@@ -157,8 +157,9 @@ def test_an_email_in_a_binary_blob_is_counted_not_judged(tmp_path: Path) -> None
 
 
 def test_an_email_is_caught_even_when_gitattributes_marks_the_file_no_diff(tmp_path: Path) -> None:
-    """`git grep -I` obeys `.gitattributes`; a tracked `*.md -diff` moved a text file out of its
-    population (round 5). The text rule is the script's own, so the attribute changes nothing."""
+    """`git grep -I` obeys `.gitattributes`; a tracked `*.md -diff` moved a text file out of an
+    earlier version's population. The text rule is the script's own, so the attribute changes
+    nothing."""
     repo = _scratch_repo(tmp_path)
     (repo / ".gitattributes").write_text("*.md -diff\n", encoding="utf-8")
     (repo / "clean.md").write_text(f"contact: {MAIL}\n", encoding="utf-8")
@@ -231,8 +232,8 @@ def test_a_file_with_a_late_nul_is_binary_for_the_verdict_and_the_count_alike(
     tmp_path: Path,
 ) -> None:
     """One rule, the script's own — a NUL anywhere makes a blob binary — applied to the e-mail
-    verdict and to the count, so they cannot disagree (round 4 had `grep -I` read a late-NUL file
-    while the count called it skipped)."""
+    verdict and to the count, so they cannot disagree (an earlier version had `grep -I` read a
+    late-NUL file while the count called it skipped)."""
     repo = _scratch_repo(tmp_path)
     (repo / "big.txt").write_bytes(b"contact: " + MAIL.encode() + b"\n" + b"a" * 9000 + b"\n\0\n")
     _git(repo, tmp_path, "add", "big.txt")
@@ -318,7 +319,7 @@ def test_an_email_in_a_path_holding_a_newline_is_caught(tmp_path: Path) -> None:
 
 def test_two_email_shaped_runs_in_one_binary_blob_count_as_one_blob(tmp_path: Path) -> None:
     """The summary says 'N of them' — of the binary blobs — so the count is of blobs, the same
-    thing `_summary_for` counts (round 7 had the script count matches)."""
+    thing `_summary_for` counts (an earlier version counted matches)."""
     repo = _scratch_repo(tmp_path)
     (repo / "twice.bin").write_bytes(
         b"a " + MAIL.encode() + b" b other" + b"@" + b"example.com\0\n"
@@ -347,8 +348,8 @@ def test_colour_config_does_not_change_the_verdict(tmp_path: Path) -> None:
 
 
 def test_an_object_git_cannot_read_is_an_instrument_failure(tmp_path: Path) -> None:
-    """`cat-file --batch-check` says `<sha> missing` and exits 0; round 7 found that fed to an
-    integer test, which errored into the binary branch and the run stayed green."""
+    """`cat-file --batch-check` says `<sha> missing` and exits 0; an earlier version fed that
+    to an integer test, which errored into the binary branch and the run stayed green."""
     repo = _scratch_repo(tmp_path)
     _git(
         repo, tmp_path, "update-index", "--add", "--cacheinfo", "100644," + "1" * 40 + ",ghost.txt"
@@ -374,8 +375,8 @@ def test_the_self_test_cannot_read_a_broken_instrument_as_a_clean_repo(tmp_path:
 
 
 def test_an_unmerged_index_is_an_instrument_failure(tmp_path: Path) -> None:
-    """`git grep --cached` skips unmerged entries by construction; the count had vouched for
-    blobs the scan never read (round 8)."""
+    """`git grep --cached` skips unmerged entries by construction; an earlier version's count
+    had vouched for blobs the scan never read."""
     repo = _scratch_repo(tmp_path)
     sha = (
         _git(repo, tmp_path, "hash-object", "-w", "--stdin", input=b"see " + MAIL.encode() + b"\n")
@@ -431,7 +432,7 @@ def _shim(tmp_path: Path, body: str) -> dict[str, str]:
 
 
 def test_a_size_list_shorter_than_the_index_is_an_instrument_failure(tmp_path: Path) -> None:
-    """Deleting the sizes-count guard left the suite green (round 8, by mutation): this shim
+    """Deleting the sizes-count guard left the suite green — found by mutation testing: this shim
     drops the last size `cat-file --batch-check` returns."""
     repo = _scratch_repo(tmp_path)
     env = _shim(
@@ -446,7 +447,7 @@ def test_a_size_list_shorter_than_the_index_is_an_instrument_failure(tmp_path: P
 def test_a_hit_under_a_path_the_index_does_not_list_is_an_instrument_failure(
     tmp_path: Path,
 ) -> None:
-    """Deleting the unlisted-path guard left the suite green (round 8, by mutation): this shim
+    """Deleting the unlisted-path guard left the suite green — found by mutation testing: this shim
     appends a record for a path the index does not hold to every pattern scan."""
     repo = _scratch_repo(tmp_path)
     env = _shim(
@@ -463,7 +464,7 @@ def test_a_tracked_file_the_gitignore_excludes_is_caught_at_any_depth_and_by_any
     tmp_path: Path,
 ) -> None:
     """The secrets rule is the repository's own `.env*`, evaluated by git: a regex of the gate's
-    (`.env(\\..+)?`) let `.env-prod`, `.env_local` and `.env/secret` through (round 9). An
+    (`.env(\\..+)?`) let `.env-prod`, `.env_local` and `.env/secret` through. An
     untracked one is not this gate's question; a force-added one is."""
     repo = _scratch_repo(tmp_path)
     (repo / "sub").mkdir()
@@ -499,7 +500,7 @@ def test_a_tracked_file_the_gitignore_excludes_is_caught_at_any_depth_and_by_any
 
 
 def test_a_tracked_env_under_a_non_ascii_path_is_caught(tmp_path: Path) -> None:
-    """`git ls-files` without -z octal-quotes the path; an anchored pattern missed it (round 3)."""
+    """`git ls-files` without -z octal-quotes the path; an anchored pattern missed it."""
     repo = _scratch_repo(tmp_path)
     (repo / "é").mkdir()
     (repo / "é" / ".env").write_text("TOKEN=x\n", encoding="utf-8")
@@ -529,7 +530,7 @@ def test_a_repository_whose_gitignore_lacks_the_env_rule_is_an_instrument_failur
     result = _run(repo, tmp_path)
     assert result.returncode == 2 and result.stdout == "", result.stdout + result.stderr
     assert "no '.env*' line" in result.stderr
-    # round 10: the rule in the WORKING-TREE file, or in a machine's global excludes, must not count
+    # The rule in the WORKING-TREE file, or in a machine's global excludes, must not count
     (repo / ".gitignore").write_text(".env*\n", encoding="utf-8")  # unstaged
     assert _run(repo, tmp_path).returncode == 2
     excludes = tmp_path / "global-excludes"
