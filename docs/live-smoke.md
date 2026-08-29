@@ -15,6 +15,9 @@ Four tiles of the chosen AOI, acquired manually (see `SITE.md`), 845,372,695 byt
 PYTHONPATH=src .venv/bin/python scripts/smoke_task9.py
 ```
 
+> *Annotation, 2026-08-29:* this script is now `scripts/smoke_dgt_e2e.py`. The command is
+> left as it was run, because this is a record of what happened, not instructions to follow.
+
 **Output:**
 
 ```

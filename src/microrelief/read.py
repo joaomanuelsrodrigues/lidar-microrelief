@@ -127,7 +127,7 @@ def read_laz(
     if footprint is not None:
         # Checked on ALL returns, noise classes included (widened in 0.3.0; until then it ran on
         # the kept returns only, so a corrupted coordinate on a class-7/18 return was silently
-        # dropped rather than detected — E-006's catch). A coordinate that cannot be real is a
+        # dropped rather than detected — a review caught it). A coordinate that cannot be real is a
         # property of the READ, not of the return's class: if one record decoded to garbage,
         # nothing vouches for the records beside it. Verified on the four real tiles before
         # widening: zero noise returns sit outside any declared box, so this refuses nothing the

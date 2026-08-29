@@ -19,7 +19,7 @@ import rasterio
 
 PERMITTED_RECORD_DIFFS = {"package_version", "created_utc", "reproducibility_hash"}
 
-# `known_limitations` also changes, because Task 7 Step 3 appends two declared gaps to it. It is
+# `known_limitations` also changes, because 0.4.0 appends two declared CRS gaps to it. It is
 # NOT in PERMITTED_RECORD_DIFFS: permitting the field wholesale would let any limitation appear or
 # vanish unnoticed, and the whole point of this instrument is that every difference is one we
 # named in advance. So it is asserted instead — the new record must be the old one plus exactly
@@ -125,10 +125,10 @@ def main() -> int:
     ap.add_argument(
         "--expect-new-limitations",
         action="store_true",
-        help="require known_limitations to be the old list plus exactly the two gaps Task 7 "
-        "Step 3 declares. OFF by default, because a run-to-run control compares two builds of "
+        help="require known_limitations to be the old list plus exactly the two CRS gaps "
+        "0.4.0 declares. OFF by default, because a run-to-run control compares two builds of "
         "the same version, where the list must be unchanged. Only the 0.3.0-vs-0.4.0 "
-        "acceptance in Step 6 passes it.",
+        "acceptance passes it.",
     )
     args = ap.parse_args()
     return compare(args.old, args.new, args.expect_new_limitations)
