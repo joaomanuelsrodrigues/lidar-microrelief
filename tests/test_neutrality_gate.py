@@ -157,9 +157,9 @@ def test_an_email_in_a_binary_blob_is_counted_not_judged(tmp_path: Path) -> None
 
 
 def test_an_email_is_caught_even_when_gitattributes_marks_the_file_no_diff(tmp_path: Path) -> None:
-    """`git grep -I` obeys `.gitattributes`; a tracked `*.md -diff` moved a text file out of its
-    population, which an earlier gate obeyed. The text rule is the script's own, so the
-    attribute changes nothing."""
+    """`git grep -I` obeys `.gitattributes`; a tracked `*.md -diff` moved a text file out of an
+    earlier version's population. The text rule is the script's own, so the attribute changes
+    nothing."""
     repo = _scratch_repo(tmp_path)
     (repo / ".gitattributes").write_text("*.md -diff\n", encoding="utf-8")
     (repo / "clean.md").write_text(f"contact: {MAIL}\n", encoding="utf-8")
