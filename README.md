@@ -14,6 +14,28 @@ Portugal.
 *Basis layer: green = measured, orange = interpolated, red = undetermined. Drag the comparison
 yourself: [live viewer](https://joaomanuelsrodrigues.github.io/lidar-microrelief/viewer/).*
 
+## What this stands on
+
+A per-cell band saying what an elevation is made of is **not new.** Copernicus DEM ships six quality
+layers — its Editing Mask codes each pixel *Not edited*, *Interpolated* or *Void*, its Filling Mask
+names the **donor dataset** for every filled pixel, and a Height Error Mask gives a per-pixel error in
+metres; ArcticDEM ships `datamask`, `count` and
+`mad`; NASADEM's NUM layer carries per-pixel count and source. The convention is mature, documented,
+and belongs to the agencies that produce national and global DEMs.
+
+**Where it is missing is the tool layer.** Fill the voids in your own raster with the free tools a
+practitioner actually reaches for — GDAL `gdal_fillnodata`, PDAL `writers.gdal`, GRASS `r.fillnulls`,
+SAGA `Close Gaps`, WhiteboxTools `FillMissingData` — and not one of the five hands back a band saying
+which cells it just invented. In GDAL and SAGA the mask is an *input*. The fill is done and forgotten,
+and the raster that reaches whoever gets it next is indistinguishable, cell by cell, from one that
+was measured everywhere.
+
+So this is not an invention. It is the agencies' provenance discipline brought down to the layer
+where you derive a DEM from your own point cloud, made the default rather than an option. The
+quotes, the mapping onto those conventions — our `interpolated` is `2` and Copernicus's is `3`, so
+they are **not** interchangeable — and the objections a domain reader will raise are in
+[`docs/prior-art.md`](docs/prior-art.md).
+
 ## Install
 
 Python ≥ 3.12. Not on PyPI yet — install from the repository:
@@ -194,6 +216,33 @@ parameters, and what is actually known about them (`CALIBRATIONS.md`):
   cap 2 cm above a riser is not above it within the 0.2–0.3 m LiDAR error band, so it moved from
   3.0 to 3.5. Method, figures and the ruling: `docs/riser-measurement.md`. At the default
   windows the cap is unreached (largest tolerance 1.65 m), so the change alters no output here.
+
+**Is the filter any good? — measured against PDAL's own, 2026-08-27.** On the shipped 150 m sample,
+per cell, over cells holding at least one return, against the delivery's own ASPRS class 2. All three
+run out of the box; none tuned.
+
+| ground filter | accuracy | recall ground | recall non-ground | false positives |
+|---|---|---|---|---|
+| **microrelief** (own PMF variant) | 0.837 | **0.999** | 0.723 | 14,327 |
+| PDAL `filters.pmf` (defaults) | 0.827 | 0.660 | **0.945** | 2,865 |
+| PDAL `filters.smrf` (defaults) | **0.857** | 0.955 | 0.789 | 10,923 |
+
+**SMRF beats this implementation by 2.0 accuracy points**, with a more balanced profile. The field's
+default is better out of the box than this re-implementation; the table is here because saying so
+costs nothing and pretending otherwise costs everything. It also shows the operating point is a
+*choice* rather than a rounding difference: PDAL's PMF is the same algorithm and scores 0.660 ground
+recall against this one's 0.999 — the declared tolerance variant above is systematically more
+permissive toward ground, and pays for it in non-ground recall and false positives.
+
+**The filter is deliberately not the product.** It is re-derived from the raw returns so that every
+published cell has a traceable origin; the claim is the `basis` band and the record, not the surface.
+If you want the best ground classification, use SMRF — this tool will still be the one that tells you
+which cells it had to invent.
+
+*Read the denominators:* the table above is the **shipped 150 m sample**, cells with ≥ 1 return,
+majority-class null 0.587. The paragraph below reports the **full AOI**, which is a different
+population and a different set of numbers. Caveats on both: one site, out-of-the-box parameters, and
+the "truth" is DGT's own classification — a product, not ground truth.
 
 The comparison against the official ASPRS classification exists to **quantify the difference, not
 to beat the DGT** — the official ground class never decides a cell in these surfaces; here it is
