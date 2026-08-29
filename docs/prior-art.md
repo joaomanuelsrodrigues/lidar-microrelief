@@ -65,8 +65,8 @@ scheme, and this project does not implement the Copernicus specification.
 Two further asymmetries, in both directions:
 
 - **Theirs carries more where it is filled.** FLM names the donor; we have no donor to name, because
-  an interpolated cell here borrows from a measured cell *in the same tile*, never from another
-  dataset.
+  an interpolated cell here borrows from the nearest measured cell *in the same raster*, never
+  from another dataset. There is no second source to record.
 - **Ours distinguishes more where it is not.** `datamask` is binary, so ArcticDEM's `0` covers both
   of our non-measured states at once. Our `undetermined` is a published value with its own code, not
   an absence — NoData for the `basis` band is `255`, precisely so that `0` can mean something.
