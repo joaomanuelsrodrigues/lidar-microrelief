@@ -19,22 +19,33 @@ import rasterio
 
 PERMITTED_RECORD_DIFFS = {"package_version", "created_utc", "reproducibility_hash"}
 
-# `known_limitations` also changes, because 0.4.0 appends two declared CRS gaps to it. It is
-# NOT in PERMITTED_RECORD_DIFFS: permitting the field wholesale would let any limitation appear or
+# `known_limitations` changes on purpose at a release that declares something new. It is NOT in
+# PERMITTED_RECORD_DIFFS: permitting the field wholesale would let any limitation appear or
 # vanish unnoticed, and the whole point of this instrument is that every difference is one we
 # named in advance. So it is asserted instead — the new record must be the old one plus exactly
-# these two lines, in order. They are written out here rather than imported from `cli.LIMITATIONS`
-# on purpose: importing them would make the instrument agree with whatever the code says, and a
-# typo in either place would pass. Two independent statements that must match is the check.
-EXPECTED_NEW_LIMITATIONS = (
-    "Calling select_tiles as a library function bypasses the AOI-vs-tile CRS check, which "
-    "lives at the CLI's composition root.",
-    "scripts/measure_risers.py takes no --crs, so it can only work an AOI that declares its "
-    "own projected CRS.",
-)
+# the lines below, in order. They are written out here rather than imported from
+# `cli.LIMITATIONS` on purpose: importing them would make the instrument agree with whatever the
+# code says, and a typo in either place would pass. Two independent statements that must match
+# is the check, which is also why each release keeps its own entry instead of being rewritten:
+# an old acceptance command recorded in `docs/live-smoke.md` must still replay.
+EXPECTED_NEW_LIMITATIONS = {
+    "0.4.0": (
+        "Calling select_tiles as a library function bypasses the AOI-vs-tile CRS check, which "
+        "lives at the CLI's composition root.",
+        "scripts/measure_risers.py takes no --crs, so it can only work an AOI that declares its "
+        "own projected CRS.",
+    ),
+    "0.4.1": (
+        "The reproducibility hash does not cover the attribution string: two runs differing "
+        "only in --attribution share a hash, so a product can be relabelled and keep its anchor.",
+        "The only resource ceiling is a cell count (200,000,000 cells, ~12 GB of per-cell "
+        "arrays), not a memory bound: a grid inside it can still exhaust memory, and that "
+        "failure is an OOM kill rather than a refusal with a reason.",
+    ),
+}
 
 
-def compare(old: Path, new: Path, expect_new_limitations: bool = False) -> int:
+def compare(old: Path, new: Path, expect_new_limitations: str | None = None) -> int:
     problems: list[str] = []
 
     old_bands = sorted(p.name for p in old.glob("*.tif"))
@@ -89,10 +100,15 @@ def compare(old: Path, new: Path, expect_new_limitations: bool = False) -> int:
 
     old_lims = tuple(doc_a.get("known_limitations") or ())
     new_lims = tuple(doc_b.get("known_limitations") or ())
-    expected = old_lims + EXPECTED_NEW_LIMITATIONS if expect_new_limitations else old_lims
+    if expect_new_limitations:
+        expected = old_lims + EXPECTED_NEW_LIMITATIONS[expect_new_limitations]
+    else:
+        expected = old_lims
     if new_lims != expected:
         wanted = (
-            "the old list plus the two declared gaps" if expect_new_limitations else "unchanged"
+            f"the old list plus the two gaps {expect_new_limitations} declares"
+            if expect_new_limitations
+            else "unchanged"
         )
         problems.append(
             f"provenance.known_limitations is not {wanted}: "
@@ -110,7 +126,7 @@ def compare(old: Path, new: Path, expect_new_limitations: bool = False) -> int:
     print(
         "\nidentical in every band and every record field but the three permitted, and "
         + (
-            "known_limitations gained exactly the two declared gaps"
+            f"known_limitations gained exactly the two gaps {expect_new_limitations} declares"
             if expect_new_limitations
             else "known_limitations unchanged"
         )
@@ -124,11 +140,14 @@ def main() -> int:
     ap.add_argument("new", type=Path)
     ap.add_argument(
         "--expect-new-limitations",
-        action="store_true",
-        help="require known_limitations to be the old list plus exactly the two CRS gaps "
-        "0.4.0 declares. OFF by default, because a run-to-run control compares two builds of "
-        "the same version, where the list must be unchanged. Only the 0.3.0-vs-0.4.0 "
-        "acceptance passes it.",
+        nargs="?",
+        const="0.4.0",
+        choices=sorted(EXPECTED_NEW_LIMITATIONS),
+        default=None,
+        help="require known_limitations to be the old list plus exactly the two gaps the named "
+        "release declares. OFF by default, because a run-to-run control compares two builds of "
+        "the same version, where the list must be unchanged. The bare flag still means 0.4.0, "
+        "so the acceptance command recorded in docs/live-smoke.md replays unchanged.",
     )
     args = ap.parse_args()
     return compare(args.old, args.new, args.expect_new_limitations)

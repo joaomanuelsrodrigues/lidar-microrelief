@@ -1147,3 +1147,125 @@ self-test: a staged .gitignore without .env* is an instrument failure, exit 2 wi
 self-test: the rule counts only in the staged .gitignore, not the working-tree file
 neutrality: 122 tracked (122 regular, 0 symlink, 0 submodule not scanned); private paths over all bytes of 122; e-mails judged in 109 text (13 binary or empty, e-mail-shaped bytes in 1 of them not judged); 0 tracked files the staged .gitignore excludes; 0 hits
 ```
+## 2026-08-30 — 0.4.1: two declared limitations, one silent success closed, and the re-run that had to prove nothing moved
+
+Four pre-flip fixes from the s291 readiness audit (F3–F6), and the acceptance run that shows none
+of them touched a measurement.
+
+### 1. The silent success (F6)
+
+`cli.py` had no `if __name__ == "__main__":` guard, so the documented module form did nothing and
+said nothing:
+
+```
+$ .venv/bin/python -m microrelief.cli run --help
+$ echo "exit=$?  bytes=$(.venv/bin/python -m microrelief.cli run --help | wc -c)"
+exit=0  bytes=0
+```
+
+Exit 0, zero bytes on stdout and stderr — indistinguishable in any exit-code check from a real
+run. The console script spoke normally on the same arguments, which is what made the module form
+the *only* broken door and kept a 252-test suite green over it. Closed by the guard, and asserted
+by an **artefact**: `tests/test_packaging.py::test_the_module_entry_point_actually_runs_the_cli`
+runs the shipped sample through `python -m` and requires `provenance.json` to exist and to carry
+`__version__`. Written first, and failing before the fix with
+`rc=0, stdout='', stderr=''` in its own message.
+
+### 2. Two limitations declared (F4, F5)
+
+Neither is new behaviour; both were true and unwritten.
+
+- **F5** — the reproducibility hash does not cover `--attribution`. Two runs differing only in
+  that string share a hash.
+- **F4** — the only resource ceiling is a cell count (200,000,000), and the per-cell arrays cost
+  60 B/cell measured (40 B in the accumulator's five float64/int64 arrays, 20 B in `CellStats`'s
+  five float32/int32 ones), so the ceiling is ~12 GB before the ground filter, the two distance
+  transforms and the surfaces. `grid_for_bounds`'s refusal now states the byte cost; it still
+  does not bound it, and `--cell 0.1` over 1 km² still passes the guard.
+
+`known_limitations` goes 8 → 10, the README's *What this does not support* 9 → 11.
+
+### 3. A private reporting channel (F3)
+
+`SECURITY.md`, naming GitHub private vulnerability reporting as the only channel, and stating the
+threat model that actually exists: a LAS/LAZ file is untrusted input parsed by `laspy` before any
+of this package's refusals run, and `select`/`precheck` make one outbound request each while
+`run` makes none.
+
+### 4. The version bump, and why
+
+`package_version` is inside the reproducibility hash and is the only way a code change reaches
+it. 0.4.0 had never left this machine, but `docs/viewer/provenance.json` and the records quoted
+above ship *inside* the repository — so leaving the version alone would have published two
+different codes under one hash. 0.4.0 → 0.4.1 in `__init__.py`, `pyproject.toml`, `CITATION.cff`
+and the skill's frontmatter.
+
+### 5. The sample re-run
+
+```
+$ .venv/bin/microrelief run --aoi examples/sistelo-sample/aoi.geojson \
+    --laz examples/sistelo-sample --out <tmp> \
+    --attribution "$(cat examples/sistelo-sample/attribution.txt)"
+grid 300 x 300 cells of 0.5 m (0.0225 km2), 1 tile(s), 1 return(s) outside the AOI
+measured 56.2% | interpolated 43.1% | undetermined 0.7%
+expected void at f=1: 1.312% (measured density 17.3 pts/m2)
+ground recall 0.999 | non-ground recall 0.723 | accuracy 0.837 | majority-class null 0.587
+flight dates (none declared) | mixed epochs False
+reproducibility_hash 4060d5341498556dbd48e18eb34fb118f5f4ee62a979ccc94372208d5ec70e0b
+```
+
+Every line but the hash is identical to 0.4.0's. **The control that says the bump changed
+metadata and not data**: the six bands' *pixel* digests (`expected/bands.sha256.json`, which
+hashes `src.read(1)`, not the file) are **6 of 6 unchanged**, while all 12 golden fixture hashes —
+which hash whole TIFF *files*, tags included — changed. Metadata-wide, pixel-nowhere, which is
+what a version bump is supposed to be.
+
+The noise share on this sample is **0.104%** (407 excluded against 390,450 kept), against
+**0.228%** over the full AOI — the two populations the README labels separately.
+
+### 6. The full-AOI re-run and the acceptance check
+
+```
+$ /usr/bin/time -f "%e s wall, %M kB peak RSS" .venv/bin/microrelief run \
+    --aoi aoi/aoi.geojson --laz ~/data/dgt-laz --out outputs_0.4.1b/ --cell 0.5 \
+    --selection outputs_0.2.0/selection.json --attribution "Source: Direção-Geral do Território (DGT), ..."
+grid 3960 x 3960 cells of 0.5 m (3.9204 km2), 4 tile(s), 3250766 return(s) outside the AOI
+measured 74.6% | interpolated 25.2% | undetermined 0.2%
+expected void at f=1: 0.117% (measured density 27.0 pts/m2)
+ground recall 0.999 | non-ground recall 0.495 | accuracy 0.749 | majority-class null 0.503
+flight dates 2026-03-30T00:00:00Z | mixed epochs False
+reproducibility_hash 7b78c489df896702d812fd8401ad31b4f6ca604aaee8699b06d1dec0ff853711
+28.51 s wall, 4613272 kB peak RSS
+```
+
+Same selection file as every run since 2026-08-05, reused unchanged — `run` needs no network.
+
+```
+$ .venv/bin/python scripts/compare_runs.py --expect-new-limitations 0.4.1 outputs outputs_0.4.1b
+...
+provenance.created_utc: 2026-08-10T20:44:29.521368+00:00 -> 2026-08-30T...
+provenance.package_version: 0.4.0 -> 0.4.1
+provenance.reproducibility_hash: 8e8fee5b271c... -> 7b78c489df89...
+provenance.known_limitations: 8 -> 10 entries
+
+identical in every band and every record field but the three permitted, and known_limitations
+gained exactly the two gaps 0.4.1 declares
+```
+
+**Run in three arms, because a pass means nothing without the failures beside it:**
+
+| arm | exit | what it proves |
+|---|---|---|
+| `--expect-new-limitations 0.4.1` | **0** | the acceptance |
+| no flag | 1 | the limitation assertion is live, not dormant |
+| `--expect-new-limitations 0.4.0` | 1 | the release name is load-bearing, not decorative |
+
+The instrument itself moved: `--expect-new-limitations` now names a release instead of hardcoding
+0.4.0's pair. The bare flag still means `0.4.0`, so the acceptance command recorded in §2026-08-10
+above replays unchanged. Each release keeps its own written-out pair rather than importing
+`cli.LIMITATIONS` — importing would make the instrument agree with whatever the code says.
+
+**And the instrument earned its keep on the first run:** the two new limitations were first
+inserted in the middle of `LIMITATIONS`, and the 0.4.1 arm failed with *"expected 10 entries, got
+10"* — same count, wrong order. The contract is *the old list plus exactly these, in order*, and
+a check that had merely counted, or merely permitted the field, would have passed.

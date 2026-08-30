@@ -56,6 +56,11 @@ LIMITATIONS = (
     "lives at the CLI's composition root.",
     "scripts/measure_risers.py takes no --crs, so it can only work an AOI that declares its "
     "own projected CRS.",
+    "The reproducibility hash does not cover the attribution string: two runs differing "
+    "only in --attribution share a hash, so a product can be relabelled and keep its anchor.",
+    "The only resource ceiling is a cell count (200,000,000 cells, ~12 GB of per-cell "
+    "arrays), not a memory bound: a grid inside it can still exhaust memory, and that "
+    "failure is an OOM kill rather than a refusal with a reason.",
 )
 
 
@@ -430,3 +435,10 @@ def main(argv: list[str] | None = None) -> int:
     except Exception as exc:  # a refusal is an exit code with a reason, not a traceback
         print(f"{type(exc).__name__}: {exc}", file=sys.stderr)
         return 1
+
+
+if __name__ == "__main__":  # `python -m microrelief.cli ...`, the other documented way in
+    # Without this, the module form exits 0 having done nothing: a silent success that no
+    # exit-code check can tell from a real run. Asserted by an artefact, not a return code
+    # (tests/test_packaging.py).
+    raise SystemExit(main())

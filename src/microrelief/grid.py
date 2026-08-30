@@ -70,6 +70,19 @@ class Grid:
         return row, col, inside
 
 
+BYTES_PER_CELL = 60
+"""What one cell of the grid costs, measured rather than estimated.
+
+The accumulator holds five float64/int64 arrays (40 B/cell) and `CellStats` five float32/int32
+ones (20 B/cell). The ceiling below counts *cells*, because that is what `grid_for_bounds`
+knows; this constant is what those cells cost, so the refusal can say it in the unit the caller
+runs out of. It is a **floor** on the run's memory, not a bound: the ground filter, the two
+distance transforms and the surfaces are all on top, and a single large tile's points can
+exceed the grid entirely (`accumulate.py`). A grid under the ceiling can still be OOM-killed --
+declared in `LIMITATIONS`, not defended against.
+"""
+
+
 def grid_for_bounds(
     minx: float,
     miny: float,
@@ -91,7 +104,8 @@ def grid_for_bounds(
     n_cells = n_cols * n_rows
     if n_cells > max_cells:
         raise GridError(
-            f"grid would hold {n_cells} cells, ceiling is {max_cells}; "
+            f"grid would hold {n_cells} cells, ceiling is {max_cells} "
+            f"(~{n_cells * BYTES_PER_CELL / 1e9:.1f} GB of per-cell arrays alone); "
             f"raise --cell or shrink the AOI"
         )
     return Grid(origin_x, origin_y, cell, n_cols, n_rows, crs_epsg)
