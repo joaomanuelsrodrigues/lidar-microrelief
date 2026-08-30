@@ -437,8 +437,10 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
 
-if __name__ == "__main__":  # `python -m microrelief.cli ...`, the other documented way in
+if __name__ == "__main__":  # `python -m microrelief.cli ...`
     # Without this, the module form exits 0 having done nothing: a silent success that no
     # exit-code check can tell from a real run. Asserted by an artefact, not a return code
-    # (tests/test_packaging.py).
+    # (tests/test_packaging.py). The form a reader without the console script on PATH
+    # actually reaches for is `python -m microrelief`, which needs `__main__.py` beside this
+    # file -- adding only this guard would have left that one failing (review, s293).
     raise SystemExit(main())

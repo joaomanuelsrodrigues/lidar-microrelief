@@ -56,6 +56,10 @@ pip install "microrelief[dgt] @ git+https://github.com/joaomanuelsrodrigues/lida
 The `dgt` extra adds the one network dependency (`requests`) used by `select` and `precheck` to
 read the DGT catalogue. `run` needs no network and no extra.
 
+If the `microrelief` console script is not on your `PATH`, `python -m microrelief` takes the same
+arguments and does the same thing. Both forms are exercised in the test suite, because until 0.4.1
+the module form exited 0 having done nothing — and a silent success is worse than a failure.
+
 ## Try it — two minutes, real data
 
 A 150 m × 150 m sample of DGT LiDAR ships in the repository (`examples/sistelo-sample/`, CC BY 4.0):

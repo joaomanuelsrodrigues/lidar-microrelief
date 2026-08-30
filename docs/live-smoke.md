@@ -1260,10 +1260,58 @@ gained exactly the two gaps 0.4.1 declares
 | no flag | 1 | the limitation assertion is live, not dormant |
 | `--expect-new-limitations 0.4.0` | 1 | the release name is load-bearing, not decorative |
 
-The instrument itself moved: `--expect-new-limitations` now names a release instead of hardcoding
-0.4.0's pair. The bare flag still means `0.4.0`, so the acceptance command recorded in §2026-08-10
-above replays unchanged. Each release keeps its own written-out pair rather than importing
-`cli.LIMITATIONS` — importing would make the instrument agree with whatever the code says.
+The instrument itself moved: it no longer hardcodes 0.4.0's pair. Each release keeps its own
+written-out pair rather than importing `cli.LIMITATIONS` — importing would make the instrument
+agree with whatever the code says — and **which pair to expect is read from the NEW run's own
+`package_version`**, so `--expect-new-limitations` stays a bare `store_true` flag and both
+acceptance commands recorded above replay unchanged.
+
+> **Corrected s293, and the correction is the finding.** The first version of this change made
+> the flag take an optional value (`nargs="?"` with `choices=`). That is broken in exactly the
+> position both records use it — **before** the two positionals — because argparse offers the
+> next positional as the option's value: `compare_runs.py --expect-new-limitations
+> outputs_0.3.0_shipped outputs` died at **exit 2**, `invalid choice: 'outputs_0.3.0_shipped'`.
+> The sentence claiming it "replays unchanged" was published here, in the module comment and in
+> the flag's own help text **without ever being run** — the three arms I did run all passed the
+> value explicitly, which is the one form the records never use. Dropping `choices` was not
+> enough either (measured: still exit 2, "the following arguments are required"); the fix is to
+> take the release from the record. `tests/test_compare_runs.py` now exercises the flag in the
+> recorded position, and a mutation restoring `nargs="?"` turns it red.
+
+### 7. What a review pass found afterwards, and what the local gates had not
+
+Two of the six findings were the kind only a different instrument sees.
+
+**`uv.lock` was never regenerated for 0.4.1**, so `uv lock --check` reported drift and CI's
+**first** step — `uv sync --locked` — would have refused, making every later gate unreachable.
+Every gate above had been run locally *without* that step, so the whole set was green over a
+build CI cannot produce. `AGENTS.md` states this exact failure mode, and
+`test_the_human_facing_version_copies_agree_with_the_package` enumerated the version's copies as
+`CITATION.cff` + `SKILL.md` — not the one CI actually gates on. `uv.lock` is now in that
+enumeration, and a mutation setting it back to 0.4.0 turns the test red.
+
+**`CITATION.cff` claimed 0.4.1 was released on `2026-08-11`** — not even 0.4.0's tag date
+(`2026-08-27`). The version test compared only the version string. Now `2026-08-30`.
+
+Also from the same pass, all measured and fixed: `CALIBRATIONS.md`'s `max_cells` row still
+justified the ceiling as "one float64 array … ~1.6 GB" while this very release published 60 B/cell
+(ten arrays, ~12 GB) everywhere else; the 60 B/cell figure and the ceiling literal shipped in three
+unlocked copies with **no test tying them together** — now measured from the objects themselves in
+`tests/test_accumulate.py`, with three mutations each turning exactly one assertion red; and the
+`__main__` guard closed `python -m microrelief.cli`, a spelling no document uses, while `python -m
+microrelief` — the form a reader without the console script reaches for — still failed for want of
+a `__main__.py`. Both module forms are now parametrised in the same test and documented in the
+README.
+
+`__main__.py` also arrived unclassified into `tests/test_layering.py`'s partition, which failed
+on it immediately. It belongs with the composition root, not core: it holds no logic and imports
+`cli.main`, so calling it core would put a module that imports the composition root inside the
+layer defined by not knowing about it. That contract is the reason the classification happened at
+all rather than the file simply landing.
+
+**And the review's own prescribed fix did not work.** It diagnosed the argparse mechanism
+correctly and said to drop `choices`; running that still exited 2, because `nargs="?"` alone eats
+the positional. Only executing it showed that.
 
 **And the instrument earned its keep on the first run:** the two new limitations were first
 inserted in the middle of `LIMITATIONS`, and the 0.4.1 arm failed with *"expected 10 entries, got

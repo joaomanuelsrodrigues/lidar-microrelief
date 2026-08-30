@@ -45,7 +45,7 @@ EXPECTED_NEW_LIMITATIONS = {
 }
 
 
-def compare(old: Path, new: Path, expect_new_limitations: str | None = None) -> int:
+def compare(old: Path, new: Path, expect_new_limitations: bool = False) -> int:
     problems: list[str] = []
 
     old_bands = sorted(p.name for p in old.glob("*.tif"))
@@ -100,15 +100,26 @@ def compare(old: Path, new: Path, expect_new_limitations: str | None = None) -> 
 
     old_lims = tuple(doc_a.get("known_limitations") or ())
     new_lims = tuple(doc_b.get("known_limitations") or ())
+    # The release is READ FROM THE NEW RUN, not passed in: the record already says which
+    # version produced it, and a flag would let you assert 0.4.0's additions against a 0.4.1
+    # record by accident. It also keeps this an `action="store_true"` flag -- an optional-value
+    # flag placed before the two positionals makes argparse swallow one of them, which silently
+    # broke both acceptance commands recorded in docs/live-smoke.md (measured, s293).
+    release = str(doc_b.get("package_version") or "")
     if expect_new_limitations:
-        expected = old_lims + EXPECTED_NEW_LIMITATIONS[expect_new_limitations]
+        if release not in EXPECTED_NEW_LIMITATIONS:
+            problems.append(
+                f"the new run declares version {release!r}, for which no expected limitations "
+                f"are recorded here; known: {', '.join(sorted(EXPECTED_NEW_LIMITATIONS))}"
+            )
+            expected = old_lims
+        else:
+            expected = old_lims + EXPECTED_NEW_LIMITATIONS[release]
     else:
         expected = old_lims
     if new_lims != expected:
         wanted = (
-            f"the old list plus the two gaps {expect_new_limitations} declares"
-            if expect_new_limitations
-            else "unchanged"
+            "the old list plus the two declared gaps" if expect_new_limitations else "unchanged"
         )
         problems.append(
             f"provenance.known_limitations is not {wanted}: "
@@ -126,7 +137,7 @@ def compare(old: Path, new: Path, expect_new_limitations: str | None = None) -> 
     print(
         "\nidentical in every band and every record field but the three permitted, and "
         + (
-            f"known_limitations gained exactly the two gaps {expect_new_limitations} declares"
+            "known_limitations gained exactly the two declared gaps"
             if expect_new_limitations
             else "known_limitations unchanged"
         )
@@ -140,14 +151,12 @@ def main() -> int:
     ap.add_argument("new", type=Path)
     ap.add_argument(
         "--expect-new-limitations",
-        nargs="?",
-        const="0.4.0",
-        choices=sorted(EXPECTED_NEW_LIMITATIONS),
-        default=None,
-        help="require known_limitations to be the old list plus exactly the two gaps the named "
-        "release declares. OFF by default, because a run-to-run control compares two builds of "
-        "the same version, where the list must be unchanged. The bare flag still means 0.4.0, "
-        "so the acceptance command recorded in docs/live-smoke.md replays unchanged.",
+        action="store_true",
+        help="require known_limitations to be the old list plus exactly the two gaps the NEW "
+        "run's own version declares (known: " + ", ".join(sorted(EXPECTED_NEW_LIMITATIONS)) + "). "
+        "OFF by default, because a run-to-run control compares two builds of the same version, "
+        "where the list must be unchanged. Takes no value on purpose -- see the comment in "
+        "compare(); exercised in the recorded position by tests/test_compare_runs.py.",
     )
     args = ap.parse_args()
     return compare(args.old, args.new, args.expect_new_limitations)

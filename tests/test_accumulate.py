@@ -1,8 +1,11 @@
+import inspect
+
 import numpy as np
 import pytest
 
 from microrelief.accumulate import Accumulator
-from microrelief.grid import grid_for_bounds
+from microrelief.cli import LIMITATIONS
+from microrelief.grid import BYTES_PER_CELL, grid_for_bounds
 from microrelief.read import PointBatch
 from tests.synthetic import GROUND, ORIGIN_X, ORIGIN_Y, VEGETATION, ramp, with_void
 
@@ -189,3 +192,49 @@ def test_add_refuses_a_batch_whose_crs_does_not_match_the_grid() -> None:
     stats = acc.finish()
     assert stats.n_all.sum() == 0
     assert stats.n_outside == 0
+
+
+def test_the_published_byte_cost_per_cell_is_the_measured_one() -> None:
+    """`BYTES_PER_CELL` ships in three unlocked copies and one of them is in every record.
+
+    The number reaches the refusal message (`grid.py`), the declared limitation
+    (`cli.LIMITATIONS`, hence every `provenance.json` the tool writes) and the README. Its
+    docstring says "measured rather than estimated" and until s293 nothing measured it: add a
+    sixth accumulator array or widen a `CellStats` dtype and all three copies silently
+    understate, while the published record keeps asserting a ceiling that is not the one the
+    memory actually implies.
+
+    So this measures it, from the objects themselves, and ties the two halves to the constant.
+    """
+    grid = grid_for_bounds(0.0, 0.0, 100.0, 100.0, cell=0.5, crs_epsg=3763)
+    n = grid.n_cells
+    acc = Accumulator(grid)
+
+    live = [v for v in vars(acc).values() if isinstance(v, np.ndarray)]
+    assert len(live) == 5, f"the accumulator holds {len(live)} arrays, not the five declared"
+    acc_bytes = sum(a.nbytes for a in live) / n
+
+    stats = acc.finish()
+    published = [v for v in vars(stats).values() if isinstance(v, np.ndarray)]
+    assert len(published) == 5, f"CellStats holds {len(published)} arrays, not the five declared"
+    stats_bytes = sum(a.nbytes for a in published) / n
+
+    assert acc_bytes == 40.0, f"accumulator is {acc_bytes} B/cell, CALIBRATIONS.md says 40"
+    assert stats_bytes == 20.0, f"CellStats is {stats_bytes} B/cell, CALIBRATIONS.md says 20"
+    assert acc_bytes + stats_bytes == BYTES_PER_CELL
+
+
+def test_the_ceiling_the_record_publishes_is_the_ceiling_the_code_enforces() -> None:
+    """The literal in `LIMITATIONS` travels into every published record; the default in
+    `grid_for_bounds` is what actually refuses. Nothing tied them together, so changing the
+    default would leave every `provenance.json` asserting a ceiling that is not enforced."""
+    enforced = inspect.signature(grid_for_bounds).parameters["max_cells"].default
+    declared = [line for line in LIMITATIONS if "resource ceiling" in line]
+    assert len(declared) == 1, "the ceiling limitation is not where this test expects it"
+    assert f"{enforced:,} cells" in declared[0], (
+        f"the record declares a ceiling that is not {enforced:,}"
+    )
+    implied_gb = enforced * BYTES_PER_CELL / 1e9
+    assert f"~{implied_gb:.0f} GB" in declared[0], (
+        f"the record's byte figure is not {implied_gb:.0f} GB"
+    )

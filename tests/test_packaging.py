@@ -4,6 +4,8 @@ import sys
 import tomllib
 from pathlib import Path
 
+import pytest
+
 import microrelief
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -40,14 +42,30 @@ def test_the_human_facing_version_copies_agree_with_the_package() -> None:
     assert f"version: {microrelief.__version__}\n" in cff
     assert f'version: "{microrelief.__version__}"' in skill
 
+    # `uv.lock` records this package as a workspace member with its own version, and CI's
+    # FIRST step is `uv sync --locked`, which refuses a lock that has drifted from
+    # pyproject.toml. A bump that forgets `uv lock` therefore makes every later gate
+    # unreachable while every local gate stays green -- measured in s293, where exactly that
+    # shipped. This is the one version copy a CI failure, not a reader, notices.
+    lock = (ROOT / "uv.lock").read_text(encoding="utf-8")
+    member = lock.split('name = "microrelief"', 1)
+    assert len(member) == 2, "uv.lock does not record microrelief as a member"
+    locked = member[1].split("version = ", 1)[1].split("\n", 1)[0].strip().strip('"')
+    assert locked == microrelief.__version__, (
+        f"uv.lock records {locked}, package is {microrelief.__version__}; run `uv lock`"
+    )
 
-def test_the_module_entry_point_actually_runs_the_cli(tmp_path: Path) -> None:
-    """`python -m microrelief.cli` is a documented way in, and without an `if __name__ ==
-    "__main__"` guard it exits 0 having done nothing -- a silent success indistinguishable in
-    any exit-code check from a real run. So this asserts the *artefact*, not the return code.
 
-    The console script is exercised throughout the suite; this is the only test that enters
-    through the module form, which is what a reader whose PATH lacks the script reaches for.
+@pytest.mark.parametrize("module", ["microrelief", "microrelief.cli"])
+def test_the_module_entry_point_actually_runs_the_cli(tmp_path: Path, module: str) -> None:
+    """Both module forms, because they fail for different reasons and only one was fixed first.
+
+    `python -m microrelief.cli` without an `if __name__ == "__main__"` guard exits 0 having
+    done nothing -- a silent success no exit-code check can tell from a real run. `python -m
+    microrelief` without a `__main__.py` fails loudly instead, and it is the form a reader
+    whose PATH lacks the console script actually reaches for. 0.4.1 closed the first and left
+    the second, which a review caught. So both are parametrised here, and both assert the
+    *artefact*, never the return code.
     """
     out = tmp_path / "out"
     sample = ROOT / "examples" / "sistelo-sample"
@@ -55,7 +73,7 @@ def test_the_module_entry_point_actually_runs_the_cli(tmp_path: Path) -> None:
         [
             sys.executable,
             "-m",
-            "microrelief.cli",
+            module,
             "run",
             "--aoi",
             str(sample / "aoi.geojson"),
