@@ -70,7 +70,7 @@ uv run microrelief run --aoi examples/sistelo-sample/aoi.geojson --laz examples/
 ```
 
 You get six GeoTIFFs (`mdt`, `mds`, `chm`, `basis`, `n_all`, `n_ground_asprs`) and
-`provenance.json`. On the author's machine the record's hash is `98df72a564e1` and the basis is
+`provenance.json`. On the author's machine the record's hash is `f67b2f033d23` and the basis is
 56.2% measured · 43.1% interpolated · 0.7% undetermined; `tests/test_sample.py` reproduces the
 record on every CI run. Open the rasters in QGIS with the styles in `styles/` (`docs/recipes.md`).
 
@@ -234,7 +234,7 @@ run out of the box; none tuned.
 | PDAL `filters.pmf` (defaults) | 0.827 | 0.660 | **0.945** | 2,865 |
 | PDAL `filters.smrf` (defaults) | **0.857** | 0.955 | 0.789 | 10,923 |
 
-**SMRF beats this implementation by 2.0 accuracy points**, with a more balanced profile. The field's
+**SMRF beats this implementation by 2.0 accuracy points**, and 2026-08-31 gave the gap a name: on a built AOI, SMRF calls **16.1%** of roof-interior cells ground where this filter publishes **89.7%** of them as measured terrain, at a cost of 0.6 points on plain ground and about one in eight of the steepest terrace cells. SMRF is therefore the filter this tool is moving to (`docs/ground-filter-diagnosis.md`). Its profile is the more balanced one, and the field's
 default is better out of the box than this re-implementation; the table is here because saying so
 costs nothing and pretending otherwise costs everything. It also shows the operating point is a
 *choice* rather than a rounding difference: PDAL's PMF is the same algorithm and scores 0.660 ground
@@ -265,6 +265,19 @@ filter under canopy, declared rather than tuned away.
 
 ## What this does not support
 
+- **The ground filter does not remove buildings, and the record calls the result measured.** Over
+  cells holding official building returns and no ground return, **77.2%** of them publish as
+  `basis = measured` in the run shipped here, and **89.7%** at a built site near Valongo measured
+  on 2026-08-31 — the DTM says the roof and the ground are the same thing, and says it with the
+  strongest word the band has. It is small here (86,759 such cells, 0.43% of this AOI) because
+  Sistelo is a terraced valley with a hamlet in it; at the built site it is 13.7% of the AOI. This
+  is **not fixable by a parameter**: the best single height threshold separates a roof from the
+  terrain it stands on at **0.712** balanced accuracy and the best width threshold at **0.528**,
+  and a one-storey roof is the same height as the 2.98 m terrace riser the tolerance cap exists to
+  preserve. Measurement, controls and the chosen repair: `docs/ground-filter-diagnosis.md`. Found by
+  running the pipeline on a second AOI chosen for what it *contains* rather than for what it shows
+  (`docs/second-aoi-gate-result.md`) — 272 tests, a ten-round review and a security pass had all
+  gone over it, because every one of them asks about the code and none asks what the input holds.
 - **Byte-identical replay on real data is not established — now with a measured bound.** A run on
   2026-08-05 saw, in four reads of the 845 MB dataset, one single corrupted coordinate
   and one outright `IoError: failed to fill whole buffer` (source files intact, `sha256sum`
@@ -290,7 +303,7 @@ filter under canopy, declared rather than tuned away.
   blindness (multi-commit pushes, dirty-tree runs) and over-reach (comment-only edits flag too)
   are declared in its header.
 - **The reproducibility hash does not cover `--attribution` either.** Measured: two runs differing
-  only in that string share the hash `98df72a564e1…`, so a product can be relabelled with a
+  only in that string share the hash `f67b2f033d23…`, so a product can be relabelled with a
   different source and keep its anchor. Defensible — the hash covers inputs and parameters, not
   what you wrote about them — but it is a thing to know before you treat the hash as a licence
   check.

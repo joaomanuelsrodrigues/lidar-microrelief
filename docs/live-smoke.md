@@ -1575,3 +1575,75 @@ recall 0.262 → 0.540, undetermined 0.1% → 7.5%. Load-bearing, and not fixed 
 **The CRS read this AOI could not have been reached without** is 0.4.3's fix, exercised here
 against the live catalogue: before it, this AOI's own delivery was refused with *"Supply an AOI in
 EPSG:9001"*, which is false and cannot be followed.
+
+## 2026-08-31 — T-E6r: what excuses a building, and what SMRF does instead
+
+Predicates pre-registered at `57a3c1c` before the run; analysis, controls and the ruling in
+`docs/ground-filter-diagnosis.md`. Recorded here because the README quotes these numbers and this
+file is where a README number is allowed to come from.
+
+**The population.** Cells holding official ASPRS class-6 returns, no class-2 return in the cell,
+and at least two cells inside the class-6 footprint — an unambiguous roof interior, where the
+minimum surface cannot be the ground by class. The delivery's classification defines the
+population being audited; it decides no cell in either filter.
+
+**What the shipped filter claims over a roof**, from the `basis` band of the Valongo run and of
+the published Sistelo run (`outputs_0.4.2`):
+
+    Valongo, default parameters
+      roof interior       3,524,239 cells   measured 89.7%  interpolated 10.2%  undetermined  0.1%
+      control: canopy     2,493,967 cells   measured 33.9%  interpolated 65.5%  undetermined  0.7%
+      control: ground    12,062,527 cells   measured 100.0% interpolated  0.0%  undetermined  0.0%
+
+    Sistelo, the SHIPPED run 0.4.2
+      roof interior          86,759 cells   measured 77.2%  interpolated 22.3%  undetermined  0.5%
+      control: ground     4,126,962 cells   measured  99.9% interpolated  0.1%  undetermined  0.0%
+
+3.16 million falsely-measured roof cells at Valongo, **13.7%** of that AOI; 0.43% of the published
+Sistelo AOI. Neither knob separates a roof from terrain: best single height threshold **0.712**
+balanced accuracy over 2,062 components, best single width threshold **0.528**.
+
+**PDAL, installed without root and exercised against the same tiles.** conda-forge via micromamba;
+the version is read from the binary, not remembered:
+
+```
+$ ./bin/micromamba create -y -p ./env -c conda-forge pdal
+$ ./env/bin/pdal --version
+pdal 2.10.2 (git-version: e8618b)
+$ ./env/bin/pdal --drivers | grep smrf
+filters.smrf                 Simple Morphological Filter (Pingel et al., 2013)
+```
+
+The pipeline, out of the box but for the noise exclusion this tool already does:
+
+```json
+[{"type":"readers.las","filename":"<tile>.laz"},
+ {"type":"filters.smrf","ignore":"Classification[7:7]"},
+ {"type":"writers.las","filename":"<out>.laz","compression":"true","forward":"all"}]
+```
+
+**Control before the comparison**, because a filter that silently did not run would look like an
+excellent one. On LO-162471, SMRF moves 2,014,732 returns into ground that the delivery calls
+non-ground and 90,837 the other way, so the output is its verdict and not the delivery's labels
+read back. Its `returns` default is `[last, only]`; the points it passes through untouched are
+7,345 class-2 against 100,326,647 judged (0.007%) and are excluded.
+
+**The comparison**, cell counted as ground if it holds at least one ground return — the rule
+`agreement()` already uses:
+
+    population                     cells        ours (measured)   SMRF (ground)
+    roof interior              3,524,239                 89.7%           16.1%
+    control: canopy            2,493,967                 33.9%           19.5%
+    control: plain ground     12,062,527                100.0%           99.4%
+
+Falsely-measured roof cells 3,160,305 -> 566,299. **And it does not eat the terraces:** in the
+documented 150 m window around the tallest verified riser, SMRF keeps ground in 91.8% of the cells
+this filter calls ground and 86.5% of those on a step above 2.5 m in 3.5 m; where both call a cell
+ground the surfaces agree to +0.000 m median over 46,449 cells.
+
+> **Declared gap, and it is the first task of the build that follows.** The PDAL commands above
+> replay from this file. The per-cell measurement that produced the tables does **not**: it ran
+> from a script that is not in this tree, so these numbers are recorded with their method described
+> rather than with a command a reader can run. That instrument is the acceptance check the SMRF
+> implementation will be measured against, so it lands in `scripts/` with that work rather than
+> being reconstructed later from prose.

@@ -12,7 +12,7 @@
     "tp": 36270
   },
   "attribution": "Source: Direção-Geral do Território (DGT), Centro de Dados, LiDAR point clouds, licensed CC BY 4.0. Derived products (ground classification, DTM, DSM, CHM) produced by microrelief; not reviewed or endorsed by DGT.",
-  "created_utc": "2026-08-31T15:26:07.709133+00:00",
+  "created_utc": "2026-08-31T17:14:47.074788+00:00",
   "flight_dates": [],
   "grid": {
     "cell": 0.5,
@@ -51,10 +51,11 @@
     "Calling select_tiles as a library function bypasses the AOI-vs-tile CRS check, which lives at the CLI's composition root.",
     "scripts/measure_risers.py takes no --crs, so it can only work an AOI that declares its own projected CRS.",
     "The reproducibility hash does not cover the attribution string: two runs differing only in --attribution share a hash, so a product can be relabelled and keep its anchor.",
-    "The only resource ceiling is a cell count (200,000,000 cells, ~12 GB of per-cell arrays), not a memory bound: a grid inside it can still exhaust memory, and that failure is an OOM kill rather than a refusal with a reason."
+    "The only resource ceiling is a cell count (200,000,000 cells, ~12 GB of per-cell arrays), not a memory bound: a grid inside it can still exhaust memory, and that failure is an OOM kill rather than a refusal with a reason.",
+    "The ground filter does not remove buildings, and the basis band calls the result measured: over cells holding official building returns and no ground return, 77.2% publish as measured ground at the site shipped here and 89.7% at a built site, both measured 2026-08-31. No parameter fixes it: the best single height threshold separates a roof from the terrain it stands on at 0.712 balanced accuracy and the best width threshold at 0.528 (docs/ground-filter-diagnosis.md)."
   ],
   "mixed_epochs": false,
-  "package_version": "0.4.3",
+  "package_version": "0.4.4",
   "parameters": {
     "cell": 0.5,
     "d_max_interp_m": 2.0,
@@ -64,7 +65,7 @@
     "max_window_m": 4.0,
     "slope_threshold": 0.3
   },
-  "reproducibility_hash": "98df72a564e1a47f1029d38469770037f68acdcfb0615884db34020f5ca8c33c",
+  "reproducibility_hash": "f67b2f033d231ecad0a89753d786d6c40eee3df0d50bdf5fa6377ba6b7a11a08",
   "uncalibrated_thresholds": [
     "cell",
     "d_max_interp_m",

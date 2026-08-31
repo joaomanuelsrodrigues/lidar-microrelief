@@ -42,6 +42,14 @@ EXPECTED_NEW_LIMITATIONS = {
         "arrays), not a memory bound: a grid inside it can still exhaust memory, and that "
         "failure is an OOM kill rather than a refusal with a reason.",
     ),
+    "0.4.4": (
+        "The ground filter does not remove buildings, and the basis band calls the result "
+        "measured: over cells holding official building returns and no ground return, 77.2% "
+        "publish as measured ground at the site shipped here and 89.7% at a built site, both "
+        "measured 2026-08-31. No parameter fixes it: the best single height threshold separates "
+        "a roof from the terrain it stands on at 0.712 balanced accuracy and the best width "
+        "threshold at 0.528 (docs/ground-filter-diagnosis.md).",
+    ),
 }
 
 

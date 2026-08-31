@@ -535,3 +535,38 @@ def test_the_density_denominator_is_the_grid_not_the_requested_aoi(tmp_path: Pat
     # Control positive: the two denominators must actually give different answers, or this test
     # would pass against either implementation and discriminate nothing.
     assert doc["honesty"]["measured_density_pts_m2"] != pytest.approx(in_grid / requested_area)
+
+
+def test_the_record_declares_that_buildings_are_published_as_terrain() -> None:
+    """The defect the second-AOI gate found, with every number tied to the run that measured it.
+
+    A limitation is the strongest thing this tool says about its own failures, and it travels into
+    every `provenance.json`. A shipped record claiming `basis=measured` over a roof, with ten
+    declared limitations and none of them naming it, is the product asserting what it cannot
+    support -- which is the one failure the honesty layer exists to prevent.
+
+    So the line is pinned to its evidence rather than to a phrasing: every figure it quotes must
+    appear in the diagnosis that measured it, so the two cannot drift apart the way a number typed
+    into two files does.
+    """
+    import re
+
+    from microrelief.cli import LIMITATIONS
+
+    declared = [line for line in LIMITATIONS if "buildings" in line]
+    assert len(declared) == 1, (
+        "exactly one limitation must name the building defect; "
+        f"found {len(declared)} lines mentioning buildings"
+    )
+    evidence = Path(__file__).resolve().parents[1] / "docs" / "ground-filter-diagnosis.md"
+    assert evidence.exists(), f"the limitation cites {evidence.name}, which is not in the tree"
+    text = evidence.read_text(encoding="utf-8")
+    assert evidence.name in declared[0], "the limitation must cite where it was measured"
+
+    figures = re.findall(r"\d+\.\d+%?", declared[0])
+    assert figures, "a limitation that quotes no measurement is an opinion"
+    missing = [f for f in figures if f not in text]
+    assert not missing, (
+        f"the record publishes {missing} which {evidence.name} does not contain: "
+        "a declared limitation may not carry a number its own evidence cannot show"
+    )
