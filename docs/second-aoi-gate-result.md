@@ -22,6 +22,15 @@ Two controls, in the same tile, say this is the filter and not the instrument:
 | 5 high vegetation | 353,419 | **5.87 m** | 19.97 m | 8.9% |
 | 6 **building** | 575,771 | **0.06 m** | 3.15 m | **79.8%** |
 
+> **Correction, 2026-08-31 (T-E6r): the counts in this table do not reproduce.** Re-measured on
+> the run's own grid, no tile gives 575,771 class-6 cells -- the closest is LO-162471 at 540,893
+> AOI-clipped and 558,442 unclipped, 6.1% and 3.1% below. Two populations were tried and neither
+> matches, so the row is not re-derivable from the method as described here. What *does* reproduce
+> is the finding: over the whole AOI, class-6 cells have a median CHM of 0.08 m with **79.5%** below
+> 0.5 m against the 79.8% recorded, and class-5 vegetation 6.34 m with 6.0% below -- so the verdict
+> and its control stand on a bigger denominator than the one printed above.
+> Full measurement: `docs/ground-filter-diagnosis.md`.
+
 Vegetation is removed from the DTM. Buildings are not. A surface that were simply collapsed
 everywhere would fail the vegetation row too, and it does not.
 
@@ -41,7 +50,7 @@ shows can also hide what it does not contain.
 `max_window_m` is declared uncalibrated in the record, and `CALIBRATIONS.md` names its calibration
 target as *"largest object to be removed (tree crown, building) at the chosen site"* — a target that
 was never discharged for buildings, because Sistelo barely has any. Re-running the same AOI at
-`--max-window-m 40` (windows to 16.5 m, against 4.5 m at the default) moves it:
+`--max-window-m 40` (windows to 32.5 m, against 4.5 m at the default -- **corrected**, see below) moves it:
 
 | | default 4.0 | diagnostic 40 |
 |---|---:|---:|
@@ -54,6 +63,22 @@ So the parameter is load-bearing and the shipped default is far from adequate he
 tested value fixes it**. A morphological opening cannot see an object wider than its window, and
 this AOI has industrial buildings wider than 16.5 m. The repair is a calibration plus a declared
 limit, not a changed default.
+
+> **Corrected 2026-08-31 (T-E6r), and the mechanism above is wrong twice.** First the number:
+> `windows_for(40.0, 0.5)` returns `(1.5, 2.5, 4.5, 8.5, 16.5, 32.5)` -- the radius doubles to 32
+> cells and a window is `2r+1` across, so the largest is **32.5 m**, not 16.5 m. Second, and worse,
+> the table's two shares are computed over populations that differ by more than a factor of two:
+> over cells holding class-6 returns the CHM-valid count falls from **4,214,090** at the default to
+> **1,831,895** at `w40`, because 7.5% of the AOI becomes `undetermined`. Widening the window does
+> not remove buildings; it mostly stops answering over them. On the population that cannot be
+> argued with -- roof interior, class-6 cells holding no class-2 return and at least two cells
+> inside the footprint -- the flat share moves only **91.6% -> 87.1%**.
+>
+> The conclusion *"no tested value fixes it"* survives, on better evidence than the sentence that
+> carried it: measured over 2,062 components, the best single **height** threshold separates
+> survivors from caught at balanced accuracy **0.712** and the best single **width** threshold at
+> **0.528**. Neither property the filter can key on separates a roof from terrain.
+> `docs/ground-filter-diagnosis.md`.
 
 ## The five hazards
 
