@@ -7,19 +7,20 @@ so a full page is treated as truncation rather than as a complete answer.
 
 from __future__ import annotations
 
-import re
 from bisect import bisect_left
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Any
 
 import requests
+from pyproj import CRS
+from pyproj.exceptions import CRSError as PyprojCRSError
 
 from microrelief.precheck import TileLike
 from microrelief.sorties import SORTIE_GAP_HOURS, StampError, group_sorties
 
 STAC_SEARCH_URL = "https://cdd.dgterritorio.gov.pt/dgt-be/v1/search"
-_EPSG_IN_WKT = re.compile(r'AUTHORITY\["EPSG","(\d+)"\]')
 
 MIN_COVERAGE = 0.999
 """Fraction of the AOI that must lie under the tiles. Not 1.0: see CALIBRATIONS.md."""
@@ -91,11 +92,38 @@ def _bbox_2d(values: Sequence[float]) -> tuple[float, float, float, float]:
     raise UnexpectedCatalogue(f"bbox has {len(values)} elements, expected 4 or 6")
 
 
+@lru_cache(maxsize=32)
 def _crs_epsg_from_wkt2(wkt: str) -> int:
-    codes = _EPSG_IN_WKT.findall(wkt)
-    if not codes:
-        raise UnexpectedCatalogue("proj:wkt2 carries no EPSG authority; refusing to assume a CRS")
-    return int(codes[-1])  # outermost authority = the projected CRS
+    """The EPSG code of the CRS the tile is in, read by a CRS reader rather than off the string.
+
+    This used to take the last `AUTHORITY["EPSG", ...]` in the WKT, on the reasoning that the
+    outermost authority is the projected CRS. That holds only while the PROJCS node carries an
+    authority. Measured 2026-08-31 over the whole mainland catalogue, 428 of 91,292 tiles do
+    not: their WKT is `PROJCS["ETRS89_Portugal_TM06", ...]` ending at the axes, so the last
+    authority in the string is the metre *unit*, 9001 -- which pyproj resolves to IGS97, a
+    geographic CRS. Every one of those 428 was re-fetched and checked: all are EPSG:3763.
+
+    Reading a unit as a CRS is not a near miss. It refused a whole delivery with a reason that
+    was false, and with advice a reader cannot act on ("Supply an AOI in EPSG:9001" is itself
+    refused, as geographic); where one correctly-tagged neighbour happened to sit in the same
+    search box it did something worse, and switched the CRS guard off (see `cli._selection_for`).
+
+    `to_epsg()` returning None is kept as a refusal rather than smoothed over: a WKT can parse
+    cleanly and still name a projection the registry does not have, and picking a code for it
+    would be the guess this function exists to avoid. Cached because the answer is a pure
+    function of the string, ~60 ms to compute, and a search returns hundreds of tiles sharing
+    one or two WKTs.
+    """
+    try:
+        crs = CRS.from_wkt(wkt)
+    except PyprojCRSError as exc:
+        raise UnexpectedCatalogue(f"proj:wkt2 is not readable as a CRS: {exc}") from exc
+    code = crs.to_epsg()
+    if code is None:
+        raise UnexpectedCatalogue(
+            "proj:wkt2 parses but matches no EPSG code; refusing to assume one"
+        )
+    return code
 
 
 def _tile_ref(feature: dict[str, Any]) -> TileRef:

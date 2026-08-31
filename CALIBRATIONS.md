@@ -21,6 +21,7 @@ Every number here is declared, not justified by taste. `origin` says where the v
 | `max_area_km2` | 200.0 | `providers/dgt/catalogue.py`, `select_tiles()` | Found in DGT's own QGIS plugin source code (via project design spec); client-code claim, not published spec | Confirm against actual provider behaviour by requesting above the limit |
 | `ASPRS_NOISE` | (7, 18) | `read.py` | **Not a tunable — the standard's own noise classes**, Low Point and High Noise. Excluded from every surface after being measured on the delivery: over the four Sistelo tiles class 7 spans **84.2 m to 1752.5 m** while classified ground tops out at **506.1 m**, and *every* return above 1000 m is class 7. Kept, it lifted the DSM to a **1524.55 m CHM** and — worse — dropped `min_z_all` below the terrain, which is the surface the ground filter reads and the DTM publishes. The count dropped per tile is published as `point_count_noise_excluded`, and `point_count_measured` stays the file's own total so the record remains comparable with the catalogue | Nothing replaces the class list. What is worth measuring is whether the provider's use of class 7 is consistent across survey blocks — here it carries noise at *both* extremes, which the class name does not suggest |
 | `FOOTPRINT_TOLERANCE_M` | 0.01 m | `read.py` | Slack around a tile's declared `proj:bbox` before a return is called impossible. The catalogue's box is the box of the returns, so a real tile's extremes lie *on* it and zero slack refuses every tile. **Added after the first real run disagreed with its own replay**: one return of 109,312,003 came back with a coordinate far outside its tile, which collapsed that tile's measured density and moved one return across the AOI boundary. The excursion's magnitude was **not measured directly** — it was inferred from the density falling below 1e-6 pts/m², which puts the exploded bounding box above 1e15 m² | The distribution of real return positions relative to the declared box across a whole survey block. One centimetre is a guess bounded below by the scale/offset round trip and above by the only excursion seen; nothing yet measures what a *legitimate* tile's worst overshoot is |
+| `_crs_epsg_from_wkt2` cache `maxsize` | 32 | `providers/dgt/catalogue.py` | An operational bound, not a science threshold: reading a CRS costs ~60 ms and a single search returns up to `limit`=500 tiles, so an uncached read would spend ~30 s per search re-answering the same question. Bounded rather than unbounded because the key is a string from a remote catalogue. 32 is slack over what the catalogue actually publishes: **two** distinct WKTs across all 91,292 mainland tiles (measured 2026-08-31) | The number of distinct WKTs a provider is ever seen to publish over one AOI |
 | `sortie_gap_hours` | 6.0 h | `sorties.py`, `group_sorties()` | Longest gap between two acquisition stamps still counted as one flight. **The observed data does not discriminate inside a wide band** (see below): any value above ~3.2 min and below 24 h groups all four candidate sites identically. 6 h is the middle of that band in log terms, and cannot merge two date-only stamps, which the catalogue publishes at midnight | Distribution of within-sortie and between-sortie gaps across a whole DGT survey block, rather than four AOIs |
 
 ## Encoding conventions, not thresholds (`export.py`)
@@ -88,6 +89,34 @@ say otherwise:
 One artefact to not rediscover: at windows far past the AOI's own scale (100 m on a 50 m fixture) cells
 *are* marked, but they are a contiguous strip against the high-x border with identical counts on riser
 and non-riser columns alike. That is `mode="nearest"` clamping the array edge, not terraces being eaten.
+
+## The CRS a tile is in, and how it stopped being read off the string (0.4.3)
+
+Until 0.4.3 `_crs_epsg_from_wkt2` took the **last** `AUTHORITY["EPSG", ...]` in the tile's
+`proj:wkt2`, on the reasoning that the outermost authority is the projected CRS. That holds only
+while the `PROJCS` node carries an authority, and **428 of 91,292 mainland tiles do not**
+(census over the whole DGT LAZ catalogue, 0.2-degree cells, 0 truncated cells, 0 failed requests,
+2026-08-31). Their WKT is `PROJCS["ETRS89_Portugal_TM06", ...]` ending at the axes, so the last
+authority in the string is the metre **unit**, 9001 — a code pyproj resolves to *IGS97, a
+geographic CRS*. All 428 were re-fetched and checked one at a time: every one is EPSG:3763.
+
+The reading is now done by a CRS reader, `CRS.from_wkt(wkt).to_epsg()`, and a `None` is a refusal
+rather than a guess — a WKT can parse cleanly and still name a projection the registry does not
+have. What the old reading cost, measured against the live catalogue before the fix:
+
+- an AOI over affected tiles only was refused with `Supply an AOI in EPSG:9001` — false, since the
+  tiles are 3763, and **unfollowable**, since `require_metric_crs` refuses 9001 as geographic;
+- an AOI straddling the two spellings was refused with `tiles declare more than one CRS`, which
+  was not true: one CRS, two spellings;
+- an AOI over affected tiles **with one correctly-tagged neighbour in the search box** was
+  *accepted*, because `cli._selection_for`'s guard read `len(tile_crs) == 1` — a second code in
+  the set switched the check off entirely. No wrong product came out of it (the tiles really are
+  3763), but the guard that exists to prevent one was inert. Its condition is now
+  `tile_crs != {epsg}`: every searched tile's box is compared against the AOI bounds by
+  `_overlap_area`, so every one of them has to be in the AOI's CRS.
+
+The affected tiles are clustered in the north, across 47 distinct 10 km blocks; the nearest sits
+**11.3 km** from the AOI this repository publishes.
 
 ## The sortie tolerance, and the band the data actually pins
 

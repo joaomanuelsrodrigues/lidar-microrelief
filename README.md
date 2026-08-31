@@ -70,7 +70,7 @@ uv run microrelief run --aoi examples/sistelo-sample/aoi.geojson --laz examples/
 ```
 
 You get six GeoTIFFs (`mdt`, `mds`, `chm`, `basis`, `n_all`, `n_ground_asprs`) and
-`provenance.json`. On the author's machine the record's hash is `7cbed2829045` and the basis is
+`provenance.json`. On the author's machine the record's hash is `98df72a564e1` and the basis is
 56.2% measured · 43.1% interpolated · 0.7% undetermined; `tests/test_sample.py` reproduces the
 record on every CI run. Open the rasters in QGIS with the styles in `styles/` (`docs/recipes.md`).
 
@@ -290,7 +290,7 @@ filter under canopy, declared rather than tuned away.
   blindness (multi-commit pushes, dirty-tree runs) and over-reach (comment-only edits flag too)
   are declared in its header.
 - **The reproducibility hash does not cover `--attribution` either.** Measured: two runs differing
-  only in that string share the hash `7cbed2829045…`, so a product can be relabelled with a
+  only in that string share the hash `98df72a564e1…`, so a product can be relabelled with a
   different source and keep its anchor. Defensible — the hash covers inputs and parameters, not
   what you wrote about them — but it is a thing to know before you treat the hash as a licence
   check.

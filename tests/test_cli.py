@@ -372,6 +372,43 @@ def test_a_matching_crs_still_selects(tmp_path: Path, monkeypatch: pytest.Monkey
     assert json.loads(out.read_text())["covered_fraction"] == pytest.approx(1.0)
 
 
+def test_the_crs_guard_is_not_disabled_by_a_neighbour_in_another_crs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The guard read `if len(tile_crs) == 1 and only != epsg`, so one tile in a second CRS
+    anywhere in the search box switched the whole check off -- and `select_tiles` compares CRSs
+    only among the tiles that *touch* the AOI. Measured against the live catalogue on
+    2026-08-31: an AOI over six tiles read as EPSG:9001 was accepted, coverage 1.0000, because
+    a single neighbouring tile read as 3763 made the set size two.
+
+    `_overlap_area` compares every searched tile's box against the AOI bounds, so the condition
+    that has to hold is that every one of them is in the AOI's CRS -- not that they agree
+    among themselves.
+    """
+    import microrelief.cli as cli
+    from microrelief.providers.dgt import TileRef
+
+    stranger = TileRef(
+        item_id="LO-stranger",
+        collection="LAZ",
+        minx=500000.0,
+        miny=4600000.0,
+        maxx=501000.0,
+        maxy=4601000.0,
+        crs_epsg=32629,
+        point_count=1,
+        flight_date="2024-11-22T00:00:00Z",
+        file_size=1,
+        href="https://example.invalid/t",
+    )
+    monkeypatch.setattr(cli, "_dgt", lambda: _provider_serving([*_pt_tm06_tiles(), stranger]))
+    aoi = _aoi_file(tmp_path, "ptm.geojson", [48200.0, 169200.0, 50200.0, 171200.0], 3763)
+
+    assert cli.main(["select", "--aoi", str(aoi), "--out", str(tmp_path / "sel.json")]) == 2
+    err = capsys.readouterr().err
+    assert "32629" in err and "3763" in err
+
+
 def test_declared_bounds_that_are_not_a_box_of_four_numbers_are_refused(tmp_path: Path) -> None:
     aoi = tmp_path / "aoi.geojson"
     aoi.write_text(
