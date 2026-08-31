@@ -1241,24 +1241,30 @@ reproducibility_hash 7b78c489df896702d812fd8401ad31b4f6ca604aaee8699b06d1dec0ff8
 Same selection file as every run since 2026-08-05, reused unchanged — `run` needs no network.
 
 ```
-$ .venv/bin/python scripts/compare_runs.py --expect-new-limitations 0.4.1 outputs outputs_0.4.1b
+$ .venv/bin/python scripts/compare_runs.py --expect-new-limitations outputs outputs_0.4.1b
 ...
-provenance.created_utc: 2026-08-10T20:44:29.521368+00:00 -> 2026-08-30T...
+6 raster(s) compared
+provenance.created_utc: 2026-08-10T20:44:29.521368+00:00 -> 2026-08-30T09:57:40.796776+00:00
 provenance.package_version: 0.4.0 -> 0.4.1
 provenance.reproducibility_hash: 8e8fee5b271c... -> 7b78c489df89...
 provenance.known_limitations: 8 -> 10 entries
 
 identical in every band and every record field but the three permitted, and known_limitations
-gained exactly the two gaps 0.4.1 declares
+gained exactly the two declared gaps
 ```
 
 **Run in three arms, because a pass means nothing without the failures beside it:**
 
 | arm | exit | what it proves |
 |---|---|---|
-| `--expect-new-limitations 0.4.1` | **0** | the acceptance |
+| flag, then `outputs outputs_0.4.1b` | **0** | the acceptance |
 | no flag | 1 | the limitation assertion is live, not dormant |
-| `--expect-new-limitations 0.4.0` | 1 | the release name is load-bearing, not decorative |
+| flag, with the pair **reversed** | 1 | the release is read from the record and is load-bearing |
+
+The reversed arm is what replaced naming a release on the command line: with the pair the other
+way round the new run is the 0.4.0 record, so the instrument expects 0.4.0's additions on top of
+0.4.1's list and refuses -- `expected 12 entries, got 8`. All three re-run 2026-08-31 against the
+same two directories.
 
 The instrument itself moved: it no longer hardcodes 0.4.0's pair. Each release keeps its own
 written-out pair rather than importing `cli.LIMITATIONS` — importing would make the instrument
@@ -1277,6 +1283,24 @@ acceptance commands recorded above replay unchanged.
 > enough either (measured: still exit 2, "the following arguments are required"); the fix is to
 > take the release from the record. `tests/test_compare_runs.py` now exercises the flag in the
 > recorded position, and a mutation restoring `nargs="?"` turns it red.
+
+> **Corrected 2026-08-31 (s295), and the correction is the same finding a third time.** The fix
+> above reverted the flag to a bare `store_true` -- and the command block, the three-arm table
+> and the success line **directly above this note** were left in the pre-fix shape: a release
+> name written where the flag takes no value. Measured: that argv exits **2**,
+> `unrecognized arguments`. So the note explaining the defect sat one line below a live instance
+> of it, and two of the three arms in the table could not run at all -- the third had become
+> impossible by construction, since the release now comes from the record and no command line
+> can ask for another one. The success line was hand-edited too: the program prints *the two
+> declared gaps*, not the wording published here.
+>
+> Fixing the three sites would have left the class open, so the instrument changed instead:
+> `compare_runs.build_parser()` is now exposed, and `tests/test_compare_runs.py` parses **every**
+> command any tracked document records (5 found, 1 rejected before this fix) and refuses a
+> release name after the flag anywhere in prose or a table (3 sites found). Both sweeps carry a
+> must-fire and a must-not-fire arm, and every planted string is assembled at run time -- written
+> out whole it would make the guard fire on its own source. The commands above were then re-run
+> and are transcribed from that run, which is what this file was supposed to mean all along.
 
 ### 7. What a review pass found afterwards, and what the local gates had not
 
@@ -1317,3 +1341,119 @@ the positional. Only executing it showed that.
 inserted in the middle of `LIMITATIONS`, and the 0.4.1 arm failed with *"expected 10 entries, got
 10"* — same count, wrong order. The contract is *the old list plus exactly these, in order*, and
 a check that had merely counted, or merely permitted the field, would have passed.
+
+## 2026-08-31 — 0.4.2: the sibling of a silent success, and the transcript that had never been run
+
+A review of 0.4.1 found eight things. Two mattered: one of them was **in the record of 0.4.1
+itself**, and one was **in 0.4.1's own fix for a silent success**.
+
+### 1. The transcript that could not have produced its own output (§6 above)
+
+The recorded acceptance command named a release on a flag that takes no value. Measured:
+`unrecognized arguments`, **exit 2**. Two of the three control arms were unrunnable for the same
+reason, the third had become impossible by construction, and the quoted success line was a
+wording the program does not print. The correction and its dated note live in §6, where the
+defect was; this section records the instrument change, because fixing three sites would have
+left the class open — it had already recurred once (s293 → s295).
+
+`compare_runs.build_parser()` is now exposed, and `tests/test_compare_runs.py` judges the
+documents with it:
+
+| sweep | population | found before the fix |
+|---|---|---|
+| every `$ …compare_runs.py …` line, fed to the real parser | tracked `.md` | **5 commands, 1 rejected** |
+| a release name after the flag, in prose or a table | tracked `.md` | **3 sites** |
+
+Both carry a must-fire and a must-not-fire arm, the population comes from `git ls-files` rather
+than a glob, and every planted string is assembled at run time — written out whole it would make
+the sweep fire on its own source. The first sweep also over-fired on its first run, on a recorded
+command carrying a trailing shell comment: `shlex.split(..., comments=True)` is the fix, and it is
+the reason a guard ships with the arm that must stay quiet as well as the one that must fire.
+
+### 2. `__main__.py` ran the CLI on import (the sibling of F6)
+
+0.4.1 closed a silent success — `python -m microrelief.cli` exiting 0 having done nothing — and
+its own review then added `__main__.py` so the documented form worked too. That file called
+`main()` at module level, so `import microrelief.__main__` **ended the interpreter** with
+argparse's usage and exit 2: `pkgutil.walk_packages`, a doctest or coverage sweep over `src/`,
+an autodoc build. The fix for a failure that was too quiet had published one that is too loud.
+
+The guard is three lines. The test asserts the **sentinel printed after the import**, not the
+return code — an exit code says the process ended, a sentinel says it survived, which is the
+property an importer actually needs.
+
+### 3. Three more, all measured before accepting
+
+`compare_runs.py`'s unknown-release branch emitted **two contradicting problem lines** — *"no
+expected limitations are recorded here"* beside *"known_limitations is not the old list plus the
+two declared gaps"* — sending a reader after a limitations bug that does not exist. A refusal
+makes one claim. `CALIBRATIONS.md`'s corrected `max_cells` row said the run holds "**ten** such
+arrays" of the 1.6 GB float64 kind: ten × 1.6 GB is 16 GB, against the ~12 GB and the 7.5× in the
+same cell. Only five of the ten are 8-byte. And `tests/test_compare_runs.py` left
+`sys.modules["compare_runs"]` registered for the rest of the session; it is a context manager now.
+
+### 4. The version bump, and the run that shows nothing moved
+
+`src/` changed, so `package_version` had to move — it is inside the reproducibility hash and is
+the only way a code change reaches the artefacts, and both records ship inside the repository.
+0.4.1 → 0.4.2 in `__init__.py`, `pyproject.toml`, `uv.lock`, `CITATION.cff` and the skill's
+frontmatter.
+
+```
+$ .venv/bin/microrelief run --aoi examples/sistelo-sample/aoi.geojson \
+    --laz examples/sistelo-sample --out <tmp> \
+    --attribution "$(cat examples/sistelo-sample/attribution.txt)"
+grid 300 x 300 cells of 0.5 m (0.0225 km2), 1 tile(s), 1 return(s) outside the AOI
+measured 56.2% | interpolated 43.1% | undetermined 0.7%
+expected void at f=1: 1.312% (measured density 17.3 pts/m2)
+ground recall 0.999 | non-ground recall 0.723 | accuracy 0.837 | majority-class null 0.587
+flight dates (none declared) | mixed epochs False
+reproducibility_hash 7cbed28290450fee83ba7acc00ae9c24997b412b12c600cfd00e5eefd5e9347f
+```
+
+```
+$ /usr/bin/time -f "%e s wall, %M kB peak RSS" .venv/bin/microrelief run \
+    --aoi aoi/aoi.geojson --laz ~/data/dgt-laz --out outputs_0.4.2/ --cell 0.5 \
+    --selection outputs_0.2.0/selection.json --attribution "Source: Direção-Geral do Território (DGT), ..."
+grid 3960 x 3960 cells of 0.5 m (3.9204 km2), 4 tile(s), 3250766 return(s) outside the AOI
+measured 74.6% | interpolated 25.2% | undetermined 0.2%
+expected void at f=1: 0.117% (measured density 27.0 pts/m2)
+ground recall 0.999 | non-ground recall 0.495 | accuracy 0.749 | majority-class null 0.503
+flight dates 2026-03-30T00:00:00Z | mixed epochs False
+reproducibility_hash 257c8dac78264df2295d8afff6bb99a8705b9cb670bc7532cb8616a3a033b477
+30.62 s wall, 4612952 kB peak RSS
+```
+
+Every line but the hash is identical to 0.4.1's, in both runs.
+
+**The acceptance is the bare form**, because 0.4.2 declares no new limitation — the list must be
+*unchanged*, which is what the flag's absence asserts:
+
+```
+$ .venv/bin/python scripts/compare_runs.py outputs_0.4.1b outputs_0.4.2
+...
+6 raster(s) compared
+provenance.created_utc: 2026-08-30T09:57:40.796776+00:00 -> 2026-08-31T13:48:53.527950+00:00
+provenance.package_version: 0.4.1 -> 0.4.2
+provenance.reproducibility_hash: 7b78c489df89... -> 257c8dac7826...
+provenance.known_limitations: 10 -> 10 entries
+
+identical in every band and every record field but the three permitted, and known_limitations unchanged
+```
+
+| arm | exit | what it proves |
+|---|---|---|
+| bare, `outputs_0.4.1b outputs_0.4.2` | **0** | the acceptance |
+| with the flag | 1 | *"the new run declares version '0.4.2', for which no expected limitations are recorded here"* — one problem line, not two, which is §3's fix in the real instrument rather than in a unit test |
+| bare, 0.4.0's record against this one | 1 | the limitation assertion is live: 8 entries against 10 |
+
+**The control that says the bump changed metadata and not data**: the sample's six *pixel*
+digests (`expected/bands.sha256.json`, which hashes `src.read(1)`, not the file) are **6 of 6
+unchanged**, while all **12 of 12** golden fixture hashes — whole TIFF files, tags included —
+changed. Metadata-wide, pixel-nowhere. The goldens were regenerated by importing
+`tests/test_export.py`'s own `golden_fixtures`, `pipeline` and `export`, so the fixture was
+rebuilt with the objects the test hashes rather than a parallel reimplementation of them.
+
+Gates, each exit code read separately: `uv sync --locked` 0 · ruff check 0 · ruff format 0 ·
+mypy 0 · pytest **265 passed** · neutrality self-test 0 (14 controls fire) · neutrality 126/126
+tracked, 0 hits.

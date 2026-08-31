@@ -5,8 +5,8 @@ title: "microrelief: DTM, DSM and CHM from raw LiDAR that declare, per cell, wha
 authors:
   - family-names: Rodrigues
     given-names: João
-version: 0.4.1
-date-released: 2026-08-30
+version: 0.4.2
+date-released: 2026-08-31
 license: Apache-2.0
 repository-code: "https://github.com/joaomanuelsrodrigues/lidar-microrelief"
 keywords:

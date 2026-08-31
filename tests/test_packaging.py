@@ -97,3 +97,30 @@ def test_the_module_entry_point_actually_runs_the_cli(tmp_path: Path, module: st
     )
     got = json.loads(record.read_text(encoding="utf-8"))
     assert got["package_version"] == microrelief.__version__
+
+
+def test_importing_the_module_entry_point_does_not_run_the_cli() -> None:
+    """`__main__.py` must run the CLI when executed, and do nothing at all when imported.
+
+    Without a guard the module's body calls `main()` at import time, so `import
+    microrelief.__main__` terminates the interpreter with argparse's usage -- and every
+    import-based tool takes the whole process down with it: `pkgutil.walk_packages`, a doctest
+    or coverage sweep over `src/`, an autodoc build, or an import-based version of
+    `tests/test_layering.py` (which today only parses AST, so nothing here catches it).
+
+    The assertion is the sentinel printed AFTER the import, not the return code: an exit code
+    says the process ended, this says the process survived and kept going -- which is the
+    property an importer actually needs.
+    """
+    completed = subprocess.run(
+        [sys.executable, "-c", "import microrelief.__main__; print('SURVIVED')"],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        cwd=ROOT,
+    )
+    assert "SURVIVED" in completed.stdout, (
+        f"importing the entry point ended the interpreter; rc={completed.returncode}, "
+        f"stdout={completed.stdout!r}, stderr={completed.stderr!r}"
+    )

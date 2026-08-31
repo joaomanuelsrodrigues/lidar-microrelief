@@ -106,18 +106,23 @@ def compare(old: Path, new: Path, expect_new_limitations: bool = False) -> int:
     # flag placed before the two positionals makes argparse swallow one of them, which silently
     # broke both acceptance commands recorded in docs/live-smoke.md (measured, s293).
     release = str(doc_b.get("package_version") or "")
-    if expect_new_limitations:
-        if release not in EXPECTED_NEW_LIMITATIONS:
-            problems.append(
-                f"the new run declares version {release!r}, for which no expected limitations "
-                f"are recorded here; known: {', '.join(sorted(EXPECTED_NEW_LIMITATIONS))}"
-            )
-            expected = old_lims
-        else:
-            expected = old_lims + EXPECTED_NEW_LIMITATIONS[release]
-    else:
-        expected = old_lims
-    if new_lims != expected:
+    # An unknown release is a refusal, and a refusal makes exactly ONE claim. Falling back to
+    # the old list here and then comparing against it produced a second problem line asserting
+    # an expectation the instrument had just said it does not hold -- "known_limitations is not
+    # the old list plus the two declared gaps" beside "no expected limitations are recorded
+    # here" -- which sends a reader after a limitations bug that does not exist (s295).
+    unknown_release = expect_new_limitations and release not in EXPECTED_NEW_LIMITATIONS
+    if unknown_release:
+        problems.append(
+            f"the new run declares version {release!r}, for which no expected limitations "
+            f"are recorded here; known: {', '.join(sorted(EXPECTED_NEW_LIMITATIONS))}"
+        )
+    expected = (
+        old_lims + EXPECTED_NEW_LIMITATIONS[release]
+        if expect_new_limitations and not unknown_release
+        else old_lims
+    )
+    if not unknown_release and new_lims != expected:
         wanted = (
             "the old list plus the two declared gaps" if expect_new_limitations else "unchanged"
         )
@@ -145,7 +150,14 @@ def compare(old: Path, new: Path, expect_new_limitations: bool = False) -> int:
     return 0
 
 
-def main() -> int:
+def build_parser() -> argparse.ArgumentParser:
+    """The argv contract, exposed so a test can parse the commands recorded in the docs.
+
+    `main()` used to build this inline, which meant the only way to check a recorded command
+    line was to run the whole comparison. Every command written into `docs/live-smoke.md` is a
+    claim about what this parser accepts, and twice now such a claim was published without ever
+    being run (s293, s295) -- so the claim is now checkable against the parser itself.
+    """
     ap = argparse.ArgumentParser()
     ap.add_argument("old", type=Path)
     ap.add_argument("new", type=Path)
@@ -158,7 +170,11 @@ def main() -> int:
         "where the list must be unchanged. Takes no value on purpose -- see the comment in "
         "compare(); exercised in the recorded position by tests/test_compare_runs.py.",
     )
-    args = ap.parse_args()
+    return ap
+
+
+def main() -> int:
+    args = build_parser().parse_args()
     return compare(args.old, args.new, args.expect_new_limitations)
 
 

@@ -70,7 +70,7 @@ uv run microrelief run --aoi examples/sistelo-sample/aoi.geojson --laz examples/
 ```
 
 You get six GeoTIFFs (`mdt`, `mds`, `chm`, `basis`, `n_all`, `n_ground_asprs`) and
-`provenance.json`. On the author's machine the record's hash is `4060d5341498` and the basis is
+`provenance.json`. On the author's machine the record's hash is `7cbed2829045` and the basis is
 56.2% measured · 43.1% interpolated · 0.7% undetermined; `tests/test_sample.py` reproduces the
 record on every CI run. Open the rasters in QGIS with the styles in `styles/` (`docs/recipes.md`).
 
@@ -170,13 +170,14 @@ against the real thing, and no second one has been. The core's site-independence
 negatively instead: the tests that bind this package to Sistelo live in `tests/case_study/`, and
 with `aoi/aoi.geojson` removed from the tree the rest of the suite still passes.
 
-## The numbers, from the run of 2026-08-30 (0.4.1)
+## The numbers, from the run of 2026-08-31 (0.4.2)
 
 Every figure below is quoted from `docs/live-smoke.md`, which carries the commands and their
 verbatim output. The machine-readable record is `docs/viewer/provenance.json` (a tracked copy of the
 run's `outputs/provenance.json`). The values have not moved since the 2026-08-08 run: 0.4.0
-decoupled the core from its one provider and 0.4.1 declared two limitations and closed a silent
-success, and neither changed a measurement. That is a **measured** claim rather than an argued
+decoupled the core from its one provider, 0.4.1 declared two limitations and closed a silent
+success, and 0.4.2 closed a sibling of that success and three stale records; none changed a
+measurement. That is a **measured** claim rather than an argued
 one — all six bands are identical to the 0.4.0 run's cell for cell, 94,089,600 cells compared,
 with only `package_version`, `created_utc`, `reproducibility_hash` and two added
 `known_limitations` differing (`scripts/compare_runs.py`, output in `docs/live-smoke.md`). The
@@ -189,8 +190,8 @@ reaches the artefacts.
 | Cell basis | measured 74.6% · interpolated 25.2% · undetermined 0.2% |
 | Closed-form void expectation | 0.117% of cells empty, given the measured 27.0 pts/m² and every return reaching the ground — read beside the cells with no measured basis (the 25.2% interpolated plus the 0.2% undetermined); the gap between the two is the combined effect of canopy interception and the ground filter's own rejections — a cell is measured only when the filter calls it ground (`density.py`) |
 | Agreement with the official classification | ground recall 0.999 · non-ground recall 0.495 · accuracy 0.749 · **majority-class null 0.503** |
-| Reproducibility hash | `7b78c489df896702d812fd8401ad31b4f6ca604aaee8699b06d1dec0ff853711` |
-| Cost | 28.5 s wall clock, 4.4 GiB peak resident |
+| Reproducibility hash | `257c8dac78264df2295d8afff6bb99a8705b9cb670bc7532cb8616a3a033b477` |
+| Cost | 30.6 s wall clock, 4.4 GiB peak resident |
 
 ASPRS noise classes 7 and 18 (Low Point / High Noise) are excluded from every surface and counted
 per tile as `point_count_noise_excluded` — 0.228% of returns over this AOI (248,809 of
@@ -289,7 +290,7 @@ filter under canopy, declared rather than tuned away.
   blindness (multi-commit pushes, dirty-tree runs) and over-reach (comment-only edits flag too)
   are declared in its header.
 - **The reproducibility hash does not cover `--attribution` either.** Measured: two runs differing
-  only in that string share the hash `4060d5341498…`, so a product can be relabelled with a
+  only in that string share the hash `7cbed2829045…`, so a product can be relabelled with a
   different source and keep its anchor. Defensible — the hash covers inputs and parameters, not
   what you wrote about them — but it is a thing to know before you treat the hash as a licence
   check.

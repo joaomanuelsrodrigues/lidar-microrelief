@@ -12,7 +12,7 @@
     "tp": 36270
   },
   "attribution": "Source: Direção-Geral do Território (DGT), Centro de Dados, LiDAR point clouds, licensed CC BY 4.0. Derived products (ground classification, DTM, DSM, CHM) produced by microrelief; not reviewed or endorsed by DGT.",
-  "created_utc": "2026-08-30T09:57:16.781723+00:00",
+  "created_utc": "2026-08-31T13:48:12.548915+00:00",
   "flight_dates": [],
   "grid": {
     "cell": 0.5,
@@ -54,7 +54,7 @@
     "The only resource ceiling is a cell count (200,000,000 cells, ~12 GB of per-cell arrays), not a memory bound: a grid inside it can still exhaust memory, and that failure is an OOM kill rather than a refusal with a reason."
   ],
   "mixed_epochs": false,
-  "package_version": "0.4.1",
+  "package_version": "0.4.2",
   "parameters": {
     "cell": 0.5,
     "d_max_interp_m": 2.0,
@@ -64,7 +64,7 @@
     "max_window_m": 4.0,
     "slope_threshold": 0.3
   },
-  "reproducibility_hash": "4060d5341498556dbd48e18eb34fb118f5f4ee62a979ccc94372208d5ec70e0b",
+  "reproducibility_hash": "7cbed28290450fee83ba7acc00ae9c24997b412b12c600cfd00e5eefd5e9347f",
   "uncalibrated_thresholds": [
     "cell",
     "d_max_interp_m",

@@ -12,4 +12,11 @@ from __future__ import annotations
 
 from microrelief.cli import main
 
-raise SystemExit(main())
+# Guarded, even though `python -m microrelief` sets `__name__` to `"__main__"` and would run
+# either way: without it the CLI fires on *import* too, so `import microrelief.__main__` ends
+# the interpreter with argparse's usage and exit 2. Any import-based tool -- pkgutil, doctest
+# or coverage over `src/`, autodoc -- takes the whole process down with it. The fix for a
+# silent success published a sibling that fails loudly at the wrong moment (found in review,
+# s295).
+if __name__ == "__main__":
+    raise SystemExit(main())

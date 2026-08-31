@@ -4,7 +4,7 @@ description: Build a DTM, DSM and CHM from a LAS/LAZ point cloud where every cel
 license: Apache-2.0
 compatibility: Python 3.12+ and the microrelief package installed in the working repository (README, Install). The dgt extra is needed only for the DGT catalogue commands.
 metadata:
-  version: "0.4.1"
+  version: "0.4.2"
 ---
 
 # microrelief — terrain products from LiDAR that say what they do not know
