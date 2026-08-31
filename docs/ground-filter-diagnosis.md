@@ -255,3 +255,30 @@ later.
 runs over different denominators (our published DTM is filled, the SMRF surface here is only the
 cells holding ground returns), so the "cells above 2 m of local relief" counts are not a like
 comparison and no conclusion is drawn from them.
+
+---
+
+# The ruling, 2026-08-31
+
+**SMRF is implemented in this repository, in Python, citing Pingel et al. (2013); PDAL stays a
+development-only dependency, as the reference the implementation is validated against.**
+
+The decision was made after the measurement, not before it, and the measurement is what moved it:
+the option this session opened with — keep the filter and add a bespoke refusal guard — is
+dominated once a published algorithm is measured to fix the defect 5.6x without eating the
+terraces. Choosing a re-implementation over a runtime dependency rests on one assumption, stated so
+it can be attacked: that an install a reader can run without conda is worth roughly two sessions of
+build. If that stops being true, the runtime dependency is strictly cheaper.
+
+What this buys beyond the fix: the README's weakest sentence today is *"SMRF beats this
+implementation by 2.0 accuracy points"*. A re-implementation validated cell-for-cell against
+PDAL's own SMRF replaces it with a measured agreement — a stronger artefact than either the
+current filter or a shelled-out call.
+
+**Not to be done, each ruled out by measurement above:** tuning `max_elevation_m` or
+`max_window_m`; using the delivery's classification as an input to the filter; and adopting SMRF
+without publishing what it costs at the steepest cells.
+
+**Still open, and it is true today regardless of which filter ships:** the published Sistelo record
+claims `BASIS_MEASURED` over 77.2% of 86,759 roof cells, and none of its ten `known_limitations`
+names it.
