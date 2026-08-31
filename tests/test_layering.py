@@ -25,7 +25,13 @@ SRC = Path(__file__).resolve().parents[1] / "src" / "microrelief"
 
 # The composition root is the one place allowed to know about both layers: it is what wires
 # a provider to the core. It is named here, not exempted silently.
-COMPOSITION_ROOT = {"cli.py"}
+#
+# `__main__.py` belongs with it rather than in core: it holds no logic, it is the `python -m
+# microrelief` door that calls `cli.main`, so classifying it as core would put a module that
+# imports the composition root inside the layer defined by not knowing about it. Added in
+# s293, and the partition below is what forced the classification instead of letting the file
+# arrive unclassified.
+COMPOSITION_ROOT = {"cli.py", "__main__.py"}
 
 # The provider layer is the side of the edge that is *allowed* to hold a network client.
 PROVIDER_PREFIX = "providers/"

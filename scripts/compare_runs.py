@@ -19,19 +19,30 @@ import rasterio
 
 PERMITTED_RECORD_DIFFS = {"package_version", "created_utc", "reproducibility_hash"}
 
-# `known_limitations` also changes, because 0.4.0 appends two declared CRS gaps to it. It is
-# NOT in PERMITTED_RECORD_DIFFS: permitting the field wholesale would let any limitation appear or
+# `known_limitations` changes on purpose at a release that declares something new. It is NOT in
+# PERMITTED_RECORD_DIFFS: permitting the field wholesale would let any limitation appear or
 # vanish unnoticed, and the whole point of this instrument is that every difference is one we
 # named in advance. So it is asserted instead — the new record must be the old one plus exactly
-# these two lines, in order. They are written out here rather than imported from `cli.LIMITATIONS`
-# on purpose: importing them would make the instrument agree with whatever the code says, and a
-# typo in either place would pass. Two independent statements that must match is the check.
-EXPECTED_NEW_LIMITATIONS = (
-    "Calling select_tiles as a library function bypasses the AOI-vs-tile CRS check, which "
-    "lives at the CLI's composition root.",
-    "scripts/measure_risers.py takes no --crs, so it can only work an AOI that declares its "
-    "own projected CRS.",
-)
+# the lines below, in order. They are written out here rather than imported from
+# `cli.LIMITATIONS` on purpose: importing them would make the instrument agree with whatever the
+# code says, and a typo in either place would pass. Two independent statements that must match
+# is the check, which is also why each release keeps its own entry instead of being rewritten:
+# an old acceptance command recorded in `docs/live-smoke.md` must still replay.
+EXPECTED_NEW_LIMITATIONS = {
+    "0.4.0": (
+        "Calling select_tiles as a library function bypasses the AOI-vs-tile CRS check, which "
+        "lives at the CLI's composition root.",
+        "scripts/measure_risers.py takes no --crs, so it can only work an AOI that declares its "
+        "own projected CRS.",
+    ),
+    "0.4.1": (
+        "The reproducibility hash does not cover the attribution string: two runs differing "
+        "only in --attribution share a hash, so a product can be relabelled and keep its anchor.",
+        "The only resource ceiling is a cell count (200,000,000 cells, ~12 GB of per-cell "
+        "arrays), not a memory bound: a grid inside it can still exhaust memory, and that "
+        "failure is an OOM kill rather than a refusal with a reason.",
+    ),
+}
 
 
 def compare(old: Path, new: Path, expect_new_limitations: bool = False) -> int:
@@ -89,8 +100,29 @@ def compare(old: Path, new: Path, expect_new_limitations: bool = False) -> int:
 
     old_lims = tuple(doc_a.get("known_limitations") or ())
     new_lims = tuple(doc_b.get("known_limitations") or ())
-    expected = old_lims + EXPECTED_NEW_LIMITATIONS if expect_new_limitations else old_lims
-    if new_lims != expected:
+    # The release is READ FROM THE NEW RUN, not passed in: the record already says which
+    # version produced it, and a flag would let you assert 0.4.0's additions against a 0.4.1
+    # record by accident. It also keeps this an `action="store_true"` flag -- an optional-value
+    # flag placed before the two positionals makes argparse swallow one of them, which silently
+    # broke both acceptance commands recorded in docs/live-smoke.md (measured, s293).
+    release = str(doc_b.get("package_version") or "")
+    # An unknown release is a refusal, and a refusal makes exactly ONE claim. Falling back to
+    # the old list here and then comparing against it produced a second problem line asserting
+    # an expectation the instrument had just said it does not hold -- "known_limitations is not
+    # the old list plus the two declared gaps" beside "no expected limitations are recorded
+    # here" -- which sends a reader after a limitations bug that does not exist (s295).
+    unknown_release = expect_new_limitations and release not in EXPECTED_NEW_LIMITATIONS
+    if unknown_release:
+        problems.append(
+            f"the new run declares version {release!r}, for which no expected limitations "
+            f"are recorded here; known: {', '.join(sorted(EXPECTED_NEW_LIMITATIONS))}"
+        )
+    expected = (
+        old_lims + EXPECTED_NEW_LIMITATIONS[release]
+        if expect_new_limitations and not unknown_release
+        else old_lims
+    )
+    if not unknown_release and new_lims != expected:
         wanted = (
             "the old list plus the two declared gaps" if expect_new_limitations else "unchanged"
         )
@@ -118,19 +150,31 @@ def compare(old: Path, new: Path, expect_new_limitations: bool = False) -> int:
     return 0
 
 
-def main() -> int:
+def build_parser() -> argparse.ArgumentParser:
+    """The argv contract, exposed so a test can parse the commands recorded in the docs.
+
+    `main()` used to build this inline, which meant the only way to check a recorded command
+    line was to run the whole comparison. Every command written into `docs/live-smoke.md` is a
+    claim about what this parser accepts, and twice now such a claim was published without ever
+    being run (s293, s295) -- so the claim is now checkable against the parser itself.
+    """
     ap = argparse.ArgumentParser()
     ap.add_argument("old", type=Path)
     ap.add_argument("new", type=Path)
     ap.add_argument(
         "--expect-new-limitations",
         action="store_true",
-        help="require known_limitations to be the old list plus exactly the two CRS gaps "
-        "0.4.0 declares. OFF by default, because a run-to-run control compares two builds of "
-        "the same version, where the list must be unchanged. Only the 0.3.0-vs-0.4.0 "
-        "acceptance passes it.",
+        help="require known_limitations to be the old list plus exactly the two gaps the NEW "
+        "run's own version declares (known: " + ", ".join(sorted(EXPECTED_NEW_LIMITATIONS)) + "). "
+        "OFF by default, because a run-to-run control compares two builds of the same version, "
+        "where the list must be unchanged. Takes no value on purpose -- see the comment in "
+        "compare(); exercised in the recorded position by tests/test_compare_runs.py.",
     )
-    args = ap.parse_args()
+    return ap
+
+
+def main() -> int:
+    args = build_parser().parse_args()
     return compare(args.old, args.new, args.expect_new_limitations)
 
 
