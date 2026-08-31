@@ -201,3 +201,57 @@ than Valongo — which is the whole reason a site chosen for what it shows could
   it to decide cells would make the comparison a tautology and remove the one honest result the
   piece has. It is used above only to *define the population being audited*, which is the role it
   already has.
+
+---
+
+# Would SMRF do better? Measured, 2026-08-31
+
+The operator's ruling was to measure before choosing. PDAL 2.10.2 from conda-forge, `filters.smrf`
+**out of the box** (only `ignore: Classification[7:7]`, matching the noise exclusion this pipeline
+already does), on the same six Valongo tiles and the same grid.
+
+**Controls first, because a filter that did not run would look like a very good one.**
+SMRF genuinely reclassifies: on LO-162471 it moves 2,014,732 returns into ground that DGT calls
+non-ground and 90,837 the other way, so the output is its verdict and not the delivery's labels
+read back. Its `returns` default is `[last, only]` and it passes the rest through with their
+original class — those are excluded, and they are negligible (7,345 class-2 points against
+100,326,647 judged, 0.007%).
+
+## On buildings
+
+Cell counted as ground if it holds at least one ground return — the same rule `agreement()` already
+uses for the official classification. Populations defined exactly as above, from the delivery's
+classification, which decides no cell in either filter.
+
+| population | cells | **ours** published as measured | **SMRF** would be ground |
+|---|---:|---:|---:|
+| **roof interior** (class 6, no class 2) | 3,524,239 | **89.7%** | **16.1%** |
+| control: canopy, no ground return | 2,493,967 | 33.9% | 19.5% |
+| control: plain ground | 12,062,527 | 100.0% | **99.4%** |
+
+Falsely-measured roof cells fall from **3,160,305 to 566,299** — 5.6x — and the plain-ground
+control costs 0.6 points. That is not a trade between ground coverage and building rejection; it is
+73.6 points on roofs for 0.6 on ground.
+
+## On terraces — the symmetric risk, and the one that could have killed it
+
+Our filter over-preserves. A filter that over-cuts would destroy the artefact instead, and a
+recommendation that skipped this measurement would rest on exactly what it most needed. The
+documented 150 m window around the **tallest verified riser (2.98 m)**, tile LO-179557:
+
+- of the cells our filter calls measured ground, SMRF has ground in **91.8%**;
+- restricted to cells sitting on a real vertical step in 3.5 m: **90.7%** at > 1.5 m,
+  **89.3%** at > 2.0 m, **86.5%** at > 2.5 m — the steeper the cell, the more SMRF drops, but it
+  keeps the large majority of them;
+- where both call a cell ground, the surfaces are the same to within measurement noise (46,449
+  cells, median difference **+0.000 m**, 0.03% differing by more than 0.5 m) — which is the
+  consistency control on my own construction of the SMRF surface.
+
+**SMRF does not eat the terraces.** It costs about one in eight of the steepest cells, which become
+interpolated or undetermined rather than measured — a real cost, named rather than discovered
+later.
+
+*Not comparable, and left out deliberately:* a local-relief comparison between the two surfaces
+runs over different denominators (our published DTM is filled, the SMRF surface here is only the
+cells holding ground returns), so the "cells above 2 m of local relief" counts are not a like
+comparison and no conclusion is drawn from them.
