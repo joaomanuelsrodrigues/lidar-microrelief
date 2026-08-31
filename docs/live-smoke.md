@@ -1493,3 +1493,85 @@ private reporting channel the document names as its **only** one is a public-rep
 so it cannot be verified while this repo is private. Both belong to the flip sitting: enable them
 and re-verify by API, or change the sentence — the policy must not describe a posture the
 repository does not have.
+
+---
+
+## 2026-08-31 — the second AOI: Valongo / Paredes, six tiles, 675 MB
+
+Pre-registered at `181d95d` before the run (`docs/second-aoi-preregistration.md`); verdict and
+analysis in `docs/second-aoi-gate-result.md`. **Verdict: FAIL** — the DTM publishes buildings as
+terrain. Recorded here because the commands and their outputs are what the verdict rests on.
+
+**Acquisition — automated this time, and the reason the earlier entry could not be.** `SITE.md`
+records the direct grant refused: `POST /token` with `grant_type=password` answers 401
+`unauthorized_client`, and that remains true. The *browser* flow is a different endpoint and it
+does authenticate this account: the OIDC authorization-code exchange at
+`/realms/dgterritorio/.../auth` yields a portal session, and with that session a download href
+returns 206. Both controls fired — a junk password and a non-existent user are each refused with
+*"Nome de utilizador ou palavra-passe inválida"* — so the accepted login is evidence and not a
+server that says yes to everything.
+
+**The href's 64-hex segment is a short-lived token, not a stable identifier.** An href minted 30
+minutes earlier answered `403 {"status":403,"message":"Forbidden Access - Expired token or file
+not found"}`; a fresh one from the same search answered `206` with `LASF` in the first four bytes.
+So each href is minted and spent in one pass. Acceptance stayed the artefact — every file's byte
+count against the catalogue's `file:size`, and the `LASF` magic:
+
+    LO-160470-07-2025: 123,901,792 bytes (declared 123,901,792) magic=b'LASF' OK
+    LO-160471-07-2025: 106,466,721 bytes (declared 106,466,721) magic=b'LASF' OK
+    LO-161470-07-2025: 124,866,796 bytes (declared 124,866,796) magic=b'LASF' OK
+    LO-161471-07-2025:  95,203,665 bytes (declared  95,203,665) magic=b'LASF' OK
+    LO-162470-07-2025: 120,315,748 bytes (declared 120,315,748) magic=b'LASF' OK
+    LO-162471-07-2025: 104,665,870 bytes (declared 104,665,870) magic=b'LASF' OK
+    accepted 6/6, 675,420,592 bytes
+
+**select and precheck:**
+
+```
+$ microrelief select --aoi aoi/valongo.geojson --out selection.json
+6 tiles, coverage 1.0000, 1 sortie(s), 1 stamp(s) -> selection.json
+
+$ microrelief precheck --aoi aoi/valongo.geojson
+LO-160470-07-2025   21.4 pts/m2  2025-12-08  void(open)=0.477%  void(f=0.4)=11.8%
+LO-160471-07-2025   17.7 pts/m2  2025-12-08  void(open)=1.201%  void(f=0.4)=17.1%
+LO-161470-07-2025   20.9 pts/m2  2025-12-08  void(open)=0.534%  void(f=0.4)=12.3%
+LO-161471-07-2025   16.0 pts/m2  2025-12-08  void(open)=1.844%  void(f=0.4)=20.2%
+LO-162470-07-2025   20.8 pts/m2  2025-12-08  void(open)=0.551%  void(f=0.4)=12.5%
+LO-162471-07-2025   17.1 pts/m2  2025-12-08  void(open)=1.386%  void(f=0.4)=18.1%
+```
+
+**A refusal, correct, from pointing `--laz` at a directory holding tiles outside the selection:**
+
+```
+LO-179556-07-2025 is not in the selection (LO-160470-07-2025, ...); refusing to publish
+catalogue facts for some tiles and none for others
+exit=2
+```
+
+**The run, twice, at identical parameters — byte-identical both times:**
+
+```
+grid 3960 x 5960 cells of 0.5 m (5.9004 km2), 6 tile(s), 1472090 return(s) outside the AOI
+measured 87.3% | interpolated 12.6% | undetermined 0.1%
+expected void at f=1: 0.854% (measured density 19.1 pts/m2)
+ground recall 1.000 | non-ground recall 0.262 | accuracy 0.700 | majority-class null 0.594
+flight dates 2025-12-08T00:00:00Z | mixed epochs False
+reproducibility_hash ee05b4e174a92a10567f058c07463f9a0188f360d756a57a0b9b900161b1e5bf
+```
+
+run 1: wall 34.29 s, peak RSS 3,205,920 KB · run 2: wall 32.74 s, peak RSS 3,206,016 KB.
+Both `reproducibility_hash` identical, `grid`/`honesty`/`agreement` identical, 6 of 6 raster file
+digests matching. **The declared read instability did not reproduce** on a grid 1.5x Sistelo's.
+
+**What the run found.** Over cells holding official class-6 (building) returns, CHM median
+**0.06 m**, 79.8% below 0.5 m — buildings published as terrain, with `agreement` reporting ground
+recall 1.000 and nothing in `known_limitations` naming it. Controls in the same tile: class 5
+vegetation median 5.87 m (8.9% flat), class 2 ground median 0.05 m. The same measurement on
+Sistelo's own outputs gives 0.17 m and 66.5% flat, over 32,937 building cells against 575,771
+here — **the defect is already in the published piece**, hidden by a site with almost nothing
+built in it. Diagnostic at `--max-window-m 40`: flat-building share 79.8% → 61.8%, non-ground
+recall 0.262 → 0.540, undetermined 0.1% → 7.5%. Load-bearing, and not fixed by any value tested.
+
+**The CRS read this AOI could not have been reached without** is 0.4.3's fix, exercised here
+against the live catalogue: before it, this AOI's own delivery was refused with *"Supply an AOI in
+EPSG:9001"*, which is false and cannot be followed.
