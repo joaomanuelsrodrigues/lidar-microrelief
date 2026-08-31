@@ -62,3 +62,100 @@ def test_the_readme_try_it_quotes_the_sample_record() -> None:
     readme = (ROOT / "README.md").read_text()
     assert prov["reproducibility_hash"][:12] in readme
     assert "examples/sistelo-sample" in readme
+
+
+# --- Every file that publishes a record hash, not just the README ---------------------------
+#
+# The two tests above lock the README, and only the README. In 0.4.2 the bump moved both record
+# hashes, the README locks went red and were fixed -- while `skills/microrelief/SKILL.md` and
+# `examples/sistelo-sample/README.md` kept 0.4.1's, and the suite stayed green at 265 tests.
+# SKILL.md even asserted "tests/test_sample.py locks these", which nothing did. That is the same
+# class 0.4.1 named for the 60 B/cell figure ("three unlocked copies with no test tying them
+# together") and the same class the sweep that produced it fell to: one file is one witness.
+#
+# So the population is DERIVED, never a list of filenames -- a convention-shaped selector has let
+# a member escape a guard in this repo before. It is every tracked `.md` carrying a token
+# presented AS a record hash, partitioned into files making a present-tense claim (which must
+# carry a CURRENT hash) and dated records (exempt, each with its reason).
+
+_PUBLISHED_HASH = re.compile(
+    r"(?:reproducibility_hash|record hash|hash)\D{0,4}`?([0-9a-f]{12})", re.I
+)
+
+# Exempt, and why. A dated record is a description of a past moment: its hashes are correct
+# BECAUSE they are old, and editing them would falsify the record rather than fix it.
+DATED_RECORDS = {
+    "docs/live-smoke.md": "append-only log of past runs; every superseded hash is the point",
+    "docs/self-check.md": "a dated self-check, corrected beside its original rather than over it",
+}
+
+
+def _tracked_markdown() -> list[str]:
+    import subprocess
+
+    out = subprocess.run(
+        ["git", "ls-files", "-z"], cwd=ROOT, capture_output=True, text=True, check=True
+    )
+    return [n for n in out.stdout.split("\0") if n.endswith(".md")]
+
+
+def _current_hash_prefixes() -> set[str]:
+    return {
+        json.loads((ROOT / p).read_text())["reproducibility_hash"][:12]
+        for p in ("docs/viewer/provenance.json", "examples/sistelo-sample/expected/provenance.json")
+    }
+
+
+def _population() -> dict[str, list[str]]:
+    found = {}
+    for name in _tracked_markdown():
+        hits = sorted(set(_PUBLISHED_HASH.findall((ROOT / name).read_text(encoding="utf-8"))))
+        if hits:
+            found[name] = hits
+    return found
+
+
+def test_every_file_that_publishes_a_record_hash_is_current_or_a_dated_record() -> None:
+    """The partition: live claim with a current hash, or a dated record with a stated reason."""
+    population = _population()
+    assert population, "no tracked .md publishes a record hash: this test scanned nothing"
+
+    current = _current_hash_prefixes()
+    stale = {
+        name: [h for h in hits if h not in current]
+        for name, hits in population.items()
+        if name not in DATED_RECORDS
+    }
+    stale = {k: v for k, v in stale.items() if v}
+    assert not stale, (
+        f"{len(stale)} live file(s) publish a hash the code does not produce (current: "
+        f"{sorted(current)}): {stale} -- copy it from the record, never by hand"
+    )
+
+
+def test_the_exemptions_name_files_that_exist_and_actually_carry_a_hash() -> None:
+    """An exemption for a file that no longer publishes a hash is a hole nobody is watching."""
+    population = _population()
+    unused = sorted(set(DATED_RECORDS) - set(population))
+    assert not unused, f"exempted but no longer publishes a hash: {unused} -- drop the exemption"
+    for name in DATED_RECORDS:
+        assert (ROOT / name).exists(), f"exempted file does not exist: {name}"
+
+
+def test_the_partition_check_fires_on_a_stale_hash_and_is_quiet_on_a_current_one() -> None:
+    """Both arms: a guard that cannot fire and a clean tree produce the same green.
+
+    The planted token is assembled here rather than written out -- this file is a tracked `.md`
+    away from being in the population itself, and a literal would be a hash nobody can source.
+    """
+    current = _current_hash_prefixes()
+    stale_token = "0" * 12
+    assert stale_token not in current, "the planted token must not accidentally be a real hash"
+
+    live = "record hash `" + stale_token + "`"
+    assert _PUBLISHED_HASH.findall(live) == [stale_token], "the pattern missed a planted claim"
+
+    fresh = "record hash `" + sorted(current)[0] + "`"
+    assert [h for h in _PUBLISHED_HASH.findall(fresh) if h not in current] == [], (
+        "the pattern flagged a current hash"
+    )

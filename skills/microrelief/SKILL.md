@@ -35,7 +35,8 @@ Worked example in this repository — real data, about a minute:
 On the author's machine and on GitHub's runner this gives a 300 × 300 grid of 0.5 m cells; basis
 56.2 % measured, 43.1 % interpolated, 0.7 % undetermined; expected void 1.3 %; agreement with the
 delivery's ground class: accuracy 0.837 against a majority-class null of 0.587 (recall ground
-0.999, non-ground 0.723); record hash `4060d5341498…`. `tests/test_sample.py` locks these.
+0.999, non-ground 0.723); record hash `7cbed2829045…`. `tests/test_sample.py` locks the values and
+`tests/case_study/test_readme_claims.py` locks this copy of the hash.
 
 ## Before running — the input contract (ask the user, never assume)
 

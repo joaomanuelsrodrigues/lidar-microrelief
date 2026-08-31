@@ -20,7 +20,7 @@ Run it:
         --out outputs/sample --attribution "$(cat examples/sistelo-sample/attribution.txt)"
 
 What comes out, on the author's machine: a 300 × 300 grid of 0.5 m cells; basis 56.2 % measured ·
-43.1 % interpolated · 0.7 % undetermined; measured density 17.3 pts/m²; record hash `4060d5341498`.
+43.1 % interpolated · 0.7 % undetermined; measured density 17.3 pts/m²; record hash `7cbed2829045`.
 Without `--selection` (the DGT catalogue step) the record says it does not know what the provider
 claimed — `flight_date` and `point_count_catalogue` are `null` — rather than repeating what it
 measured.

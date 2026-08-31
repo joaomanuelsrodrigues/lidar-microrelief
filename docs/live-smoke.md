@@ -1457,3 +1457,39 @@ rebuilt with the objects the test hashes rather than a parallel reimplementation
 Gates, each exit code read separately: `uv sync --locked` 0 · ruff check 0 · ruff format 0 ·
 mypy 0 · pytest **265 passed** · neutrality self-test 0 (14 controls fire) · neutrality 126/126
 tracked, 0 hits.
+
+### 5. The pre-flip `/cso`, and the one thing it found that the gates could not
+
+Run against this tree rather than an earlier one, because the three prior clean audits
+(2026-08-26, 08-27, 08-30) all predate it — `SECURITY.md` did not exist at the last one, and a
+clean verdict is not evidence about bytes that were not there. Every layer carried a denominator
+and a control that had to fire: **427 unique blobs over 13 refs / 99 commits, 0 credential hits**
+(control matched 248/427) · **38 third-party packages against OSV, 0 vulnerabilities** (controls
+returned 10/18/43 through the identical pipeline) · CI on `pull_request`, `contents: read`, both
+actions SHA-pinned, no `${{ }}` inside any `run:` · **one outbound call in the whole package**,
+fixed host, explicit timeout, and the catalogue `href` recorded and never followed · no
+`eval`/`exec`/`pickle`/`shell=True`, sha256 only, the single `subprocess` an argv list with a
+timeout · the six agent-instructing files read whole, with their byte counts, 0 hits.
+
+**What it found is not a vulnerability, and it is worth more than one:** `skills/microrelief/SKILL.md`
+and `examples/sistelo-sample/README.md` were still publishing 0.4.1's sample hash, and
+`SKILL.md` claimed `tests/test_sample.py` locked it. Nothing did — the README's lock asserts the
+hash appears **in the README**, so the suite stayed green at 265 with both stale copies in the
+tree. The sweep that updated the hashes had been scoped to one file: one file is one witness,
+which is the class 0.4.1 had already named for the 60 B/cell figure.
+
+The fix is the lock, not the two edits. `tests/case_study/test_readme_claims.py` now derives its
+population from `git ls-files` — every tracked `.md` carrying a token presented as a record hash —
+and asserts a **partition**: a live claim must carry a current hash, or the file is a dated record
+with its reason written down (`docs/live-smoke.md`, `docs/self-check.md` — a superseded hash there
+is the point, and editing it would falsify the record). A second test fails if an exemption stops
+publishing a hash, so the list cannot rot into a hole; a third plants a stale token and a current
+one and requires the check to fire on the first and stay quiet on the second.
+
+**Open, and not code:** `SECURITY.md` states "Dependabot alerts are enabled on this repository."
+Measured: `GET /repos/.../vulnerability-alerts` returns 404, `"Vulnerability alerts are
+disabled."` — a state, not an auth failure (the same client reads the repo metadata fine). The
+private reporting channel the document names as its **only** one is a public-repository feature,
+so it cannot be verified while this repo is private. Both belong to the flip sitting: enable them
+and re-verify by API, or change the sentence — the policy must not describe a posture the
+repository does not have.
