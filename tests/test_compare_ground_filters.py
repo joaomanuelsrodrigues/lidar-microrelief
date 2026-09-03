@@ -580,6 +580,47 @@ class TestTheRampIsADeclaredLimitation:
         assert (diag_step[diag_defined] > 2.5).all()
 
 
+class TestPlaneResidual:
+    """The statistic that answers the limitation the class above declares.
+
+    A range cannot tell a riser from a hillside steep enough to span it. A plane can: a uniform
+    ramp is planar at any steepness and in any direction, and a step is not.
+    """
+
+    def test_a_planar_ramp_has_zero_residual_at_every_slope_and_direction(self) -> None:
+        rows, cols = np.mgrid[0:40, 0:40]
+        for degrees in (25.0, 35.0, 45.0, 60.0):
+            gradient = np.tan(np.radians(degrees))
+            for along in (cols, (rows + cols) / np.sqrt(2)):
+                surface = (along * 0.5 * gradient).astype(np.float64)
+
+                residual = mod.plane_residual(surface, np.array([[20, 20]], dtype=np.int64), 7, 0.5)
+
+                assert residual[0] == pytest.approx(0.0, abs=1e-9), degrees
+
+    def test_a_wall_reads_the_same_on_flat_ground_and_on_a_hillside(self) -> None:
+        """The statistic is a departure from a plane, so the background plane cannot matter."""
+        _, cols = np.mgrid[0:40, 0:40]
+        wall = np.where(cols >= 20, 2.5, 0.0).astype(np.float64)
+        on_slope = wall + cols * 0.5 * np.tan(np.radians(20.0))
+        cells = np.array([[20, 20]], dtype=np.int64)
+
+        flat = mod.plane_residual(wall, cells, 7, 0.5)[0]
+        sloped = mod.plane_residual(on_slope, cells, 7, 0.5)[0]
+
+        assert flat > 0.4
+        assert sloped == pytest.approx(flat, abs=1e-9)
+
+    def test_a_window_with_fewer_than_four_observed_cells_is_undefined(self) -> None:
+        """A plane has three parameters; three points fit it exactly and have no residual."""
+        surface = np.full((40, 40), np.nan)
+        surface[20, 20] = surface[20, 21] = surface[21, 20] = 1.0
+
+        residual = mod.plane_residual(surface, np.array([[20, 20]], dtype=np.int64), 7, 0.5)
+
+        assert np.isnan(residual[0])
+
+
 class TestTheSmrfFlagsAgreeBetweenTheTwoParsers:
     """`smrf` and `terraces` both declare the SMRF flags, and nothing locked them to each other.
 

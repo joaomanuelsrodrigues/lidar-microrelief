@@ -191,6 +191,37 @@ def step_magnitude(
     return step, defined
 
 
+def plane_residual(
+    surface: NDArray[np.float64], cells: NDArray[np.int64], window_cells: int, cell_m: float
+) -> NDArray[np.float64]:
+    """RMS residual from a least-squares plane over the observed cells of each cell's window.
+
+    The discriminator `step_magnitude` lacks: a range cannot tell a riser from a smooth slope
+    steep enough to span it, and a uniform ramp is planar at any steepness and in any direction
+    while a step is not. Computed per listed cell rather than over the whole grid, because the
+    callers only ever ask about cells the range term already selected, and a per-cell least
+    squares over a full grid would cost orders of magnitude more for answers nobody reads.
+
+    `cells` must be at least `window_cells // 2` from every border. Callers get that for free by
+    taking them from `step_magnitude`'s `defined`, which excludes the margin; a caller that does
+    not would index with a negative row and read the far edge of the array instead of refusing.
+    """
+    margin = window_cells // 2
+    dy, dx = np.mgrid[-margin : margin + 1, -margin : margin + 1]
+    dy = dy.ravel() * cell_m
+    dx = dx.ravel() * cell_m
+    out = np.full(len(cells), np.nan)
+    for i, (row, col) in enumerate(cells):
+        window = surface[row - margin : row + margin + 1, col - margin : col + margin + 1].ravel()
+        seen = np.isfinite(window)
+        if int(seen.sum()) < 4:  # a plane has three parameters; four points to have a residual
+            continue
+        design = np.column_stack([dx[seen], dy[seen], np.ones(int(seen.sum()))])
+        coefficients, *_ = np.linalg.lstsq(design, window[seen], rcond=None)
+        out[i] = float(np.sqrt(np.mean((design @ coefficients - window[seen]) ** 2)))
+    return out
+
+
 @dataclass(frozen=True)
 class Reference:
     """Everything the comparison needs that costs a LAZ read."""
