@@ -1779,3 +1779,85 @@ excluded) instead of the pipeline's minimum over all returns moves agreement fro
 $ python -c "b, measured = 4_270_425, 23_058_525; print(...)"
 row B is 4,270,425 of 23,058,525 measured cells = 18.5%
 ```
+
+## 2026-09-03 — P4: what the in-repo SMRF costs on the terraces
+
+The predicate deferred out of the build pre-registration because Valongo has terraces only
+incidentally. Population, surface and step operation fixed in
+`docs/p4-terrace-preregistration.md` at `7429761`, **before** any of this ran; result and the
+figures that did not reproduce in `docs/p4-terrace-result.md`.
+
+PDAL 2.10.2 was reinstalled for this — the environment behind the 2026-08-31 diagnosis died with
+a session scratchpad, which is why that document's numbers have no artefact.
+
+```
+$ pdal --version
+pdal 2.10.2 (git-version: e8618b)
+
+$ pdal --drivers | grep -i smrf
+filters.smrf                 Simple Morphological Filter (Pingel et al., 2013)
+
+$ pdal pipeline docs/p4-reference-pipeline.json \
+    --readers.las.filename=<tile-dir>/LO-179557-07-2025.laz \
+    --writers.las.filename=<ref-dir>/LO-179557-smrf.laz
+(pdal pipeline readers.las Warning) Found 3 extra byte VLRs. Concatanating all extra byte records into one.
+# 27,720,324 points in, 27,720,324 out
+
+$ python scripts/compare_ground_filters.py reference --tiles <tile-dir> --smrf <ref-dir> \
+    --aoi examples/sistelo-sample/aoi.geojson --out <cache>.npz \
+    --pipeline docs/p4-reference-pipeline.json
+  "reference_pipeline_sha256_16": "8e328b1ba0a2d949",
+  "controls": {
+    "into_ground": 3217933,
+    "out_of_ground": 42068,
+    "passed_through_class2": 60221,
+    "judged": 16887698
+  }
+wrote <cache>.npz (1.2 MB)
+```
+
+The control first: SMRF moves 3,217,933 returns into ground and 42,068 out of it, so the output is
+its own verdict and not the delivery's labels read back.
+
+```
+$ python scripts/compare_ground_filters.py terraces --reference <cache>.npz
+population                                               cells   SMRF ground   PDAL ground
+------------------------------------------------------------------------------------------
+P4a: our measured ground                                50,596         91.1%         91.8%
+P4b: ... on a step > 1.5 m                              27,637         95.4%         95.7%
+P4b: ... on a step > 2 m                                16,482         95.4%         95.5%
+P4b: ... on a step > 2.5 m  (GATE)                       7,625         95.1%         95.1%
+
+reported, with nothing riding on it:
+  P4b at > 2.5 m requiring >= 10 finite cells: 7,426 cells, SMRF 95.4%, PDAL 95.4%
+  where both our filter and PDAL call a cell ground: 46,427 cells, median difference +0.000 m, 0.03% differ by more than 0.5 m
+
+pre-registered predicates (docs/p4-terrace-preregistration.md):
+  P4a our measured ground kept: 91.078 >= 85.0 -> PASS
+  P4b kept on a step > 2.5 m: 95.082 >= 80.0 -> PASS
+
+VERDICT: PASS
+$ echo $?
+0
+```
+
+**The control that says the gate can fail**, run before the verdict was read. Same command, a
+parameterisation chosen to cut terraces:
+
+```
+$ python scripts/compare_ground_filters.py terraces --reference <cache>.npz \
+    --smrf-slope 0.01 --smrf-threshold 0.05
+P4a: our measured ground                                50,596         58.6%         91.8%
+P4b: ... on a step > 2.5 m  (GATE)                       7,625         60.2%         95.1%
+  P4a our measured ground kept: 58.601 >= 85.0 -> FAIL
+  P4b kept on a step > 2.5 m: 60.197 >= 80.0 -> FAIL
+
+VERDICT: FAIL
+$ echo $?
+1
+```
+
+PDAL's 91.8% on the base population reproduces the 2026-08-31 figure to the precision it states,
+and the both-ground control lands 22 cells from its 46,449. **Its 86.5% on the steep population
+does not reproduce** — 95.1% here — which places the whole disagreement inside the one phrase that
+record left undefined. Detail and consequence in `docs/p4-terrace-result.md`.
