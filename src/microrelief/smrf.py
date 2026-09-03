@@ -100,6 +100,12 @@ def block_factor(cell: float, params: SmrfParams) -> int:
     **0**, and a factor of zero is not an error anywhere downstream: it makes a block of no
     cells, which tiles no grid and reads like a filter that never ran.
     """
+    if cell <= 0:
+        # By name, and here: this used to be caught by `grid_for_bounds`, which the composition
+        # root now calls AFTER this function -- so `--cell 0` reached the division and came out
+        # as a bare ZeroDivisionError, and `--cell -0.5` came out blaming the whole-multiple
+        # rule for a value that fails a simpler test first.
+        raise SmrfError(f"cell must be positive, got {cell}")
     ratio = params.cell / cell
     factor = int(round(ratio))
     if factor < 1 or abs(ratio - factor) > 1e-9:
@@ -309,6 +315,15 @@ def classify_ground_smrf(min_z: FloatGrid, cell: float, params: SmrfParams) -> B
             f"a grid of {z.shape[0]}x{z.shape[1]} cells is not divisible into whole "
             f"{factor}x{factor} blocks"
         )
+
+    if bool(np.isnan(z).all()):
+        # An AOI where nothing was measured is a legitimate input with an obvious answer, and it
+        # deserves to be told what happened. Left to run, it reaches `_require_no_holes` through
+        # `knn_fill` -- which returns an all-void surface untouched, by design -- and refuses
+        # with "a caller skipped the fill", an internal contract message that blames the caller
+        # for the pipeline's own composition. The retired filter said this plainly and the swap
+        # lost it.
+        raise SmrfError("no measured cells: every cell of the minimum surface is empty")
 
     coarse = block_min(z, factor) if factor > 1 else z
     dem, thresh = provisional_dem(coarse, params)

@@ -78,9 +78,9 @@ LIMITATIONS = (
     "above 2.5 m (docs/p4-terrace-result.md). The filter it replaces guaranteed it by "
     "construction, through a parameter this one does not have.",
     "The grid cell must divide the 1 m analysis cell, so --cell takes 1/k metres and refuses "
-    "anything else. The grid is also grown outward to whole analysis blocks, which can add one "
-    "cell per axis beyond the requested AOI; a cell added there publishes what was measured in "
-    "it, not undetermined, whenever it falls inside a source tile.",
+    "anything else. The grid is also grown outward to whole analysis blocks, which can add up "
+    "to (1 m / --cell) - 1 cells per axis beyond the requested AOI; a cell added there publishes "
+    "what was measured in it, not undetermined, whenever it falls inside a source tile.",
 )
 
 

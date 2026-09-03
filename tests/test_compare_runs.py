@@ -397,3 +397,37 @@ def test_record_only_refuses_two_runs_of_the_same_version(tmp_path: Path) -> Non
     assert got.returncode == 2
     assert "version boundary" in got.stderr
     assert "0.5.0" in got.stderr, "the refusal must name the version both runs declare"
+
+
+def test_record_only_still_refuses_a_directory_holding_no_rasters(tmp_path: Path) -> None:
+    """`--record-only` skips the PIXEL comparison, not the band set and not the nothing-scanned
+    guard. Under the first version of the flag, two directories holding zero rasters returned
+    exit 0 with the full success verdict -- and this was the only acceptance path across the
+    0.5.0 boundary, so an export that wrote five of six bands would have passed it."""
+    for d in (tmp_path / "old", tmp_path / "new"):
+        d.mkdir(parents=True)
+        (d / "provenance.json").write_text(
+            json.dumps(
+                {
+                    "package_version": "0.4.4" if d.name == "old" else "0.5.0",
+                    "created_utc": "2026-01-01T00:00:00+00:00",
+                    "reproducibility_hash": "x",
+                    "known_limitations": ["a"],
+                    "grid": {"cell": 0.5},
+                }
+            ),
+            encoding="utf-8",
+        )
+    got = _run("--record-only", str(tmp_path / "old"), str(tmp_path / "new"))
+    assert got.returncode == 1, got.stdout
+    assert "checked nothing" in got.stderr
+
+
+def test_record_only_still_refuses_a_missing_band(tmp_path: Path) -> None:
+    """The band SET is a record-level fact and needs no pixel reads to check."""
+    old = _a_run(tmp_path / "old", "0.4.4", LIMS_0_4_0)
+    new = _a_run(tmp_path / "new", "0.5.0", LIMS_0_4_0)
+    (new / "mdt.tif").unlink()
+    got = _run("--record-only", str(old), str(new))
+    assert got.returncode == 1
+    assert "band sets differ" in got.stderr

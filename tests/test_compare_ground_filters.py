@@ -722,3 +722,44 @@ class TestTerracesCommandRefusals:
         cache = self._cache(tmp_path)
 
         assert mod.main(["terraces", "--reference", str(cache), "--smrf-cell", "0.75"]) == 2
+
+
+class TestReferenceGridSnapsLikeThePipeline:
+    """The reference command dumps the arrays `compare` and `terraces` feed to SMRF, so its grid
+    has to tile into whole SMRF blocks exactly as the pipeline's does. It did not, and nothing
+    here exercised the command -- which is also how the first fix shipped `block_factor(cell,
+    args.smrf)` where `args.smrf` is the reference-output DIRECTORY, an AttributeError waiting
+    for the one caller nobody runs in the suite."""
+
+    def test_the_block_is_sized_from_smrf_params_not_from_the_directory_argument(self) -> None:
+        import inspect
+
+        source = inspect.getsource(mod._cmd_reference)
+        assert "block=" in source, "the reference grid must be snapped like the pipeline's"
+        assert "block_factor(args.cell, args.smrf)" not in source, (
+            "args.smrf is a Path (the reference-output directory), not SmrfParams"
+        )
+
+    def test_an_odd_cell_count_would_refuse_without_the_snap_and_is_accepted_with_it(self) -> None:
+        """Both arms, on the real functions rather than on the script's text."""
+        import numpy as np
+
+        from microrelief.grid import grid_for_bounds
+        from microrelief.smrf import SmrfParams, block_factor, classify_ground_smrf
+
+        params = SmrfParams()
+        cell = 0.5
+        bounds = (0.0, 0.0, 150.5, 150.5)
+        unsnapped = grid_for_bounds(*bounds, cell, 3763)
+        snapped = grid_for_bounds(*bounds, cell, 3763, block=block_factor(cell, params))
+        assert unsnapped.n_cols % 2 == 1, "the fixture must actually be odd, or it proves nothing"
+
+        rng = np.random.default_rng(0)
+        with pytest.raises(mod.SmrfError if hasattr(mod, "SmrfError") else ValueError):
+            classify_ground_smrf(
+                rng.normal(100.0, 0.5, (unsnapped.n_rows, unsnapped.n_cols)), cell, params
+            )
+        out = classify_ground_smrf(
+            rng.normal(100.0, 0.5, (snapped.n_rows, snapped.n_cols)), cell, params
+        )
+        assert out.shape == (snapped.n_rows, snapped.n_cols)

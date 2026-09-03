@@ -12,7 +12,7 @@
     "tp": 7762222
   },
   "attribution": "Source: Direção-Geral do Território (DGT), Centro de Dados, LiDAR point clouds, licensed CC BY 4.0. Derived products (ground classification, DTM, DSM, CHM) produced by microrelief; not reviewed or endorsed by DGT.",
-  "created_utc": "2026-09-03T14:43:17.187067+00:00",
+  "created_utc": "2026-09-03T15:22:15.224958+00:00",
   "flight_dates": [
     "2026-03-30T00:00:00Z"
   ],
@@ -86,7 +86,7 @@
     "The only resource ceiling is a cell count (200,000,000 cells, ~12 GB of per-cell arrays), not a memory bound: a grid inside it can still exhaust memory, and that failure is an OOM kill rather than a refusal with a reason.",
     "The ground filter does not remove every building, and the basis band calls what it keeps measured: over cells holding official building returns and no ground return, 16.4% publish as measured ground at a built site near Valongo. The filter this release replaces published 87.7% of that same population (docs/reference-instrument-result.md).",
     "Terrace preservation is measured, not enforced. This filter has no cap on how far it may cut, so that risers survive is an empirical result at one site: 91.078% of the cells the previous filter called measured ground are kept, and 95.082% of those standing on a step above 2.5 m (docs/p4-terrace-result.md). The filter it replaces guaranteed it by construction, through a parameter this one does not have.",
-    "The grid cell must divide the 1 m analysis cell, so --cell takes 1/k metres and refuses anything else. The grid is also grown outward to whole analysis blocks, which can add one cell per axis beyond the requested AOI; a cell added there publishes what was measured in it, not undetermined, whenever it falls inside a source tile."
+    "The grid cell must divide the 1 m analysis cell, so --cell takes 1/k metres and refuses anything else. The grid is also grown outward to whole analysis blocks, which can add up to (1 m / --cell) - 1 cells per axis beyond the requested AOI; a cell added there publishes what was measured in it, not undetermined, whenever it falls inside a source tile."
   ],
   "mixed_epochs": false,
   "package_version": "0.5.0",

@@ -181,6 +181,21 @@ PUBLISHED_RECORDS = (
 )
 
 
+def _records_not_at(version: str) -> dict[str, str]:
+    """The published records whose `package_version` is not `version`.
+
+    Exists so the check below and its control call the SAME function: the control's first
+    version built its own literal dict and asserted that the literal was truthy, which passes
+    with the real check deleted. A control that does not reach the code it controls is
+    decoration.
+    """
+    return {
+        name: doc["package_version"]
+        for name in PUBLISHED_RECORDS
+        if (doc := json.loads((ROOT / name).read_text()))["package_version"] != version
+    }
+
+
 def test_every_published_record_was_produced_by_the_current_code() -> None:
     """A release regenerates every published record, or the ones it skipped say the wrong thing.
 
@@ -190,11 +205,7 @@ def test_every_published_record_was_produced_by_the_current_code() -> None:
     """
     import microrelief
 
-    stale = {}
-    for name in PUBLISHED_RECORDS:
-        doc = json.loads((ROOT / name).read_text())
-        if doc["package_version"] != microrelief.__version__:
-            stale[name] = doc["package_version"]
+    stale = _records_not_at(microrelief.__version__)
     assert not stale, (
         f"the package is at {microrelief.__version__} and these published records are not: "
         f"{stale} -- re-run the product and regenerate them, do not edit the version in place"
@@ -214,11 +225,19 @@ def test_every_published_record_declares_the_limitations_the_code_declares() -> 
 
 
 def test_the_record_currency_check_fires_on_a_stale_version() -> None:
-    """Both arms, on the mechanism rather than on the tree: the assertion above is only worth
-    something if a version that does not match is what makes it fail."""
+    """Both arms, through the same function the check above calls.
+
+    The quiet arm: at the real version, nothing is collected. The firing arm: asked about a
+    version no record was built at, EVERY record is collected, by name. Neither is reachable
+    without `_records_not_at` actually reading the records off disk, which is what the first
+    version of this control failed to do -- it asserted a dict it had written itself.
+    """
     import microrelief
 
-    assert microrelief.__version__ != "0.0.0"
-    stale = {"docs/viewer/provenance.json": "0.0.0"}
-    assert stale, "a non-matching version must be collected, not skipped"
-    assert all(v != microrelief.__version__ for v in stale.values())
+    assert _records_not_at(microrelief.__version__) == {}, "the quiet arm must be quiet"
+
+    fired = _records_not_at("0.0.0")
+    assert set(fired) == set(PUBLISHED_RECORDS), (
+        f"asked about a version nothing was built at, every record must be named: {fired}"
+    )
+    assert all(v == microrelief.__version__ for v in fired.values()), fired

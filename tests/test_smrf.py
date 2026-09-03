@@ -345,3 +345,35 @@ def test_a_grid_cell_coarser_than_the_smrf_cell_is_refused_rather_than_rounded_t
         block_factor(2.0, SmrfParams(cell=1.0))
     with pytest.raises(SmrfError, match="multiple"):
         block_factor(0.75, SmrfParams(cell=1.0))
+
+
+def test_a_non_positive_grid_cell_is_refused_by_name_not_by_arithmetic() -> None:
+    """`block_factor` now runs BEFORE `grid_for_bounds` at the composition root, so it inherited
+    the duty of refusing a cell size that is not a positive length. Measured before the fix:
+    `--cell 0` produced a bare `ZeroDivisionError` and `--cell -0.5` blamed the whole-multiple
+    rule, which is not the first thing wrong with it."""
+    for bad in (0.0, -0.5, -1.0):
+        with pytest.raises(SmrfError, match="must be positive"):
+            block_factor(bad, SmrfParams(cell=1.0))
+
+
+def test_a_surface_with_nothing_measured_says_so_instead_of_blaming_the_caller() -> None:
+    """An AOI that holds no returns is a real input, not a broken contract.
+
+    Without this the run reaches `_require_no_holes` -- `knn_fill` returns an all-void surface
+    untouched, by design -- and refuses with "a caller skipped the fill", which describes an
+    internal invariant rather than the user's situation. The retired filter raised
+    `GroundError("no measured cells: ...")` and the swap lost that.
+    """
+    empty = np.full((4, 4), np.nan)
+    with pytest.raises(SmrfError, match="no measured cells"):
+        classify_ground_smrf(empty, cell=0.5, params=SmrfParams(cell=1.0))
+
+
+def test_the_all_void_guard_does_not_fire_on_a_surface_that_holds_one_cell() -> None:
+    """The discriminating arm: 'every cell empty' must mean every cell, not almost every cell."""
+    almost = np.full((4, 4), np.nan)
+    almost[2, 2] = 100.0
+    out = classify_ground_smrf(almost, cell=0.5, params=SmrfParams(cell=1.0))
+    assert out.shape == (4, 4)
+    assert bool(out[2, 2]), "the one measured cell sits on the provisional DEM and is ground"

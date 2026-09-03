@@ -129,9 +129,9 @@ RELEASE_LIMITATIONS = {
             "guaranteed it by construction, through a parameter this one does not have.",
             "The grid cell must divide the 1 m analysis cell, so --cell takes 1/k metres and "
             "refuses anything else. The grid is also grown outward to whole analysis blocks, "
-            "which can add one cell per axis beyond the requested AOI; a cell added there "
-            "publishes what was measured in it, not undetermined, whenever it falls inside a "
-            "source tile.",
+            "which can add up to (1 m / --cell) - 1 cells per axis beyond the requested AOI; a "
+            "cell added there publishes what was measured in it, not undetermined, whenever it "
+            "falls inside a source tile.",
         ),
     ),
 }
@@ -144,12 +144,16 @@ def compare(
 
     old_bands = sorted(p.name for p in old.glob("*.tif"))
     new_bands = sorted(p.name for p in new.glob("*.tif"))
-    if not record_only:
-        if old_bands != new_bands:
-            problems.append(f"band sets differ: {old_bands} vs {new_bands}")
-        if not old_bands:
-            # Silence-by-nothing-scanned and silence-by-clean-comparison must not look alike.
-            problems.append(f"no rasters found in {old}; this comparison checked nothing")
+    # These two hold under `--record-only` as well. That flag skips the PIXEL comparison, which is
+    # the only part a deliberate band change makes meaningless; the band SET and the
+    # nothing-scanned guard cost no reads and stay asserted. Putting them under the flag let two
+    # directories holding zero rasters return the full success verdict, which is the exact shape
+    # the next line exists to forbid -- the rule was moved under the flag rather than kept.
+    if old_bands != new_bands:
+        problems.append(f"band sets differ: {old_bands} vs {new_bands}")
+    if not old_bands:
+        # Silence-by-nothing-scanned and silence-by-clean-comparison must not look alike.
+        problems.append(f"no rasters found in {old}; this comparison checked nothing")
 
     compared = 0
     for name in [] if record_only else old_bands:

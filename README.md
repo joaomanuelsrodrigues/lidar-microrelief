@@ -214,6 +214,11 @@ exercised, which is the same reason the module refuses `cut > 0` rather than ign
 still declares all five, so a reader can see what ran, and `CALIBRATIONS.md` gives each one a
 calibration target. One consequence is a real restriction: the publishing grid cell must divide the
 1 m analysis cell, so `--cell` takes 1/k metres and refuses anything else, naming what would work.
+A second is that the grid grows outward to whole 1 m blocks — up to `(1 m / --cell) - 1` cells per
+axis past the AOI you asked for, which is one cell at `--cell 0.5`, four at `0.2` and nine at
+`0.1`. Those cells are not free of consequence: membership is decided against the grid, not the
+AOI, so one that falls inside a source tile publishes what was measured in it rather than
+`undetermined`. Both products shipped here are already whole blocks, so neither moved.
 
 **What it replaced, and what that cost.** Up to 0.4.4 this was a progressive morphological filter
 (Zhang et al., 2003) whose `max_elevation_m` capped every tolerance — the parameter that decided
@@ -247,7 +252,9 @@ before that is not reproducible from the erosion as it was described, and
 `docs/reference-instrument-result.md` says so.)
 
 **So the tool moved to SMRF, in 0.5.0** — re-implemented here from PDAL 2.10.2's source, agreeing
-with it on **99.662%** of cells at κ 0.991 (`docs/smrf-build-result.md`), and accepted against
+with it on **99.662%** of cells at κ 0.991 over the six-tile Valongo AOI
+(`docs/smrf-build-result.md` — that is a different, far larger population than this sample, and
+the two accuracy figures below are not comparable to it), and accepted against
 terraces before being wired (`docs/p4-terrace-result.md`). On this sample it now scores
 **0.866** accuracy, ground recall 0.977, non-ground recall
 0.788, 10,934 false positives — today's figures, not the table's row for

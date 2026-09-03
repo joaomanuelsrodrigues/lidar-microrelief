@@ -1900,9 +1900,15 @@ tn 40730`, `n_cells 87978`). The hash above is the pre-bump run — the version 
 which is what carries it to `2da06987808e983b611144b5ddce217be2eb7f513b9ab9e8268ff51dd98e32dd`.
 
 The filter itself was accepted earlier the same day: re-implemented from PDAL 2.10.2's
-`filters/SMRFilter.cpp`, it agrees with that build on **99.662%** of cells at κ 0.991, over the
-sample (`docs/smrf-build-result.md`, and the `P3 agreement: 99.662 >= 90.0 -> PASS` line in this
-file's 2026-09-03 SMRF-build entry). What is wired here is that implementation, not PDAL's.
+`filters/SMRFilter.cpp`, it agrees with that build on **99.662%** of cells at κ 0.991 — **over the
+six-tile Valongo AOI, 23,058,525 measured cells**, not over the sample
+(`docs/smrf-build-result.md`, and the `P3 agreement: 99.662 >= 90.0 -> PASS` line in this file's
+2026-09-03 SMRF-build entry). What is wired here is that implementation, not PDAL's.
+
+The population matters and naming it wrong made two published sentences refute each other. On the
+90,000-cell sample, 0.338% disagreement is at most ~297 cells, which cannot open a 0.9-point
+accuracy gap — yet the README shows this build at 0.866 against PDAL's 0.857 in the 2026-08-27
+table. Those are different populations, and the figure above is Valongo's.
 
 ### Self-replay, both products
 
@@ -1955,8 +1961,15 @@ declared, in `docs/p4-terrace-result.md`.
 
 ### The declared limitation transformation, across the version boundary
 
+The `old` side has to be a real product, six bands and all: `--record-only` skips the pixel
+comparison and nothing else, so a directory holding no rasters is still refused. The shipped
+`expected/` directory carries digests rather than GeoTIFFs, so the 0.4.4 product was rebuilt from
+the code that made it — `git worktree add <tmp>/wt-0.4.4 9bb2e29`, then the run below through
+`PYTHONPATH=<tmp>/wt-0.4.4/src`. It reproduced the published 0.4.4 record exactly, hash
+`f67b2f033d23` and accuracy 0.837 against a 0.587 null, which is what makes it the right `old`.
+
 ```
-$ .venv/bin/python scripts/compare_runs.py --record-only --expect-new-limitations <0.4.4-record> <tmp>/sample-b
+$ .venv/bin/python scripts/compare_runs.py --record-only --expect-new-limitations <tmp>/sample-0.4.4 <tmp>/sample-d
 bands not compared (6 present): --record-only
 provenance.agreement: changed (not asserted under --record-only)
 provenance.honesty: changed (not asserted under --record-only)
@@ -2017,3 +2030,47 @@ call ground now publishes as nothing rather than as terrain — nine-fold on the
 the full product. Against the delivery's own ground class, non-ground recall rises 9.3 points on
 the full product and `fp` falls by 714,588 cells: those are roofs and canopy the old filter called
 ground. Ground recall falls 0.6 points, which is the same trade read from the other side.
+
+### What the pre-merge review changed, 2026-09-03
+
+`/code-review high` on the branch, after the release commit was written. **Eight findings, 8/8
+reproduced before anything was changed.** Four were mine, and two of those are the kind that
+survive a green suite because they are about the instruments rather than the code:
+
+- **The 99.662% agreement figure was published "over the sample"; it was measured over the
+  six-tile Valongo AOI, 23,058,525 measured cells.** Introduced an hour earlier, in the sentence
+  added to satisfy the README percentage lock. It also made two published sentences refute each
+  other: on 87,978 shared cells, 0.338% disagreement is ~297 cells and cannot open the 0.9-point
+  accuracy gap the README shows between this build and PDAL's. Both sites now name Valongo.
+- **`--record-only` skipped the band-set comparison and the nothing-scanned guard**, not just the
+  pixel loop. Measured: two directories holding **zero** rasters returned exit 0 with the full
+  success verdict — and this was the only acceptance path across the version boundary. The file's
+  own comment ("silence-by-nothing-scanned and silence-by-clean-comparison must not look alike")
+  was the rule that got moved under the flag. Both checks are back outside it, with controls.
+- **The record-currency control asserted a dict it had written itself.** Its only live assertion
+  was `__version__ != "0.0.0"`; deleting the check it claimed to control left it green. It now
+  calls the same function the check calls, and the firing arm requires *every* record to be named.
+- **The new `known_limitations` line understated the snap by up to 9×.** It said "one cell per
+  axis", true only at `--cell 0.5`; measured, `0.25` adds 3, `0.2` adds 4 and `0.1` adds 9, and
+  `0.2` is a value the agent skill advertises. The record now states the rule
+  (`(1 m / --cell) - 1`) and the worked examples moved to the README and the skill, because the
+  evidence lock reads a decimal in a limitation as a measurement owing a dated source — which is
+  the right reading for a measurement and the wrong home for an arithmetic example.
+
+The other four: an AOI with no measured cells refused with `the surface still has holes ... a
+caller skipped the fill`, an internal contract message blaming the caller, where the retired
+filter said `no measured cells`; `--cell 0` raised a bare `ZeroDivisionError` because
+`block_factor` now runs before `grid_for_bounds`, which owned the positivity check;
+`compare_ground_filters.py`'s `reference` command was the one other driver of the filter over a
+`grid_for_bounds` grid and the snap did not reach it; and `CITATION.cff` had the new version
+against 0.4.4's release date.
+
+**The fix for the last of those contained the same class it was fixing:** the first version
+passed `block_factor(args.cell, args.smrf)`, and `args.smrf` is the reference-output *directory*,
+not `SmrfParams` — an `AttributeError` in the one command the suite never ran. Caught by reading
+the argument's declaration, not by a test, which is why that command now has one.
+
+Correcting the limitation text did **not** move `reproducibility_hash`: the hash payload is
+`{package_version, grid, parameters, inputs}` and a disclosure sits outside it by design. Verified
+rather than assumed — both products re-run, all six band arrays byte-identical, and only
+`created_utc` and `known_limitations` differing in either record.

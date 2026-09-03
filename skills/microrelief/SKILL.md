@@ -56,7 +56,10 @@ delivery's ground class: accuracy 0.866 against a majority-class null of 0.587 (
   cell-for-cell; the record still declares them, so a reader can see what ran. They are in the
   uncalibrated list too — pinned is not calibrated.
 - `--cell` must divide the 1 m analysis cell, so it takes 1/k metres (1, 0.5, 0.25, 0.2, …) and
-  **refuses** anything else, naming what would work. Ask for a cell size, do not round one.
+  **refuses** anything else, naming what would work. Ask for a cell size, do not round one. The
+  grid then grows outward to whole 1 m blocks — up to `(1 m / --cell) - 1` cells per axis past the
+  AOI: one at `0.5`, four at `0.2`, nine at `0.1`. Report that when the AOI's exact extent matters
+  to the user.
 - `precheck` has its own triage knobs (`--ground-fraction`, `--max-void-fraction`,
   `--allow-sparse`); `select` refuses tiles flown on different dates unless
   `--allow-mixed-epochs`.
