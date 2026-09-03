@@ -2098,11 +2098,17 @@ on the shipped path.
   `void_at_f > nan` is False. That is the only refusal `precheck` makes, switched off silently —
   and the same mechanism a comment eleven lines above already documented, on the operand the
   previous round had guarded.
-- **A non-positive SMRF window made the object stage flag nothing.** `range(1, radius + 1)` is
-  empty, so on a 20×20 fixture with a raised block the filter went from 7 of 400 cells ground to
-  259 of 400, no refusal. Reachable through `--smrf-window` on the instrument that produced the
-  published agreement figures. `inf` did the same by way of a radius of 0; `0.0` raised a bare
-  `ZeroDivisionError`, which is the failure mode these guards replace rather than a refusal.
+- **A non-positive SMRF window made the object stage flag nothing.** `max_radius_for` returned
+  zero or less, so `range(1, radius + 1)` in `progressive_filter` was empty and the filter called
+  far more of the surface ground, with no refusal. Reachable through `--smrf-window` on the
+  instrument that produced the published agreement figures. `inf` did the same by way of a radius
+  of 0; `0.0` raised a bare `ZeroDivisionError`, a failure mode rather than a refusal.
+
+  *Correction, same day:* this entry first quoted "7 of 400 cells ground against 259 of 400 at
+  `window=0`". Nothing in the tree reproduces those figures — no test, no script — and the
+  reviewer who looked could not rebuild them from the description either. They are withdrawn.
+  The mechanism is what the guard rests on, and it is checkable by reading; the counts were a
+  number with no artefact, published in three files.
 
 **The contract that was supposed to prevent exactly this had a hand-written membership rule.**
 `tests/test_lengths.py` claimed in its docstring to cover "every entry point that takes a length"

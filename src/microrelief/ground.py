@@ -101,6 +101,18 @@ def classify_ground(
     is excused exactly when the cap exceeds it, at any window (measured 2026-08-03 -- see
     `CALIBRATIONS.md` and `tests/test_ground.py`).
     """
+    # All three lengths this function consumes, not just the one `_radii` sees. `min(finite, nan)`
+    # returns the finite operand, so a NaN cap silently REMOVED the cap: on an 80x80 fixture with
+    # a 4.5 m plateau at max_window_m=24, ground went 5824/6400 -> 6400/6400, the whole plateau
+    # published as terrain at exit 0. A NaN elevation threshold did the same on the other term,
+    # 336/400 -> 400/400. Both are reachable as flags on the comparison instrument.
+    for name, value in (
+        ("elevation_threshold_m", params.elevation_threshold_m),
+        ("max_elevation_m", params.max_elevation_m),
+    ):
+        if not math.isfinite(value) or value <= 0:
+            raise ValueError(f"{name} must be a positive, finite length in metres, got {value}")
+
     invalid = np.isnan(min_z)
     if invalid.all():
         raise GroundError("no measured cells: every cell of the minimum surface is empty")

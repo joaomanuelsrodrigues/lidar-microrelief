@@ -135,12 +135,12 @@ def max_radius_for(window: float, cell: float) -> int:
     converted to a pixel equivalent by dividing it by the cell size and rounding the result
     toward positive infinity" (Pingel et al. 2013, quoted in the PDAL source).
 
-    The window is a length, and a non-positive one does not fail: it makes `range(1, radius + 1)`
-    empty in `progressive_filter`, so the object stage flags nothing and the filter calls far
-    more of the surface ground than it should -- measured on a 20x20 surface with a raised
-    block, 7 of 400 cells ground at the default window against 259 of 400 at `window=0`, no
-    refusal and no warning. `nan` dies bare in `int(math.ceil(nan))`. Reachable through
-    `--smrf-window` on the comparison instrument that produced the published agreement figures.
+    The window is a length, and a non-positive one did not fail: `max_radius_for` returned 0 or
+    less, `range(1, radius + 1)` in `progressive_filter` was empty, and the object stage flagged
+    nothing -- so the filter called far more of the surface ground, with no refusal and no
+    warning. `inf` did the same by way of a radius of 0; `0.0` raised a bare ZeroDivisionError,
+    which is a failure mode rather than a refusal. Reachable through `--smrf-window` on the
+    comparison instrument that produced the published agreement figures.
     """
     if not math.isfinite(window) or window <= 0:
         raise SmrfError(f"window must be a positive, finite length in metres, got {window}")

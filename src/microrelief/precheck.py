@@ -103,10 +103,14 @@ def check_tiles(
     # False, so a NaN ceiling switched off the ONLY refusal this command makes: a tile with
     # 99.99% expected void was accepted, silently. Same mechanism the comment in
     # `expected_void_fraction` documents; that fix guarded one side of it and not this one.
-    if not math.isfinite(max_void_fraction):
+    # A RANGE, not just finiteness. `void_at_f` is in [0, 1] by construction, so every ceiling at
+    # or above 1.0 accepts every tile -- measured: 1.0 and 5.0 both passed a tile with 99%
+    # expected void. Guarding finiteness alone left the class the guard was added for, with the
+    # message still calling 5.0 "a finite fraction".
+    if not math.isfinite(max_void_fraction) or not 0.0 < max_void_fraction < 1.0:
         raise ValueError(
-            f"max_void_fraction must be a finite fraction, got {max_void_fraction}; a "
-            f"non-finite ceiling silently accepts every tile"
+            f"max_void_fraction must be a fraction in (0, 1), got {max_void_fraction}; at 1.0 "
+            f"or above no tile can exceed it and the refusal never fires"
         )
     estimates = estimate_tiles(tiles, cell, ground_fraction)
     worst = max(estimates, key=lambda e: e.void_at_f)

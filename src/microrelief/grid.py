@@ -33,8 +33,12 @@ class Grid:
     def __post_init__(self) -> None:
         # On Grid rather than only on `grid_for_bounds`: this is the single object every
         # metric path in the package shares, and a caller that constructs one directly
-        # must not get a different answer from one that goes through the helper.
+        # must not get a different answer from one that goes through the helper. The cell is
+        # here for the same reason -- `grid_for_bounds` guards it, and a directly-constructed
+        # Grid was the one way past that guard into every metric path downstream.
         require_metric_crs(self.crs_epsg)
+        if not math.isfinite(self.cell) or self.cell <= 0:
+            raise GridError(f"cell must be a positive, finite length in metres, got {self.cell}")
 
     @property
     def shape(self) -> tuple[int, int]:
