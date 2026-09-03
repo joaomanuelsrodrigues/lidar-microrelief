@@ -374,6 +374,10 @@ def test_record_only_compares_the_record_across_two_versions(tmp_path: Path) -> 
     # sentence a reader uses to decide what was checked.
     assert "band CONTENTS not compared" in got.stdout
     assert "set checked" in got.stdout
+    # The success VERDICT too, not only the run line. Of the three messages corrected when the
+    # band-set check moved back out of the flag, this was the one left with no test -- the same
+    # state the CITATION date was in, and the reason it went stale unnoticed.
+    assert "the band contents were not compared (the band SET was)" in got.stdout
 
 
 def test_record_only_still_fails_on_a_limitation_the_release_did_not_declare(

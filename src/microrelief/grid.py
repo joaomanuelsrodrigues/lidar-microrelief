@@ -109,8 +109,11 @@ def grid_for_bounds(
     past the AOI by up to one cell for the same reason -- the snap widens an existing edge, it
     does not create one.
     """
-    if cell <= 0:
-        raise GridError(f"cell must be positive, got {cell}")
+    # `math.isfinite` leads: `float("nan") <= 0` is False, so a NaN cell walked through a bare
+    # positivity test and died in `math.floor(minx / nan)` with "cannot convert float NaN to
+    # integer". Same hole, same shape, in all three places this package takes a length.
+    if not math.isfinite(cell) or cell <= 0:
+        raise GridError(f"cell must be a positive, finite length in metres, got {cell}")
     if block < 1:
         raise GridError(f"block must be at least one cell, got {block}")
     if maxx <= minx or maxy <= miny:

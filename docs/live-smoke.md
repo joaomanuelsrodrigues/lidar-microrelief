@@ -1982,6 +1982,13 @@ the bands were not compared; every record field that moved is named above, and
 known_limitations is exactly the old list under 0.5.0's declared transformation (1 replaced, 2 added)
 ```
 
+> *Annotation, same day:* the two lines above reading `bands not compared` and `the bands were
+> not compared` are what the instrument printed **then**. The pre-merge review found both false —
+> the band *set* was compared, only the contents were skipped — and the messages now say
+> `band CONTENTS not compared (… set checked)` and `the band contents were not compared (the band
+> SET was)`. The transcript is left as it ran, like the superseded command line above it; this
+> note is here so a reader replaying it today knows why the output differs.
+
 The same command against `outputs_0.4.2` **fails**, and the failure is the finding below: the
 last full-run record was never regenerated at 0.4.4, so the list it carries is 0.4.2's ten and
 the line 0.5.0 replaces is not in it.

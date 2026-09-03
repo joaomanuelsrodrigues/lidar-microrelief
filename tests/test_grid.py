@@ -41,7 +41,7 @@ def test_grid_above_the_memory_ceiling_refuses_with_the_number_in_the_message() 
 def test_degenerate_bounds_refuse() -> None:
     with pytest.raises(GridError, match="empty extent"):
         grid_for_bounds(10.0, 0.0, 10.0, 5.0, cell=0.5, crs_epsg=3763)
-    with pytest.raises(GridError, match="cell must be positive"):
+    with pytest.raises(GridError, match="positive, finite"):
         grid_for_bounds(0.0, 0.0, 10.0, 10.0, cell=0.0, crs_epsg=3763)
 
 

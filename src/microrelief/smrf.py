@@ -109,6 +109,15 @@ def block_factor(cell: float, params: SmrfParams) -> int:
         # and died in `int(round(1.0 / nan))` -- the bare-arithmetic failure this guard exists to
         # replace, surviving inside the guard.
         raise SmrfError(f"cell must be a positive, finite length in metres, got {cell}")
+    if not math.isfinite(params.cell) or params.cell <= 0:
+        # The OTHER operand of the same division. Guarding one and not the other left the exact
+        # bare-arithmetic failure this check exists to replace, one argument over: an
+        # `SmrfParams(cell=nan)` reached `int(round(nan))`. It is reachable -- the comparison
+        # script builds `SmrfParams(cell=args.smrf_cell)` straight from a flag. At 0 it also made
+        # the refusal advise "0, 0, 0, 0 m" as admissible grid cells.
+        raise SmrfError(
+            f"the SMRF cell must be a positive, finite length in metres, got {params.cell}"
+        )
     ratio = params.cell / cell
     factor = int(round(ratio))
     if factor < 1 or abs(ratio - factor) > 1e-9:

@@ -50,8 +50,20 @@ class TileEstimate:
 
 def expected_void_fraction(density_pts_m2: float, cell: float, ground_fraction: float) -> float:
     """Share of cells expected to hold zero ground returns."""
-    if density_pts_m2 <= 0 or cell <= 0:
-        raise ValueError("density and cell must be positive")
+    # Finiteness first, and not only for tidiness: `--cell` is a user flag on `precheck`, which
+    # never calls `block_factor`, so this is the one length check on that path. `nan` slipped
+    # through (`nan <= 0` is False), made `lam` NaN, and `nan > max_void_fraction` is False --
+    # so `check_tiles` skipped its refusal and the command printed `void(f=0.4)=nan%` at exit 0.
+    # `inf` was worse: `exp(-inf)` is 0.0, a confident "no voids expected" for an infinite cell.
+    if (
+        not math.isfinite(density_pts_m2)
+        or not math.isfinite(cell)
+        or density_pts_m2 <= 0
+        or cell <= 0
+    ):
+        raise ValueError(
+            f"density and cell must be positive, finite numbers, got {density_pts_m2} and {cell}"
+        )
     if not 0.0 < ground_fraction <= 1.0:
         raise ValueError("ground_fraction must be in (0, 1]")
     lam = density_pts_m2 * cell * cell * ground_fraction
