@@ -131,6 +131,7 @@ class Reference:
     n_class5: NDArray[np.int32]
     n_class6: NDArray[np.int32]
     n_reference_ground: NDArray[np.int32]
+    min_z_ground_asprs: NDArray[np.float32]
     # The minimum over the returns the reference filter actually reads (last/only, class 7 aside),
     # so that a difference in the *input* to the two filters is never read as a difference between
     # the filters. The pipeline's own surface is over all returns.
@@ -267,6 +268,7 @@ def build_reference(
         max_z_all=stats.max_z_all,
         n_all=stats.n_all,
         n_ground_asprs=stats.n_ground_asprs,
+        min_z_ground_asprs=stats.min_z_ground_asprs,
         n_class5=n_class5.reshape(shape).astype(np.int32),
         n_class6=n_class6.reshape(shape).astype(np.int32),
         n_reference_ground=n_reference_ground.reshape(shape).astype(np.int32),
@@ -290,7 +292,12 @@ def _cmd_reference(args: argparse.Namespace) -> int:
     reference = build_reference(tiles, args.smrf, grid, args.cell, args.suffix)
 
     pipeline_sha = ""
-    if args.pipeline is not None and args.pipeline.exists():
+    if args.pipeline is not None:
+        if not args.pipeline.exists():
+            # Silently recording an empty hash would attribute the acceptance run to an
+            # unidentified reference pipeline, and say nothing on the way past.
+            print(f"--pipeline {args.pipeline} does not exist", file=sys.stderr)
+            return 2
         pipeline_sha = hashlib.sha256(args.pipeline.read_bytes()).hexdigest()[:16]
 
     provenance = {
@@ -314,6 +321,7 @@ def _cmd_reference(args: argparse.Namespace) -> int:
         max_z_all=reference.max_z_all,
         n_all=reference.n_all,
         n_ground_asprs=reference.n_ground_asprs,
+        min_z_ground_asprs=reference.min_z_ground_asprs,
         n_class5=reference.n_class5,
         n_class6=reference.n_class6,
         n_reference_ground=reference.n_reference_ground,
@@ -420,20 +428,35 @@ def seam_cells(provenance: dict[str, Any], grid: Grid, margin_m: float) -> NDArr
     """
     xs = grid.origin_x + (np.arange(grid.n_cols) + 0.5) * grid.cell
     ys = grid.origin_y - (np.arange(grid.n_rows) + 0.5) * grid.cell
-    near_col = np.zeros(grid.n_cols, dtype=bool)
-    near_row = np.zeros(grid.n_rows, dtype=bool)
+    seam = np.zeros(grid.shape, dtype=bool)
     for source in provenance.get("sources", []):
         bounds = source.get("bounds")
         if not bounds:
             continue
         minx, miny, maxx, maxy = bounds
-        near_col |= (np.abs(xs - minx) < margin_m) | (np.abs(xs - maxx) < margin_m)
-        near_row |= (np.abs(ys - miny) < margin_m) | (np.abs(ys - maxy) < margin_m)
-    return np.asarray(near_row[:, None] | near_col[None, :], dtype=bool)
+        # The frame of one tile: inside its box grown by the margin, and not inside its box
+        # shrunk by it. The first version of this unioned a row band with a column band, which
+        # marks a cell deep inside one tile because some OTHER tile's edge shares its row --
+        # and the single-tile test could not tell the two definitions apart.
+        grown = ((ys >= miny - margin_m) & (ys <= maxy + margin_m))[:, None] & (
+            (xs >= minx - margin_m) & (xs <= maxx + margin_m)
+        )[None, :]
+        shrunk = ((ys > miny + margin_m) & (ys < maxy - margin_m))[:, None] & (
+            (xs > minx + margin_m) & (xs < maxx - margin_m)
+        )[None, :]
+        seam |= grown & ~shrunk
+    return seam
 
 
 def _cmd_compare(args: argparse.Namespace) -> int:
     arrays, provenance = _load_reference(args.reference)
+    if "min_z_ground_asprs" not in arrays:
+        print(
+            f"{args.reference} was built before this array was cached; rebuild it with the "
+            "`reference` command rather than running over a substituted surface",
+            file=sys.stderr,
+        )
+        return 2
     grid_info = provenance["grid"]
     cell = float(grid_info["cell"])
 
@@ -449,7 +472,10 @@ def _cmd_compare(args: argparse.Namespace) -> int:
         max_z_all=arrays["max_z_all"],
         n_all=arrays["n_all"],
         n_ground_asprs=arrays["n_ground_asprs"],
-        min_z_ground_asprs=arrays["min_z_all"],
+        # The real array, not `min_z_all` standing in for it: `compute_basis` reads only
+        # `n_all` today, so a substitution is invisible until the first honesty rule that
+        # reads the ground surface, which would then be computed from the wrong one.
+        min_z_ground_asprs=arrays["min_z_ground_asprs"],
         n_outside=0,
     )
     basis = compute_basis(is_ground, stats, cell, args.k_min_returns, args.d_max_interp_m)

@@ -104,3 +104,40 @@ must perform anyway. It is written down here rather than left to be re-found. No
 the error overstates a limitation the tool declares against itself, so nothing a reader relies on
 is inflated by it. The two live claims that could be fixed without a re-run — both in `README.md`
 — were fixed in this session.
+
+## What the pre-merge review changed, 2026-09-03
+
+`/code-review high` on PR #4, run after the record above was written. It re-derived the algorithm
+against `filters/SMRFilter.cpp` @2.10.2 line by line and reported **no fidelity findings**, which
+is the part of this build that most needed an outside instrument. Eight findings elsewhere; what
+was done with each:
+
+- **The README's Sistelo half was still wrong after I "fixed" it.** I corrected the Valongo figure
+  to 87.7% and left `77.2%` in the same sentence under the same row-B phrase — but 77.2% is a
+  *roof-interior* figure, the population whose erosion is not re-derivable. Fixed: each figure now
+  names its own population, and the sentence says the two are not the same measurement. A count
+  was also paired with the wrong share (86,759 cells is 0.55% of that AOI; the 0.43% belongs to the
+  ~67,000-cell falsely-measured subset), so the share is gone rather than restated — 0.55% has no
+  source in this repository's record and quoting it there would be inventing one.
+- **The lock on the acceptance bounds was a substring test and passed under real drift.** Measured:
+  loosening P1 from 97.0 to **10.0** passed silently, because "10" occurs in the prose. Each bound
+  is now read from the table row that *names* it, and the control mutates a bound and requires a
+  failure instead of asserting that an unrelated string is absent. Verified by changing the
+  constant: the old lock stayed green, the new one goes red.
+- **`seam_cells` did not compute what its docstring said** — it unioned a row band with a column
+  band, marking cells deep inside one tile because another tile's edge shared their row, and the
+  single-tile test could not tell the definitions apart. Now a frame per tile, with a two-tile test
+  that fails against the old definition. **The published figure did not move**: re-run, the seam
+  exclusion is still 21,607,897 cells at 99.73% and κ 0.993, because six tiles in a regular grid
+  make every tile edge a full AOI row or column. Measured, not assumed.
+- **A mistyped `--pipeline` now refuses.** It used to fall through to an empty
+  `reference_pipeline_sha256_16`, attributing the acceptance run to an unidentified reference.
+- **`CellStats.min_z_ground_asprs` was being handed `min_z_all`.** Harmless only while
+  `compute_basis` reads `n_all` alone. The cache now carries the real array, and a cache built
+  before it refuses rather than running over a substitution.
+
+**Declared, not fixed:** the instrument reads tiles with `footprint=None` while the pipeline passes
+the catalogue's declared bbox, so a corrupted return of the kind measured on 2026-08-05 would be
+refused by the product and accepted here. The instrument has no catalogue selection to derive that
+bbox from; closing it properly belongs with the wiring session. Also still open, and unchanged: the
+limitation string in `cli.py` described above.

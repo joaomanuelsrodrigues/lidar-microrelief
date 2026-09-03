@@ -265,13 +265,15 @@ filter under canopy, declared rather than tuned away.
 
 ## What this does not support
 
-- **The ground filter does not remove buildings, and the record calls the result measured.** Over
-  cells holding official building returns and no ground return, **77.2%** of them publish as
-  `basis = measured` in the run shipped here, and **87.7%** at a built site near Valongo (measured
-  2026-08-31, re-derived by instrument 2026-09-02) — the DTM says the roof and the ground are the
-  same thing, and says it with the strongest word the band has. It is small here (86,759 such
-  cells, 0.43% of this AOI) because Sistelo is a terraced valley with a hamlet in it; at the built
-  site those cells are 18.5% of the ones holding any return. This
+- **The ground filter does not remove buildings, and the record calls the result measured.** At a
+  built site near Valongo, **87.7%** of the cells holding official building returns and no ground
+  return publish as `basis = measured` (measured 2026-08-31, re-derived by instrument 2026-09-02),
+  and those cells are 18.5% of the ones holding any return there. At the site shipped here the
+  published figure is **77.2%**, but over a *narrower* population — 86,759 roof-**interior** cells,
+  whose erosion `docs/reference-instrument-result.md` records as not re-derivable — so the two
+  numbers are not the same measurement and should not be read as a pair. Either way the DTM says
+  the roof and the ground are the same thing, and says it with the strongest word the band has. It
+  is small at Sistelo because that is a terraced valley with a hamlet in it. This
   is **not fixable by a parameter**: the best single height threshold separates a roof from the
   terrain it stands on at **0.712** balanced accuracy and the best width threshold at **0.528**,
   and a one-storey roof is the same height as the 2.98 m terrace riser the tolerance cap exists to

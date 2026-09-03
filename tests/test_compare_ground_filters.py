@@ -229,6 +229,30 @@ class TestSeamCells:
         assert not seam[50, 70]  # 20 m away from any edge
         assert seam[50, 0]  # the tile's own outer edge counts too
 
+    def test_a_second_tile_does_not_mark_the_interior_of_the_first(self) -> None:
+        """Two tiles, because with one the right definition and the wrong one agree everywhere.
+
+        The wrong one -- a row band unioned with a column band -- marks every cell that merely
+        SHARES a row or column with some tile's edge. Here that is the whole of column 30 and the
+        whole of row 30, including a cell in the middle of the other tile.
+        """
+        provenance = {
+            "sources": [
+                {"bounds": [0.0, 70.0, 100.0, 100.0]},  # a tile across the top
+                {"bounds": [0.0, 0.0, 30.0, 30.0]},  # a small tile at the bottom left
+            ]
+        }
+        # Row i sits at y = 99.5 - i and column j at x = j + 0.5, so these are coordinates and
+        # not guesses: row 30 is y = 69.5, row 70 is y = 29.5, row 14 is y = 85.5.
+        seam = mod.seam_cells(provenance, self._grid(), margin_m=5.0)
+        assert seam[30, 50]  # y = 69.5, half a metre below the top tile's lower edge
+        assert seam[70, 15]  # y = 29.5, half a metre below the small tile's upper edge
+
+        # The two discriminating cells. Each SHARES a row or a column with a real tile edge, so
+        # the row-band-union-column-band version marks both; each is far from every tile frame.
+        assert not seam[14, 30]  # x = 30.5 shares the small tile's x edge; y = 85.5 is mid-tile
+        assert not seam[70, 60]  # y = 29.5 shares its y edge; x = 60.5 is 30 m outside it
+
     def test_a_reference_built_before_bounds_were_recorded_marks_nothing(self) -> None:
         """Older reference files carry no `bounds`. Silently marking nothing is right -- but only
         because the seam figure is reported beside the headline and never replaces it."""
@@ -242,20 +266,48 @@ class TestPredicatesMatchTheirPreRegistration:
     A number quoted in a document and applied in code is the shape that produced this repo's
     worst near-misses: the instrument would report a verdict against one bound while the record
     that justified it named another, and nothing would fail.
+
+    The first version of this lock asserted only that `f"{value:g}"` appeared *somewhere* in the
+    document. Measured on the real file, that passes with P1 loosened from 97.0 to 10.0 and the
+    agreement bound from 90.0 to 20.0, because "10", "20" and "30" all occur in the prose -- a
+    lock that admits a catastrophic loosening of the predicate it guards. The bound is now read
+    from the row that NAMES it, and the control below changes a bound and requires a failure.
     """
 
     DOC = ROOT / "docs" / "smrf-build-preregistration.md"
 
-    def test_every_bound_in_the_code_appears_in_the_document(self) -> None:
-        text = self.DOC.read_text()
-        for name, value in (
-            ("P1_PLAIN_GROUND_MIN", mod.P1_PLAIN_GROUND_MIN),
-            ("P2_ROOF_MAX", mod.P2_ROOF_MAX),
-            ("P3_AGREEMENT_MIN", mod.P3_AGREEMENT_MIN),
-            ("P3_KAPPA_MIN", mod.P3_KAPPA_MIN),
-        ):
-            assert f"{value:g}" in text, f"{name} = {value} is not stated in {self.DOC.name}"
+    # Each bound as the document states it: the table row that names the predicate, and the
+    # comparison written in bold. `P3` has two rows, told apart by their subject.
+    ROWS = (
+        ("P1_PLAIN_GROUND_MIN", r"\*\*P1\*\*", "≥"),
+        ("P2_ROOF_MAX", r"\*\*P2\*\*", "≤"),
+        ("P3_AGREEMENT_MIN", r"\*\*P3\*\*.*agreement", "≥"),
+        ("P3_KAPPA_MIN", r"\*\*P3\*\*.*κ", "≥"),
+    )
 
-    def test_the_reader_would_notice_a_bound_that_drifted(self) -> None:
-        """Control on the control: a bound the document does not carry must fail the check."""
-        assert "31.7" not in self.DOC.read_text()
+    @staticmethod
+    def _bound(text: str, row_pattern: str, comparison: str) -> float:
+        import re
+
+        row = re.search(rf"^\|\s*{row_pattern}.*$", text, re.M)
+        assert row, f"no row in the pre-registration matches {row_pattern!r}"
+        found = re.search(rf"\*\*{comparison}\s*([0-9.]+)%?\*\*", row.group(0))
+        assert found, f"the row {row.group(0)!r} states no bound of the form **{comparison} N**"
+        return float(found.group(1))
+
+    def test_every_bound_in_the_code_is_the_one_its_own_row_states(self) -> None:
+        text = self.DOC.read_text()
+        for name, row_pattern, comparison in self.ROWS:
+            assert self._bound(text, row_pattern, comparison) == getattr(mod, name), name
+
+    def test_a_loosened_bound_fails_this_lock(self) -> None:
+        """Control on the control, run against the check itself rather than beside it.
+
+        The previous control asserted a string was absent from the document, which never invoked
+        the comparison and so could not notice it had stopped discriminating.
+        """
+        text = self.DOC.read_text()
+        loosened = text.replace("**≥ 97.0%**", "**≥ 10.0%**", 1)
+        assert loosened != text, "the P1 bound is not written in the form this control mutates"
+        assert self._bound(loosened, r"\*\*P1\*\*", "≥") == 10.0
+        assert self._bound(loosened, r"\*\*P1\*\*", "≥") != mod.P1_PLAIN_GROUND_MIN
