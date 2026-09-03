@@ -178,3 +178,84 @@ class TestDefaultsTrackTheShippedFilter:
         cli = self._defaults((ROOT / "src" / "microrelief" / "cli.py").read_text())
 
         assert self._defaults(mutated) != cli
+
+
+class TestConfusionAndKappa:
+    """The second number exists because the first one is passed by the degenerate answer."""
+
+    @staticmethod
+    def _all(shape: tuple[int, int], value: bool) -> np.ndarray:
+        return np.full(shape, value, dtype=bool)
+
+    def test_kappa_scores_a_filter_that_calls_everything_ground_at_zero(self) -> None:
+        """On this AOI most cells are ground, so raw agreement rewards saying so about all of
+        them. That is exactly the implementation the acceptance predicates have to reject."""
+        reference = np.zeros((10, 10), dtype=bool)
+        reference[:9, :] = True  # 90% of cells are ground
+        population = self._all((10, 10), True)
+
+        degenerate = mod.confusion(self._all((10, 10), True), reference, population)
+        assert degenerate.agreement == pytest.approx(90.0)
+        assert degenerate.kappa == pytest.approx(0.0)
+
+    def test_kappa_is_one_when_the_two_filters_agree_everywhere(self) -> None:
+        reference = np.zeros((10, 10), dtype=bool)
+        reference[:9, :] = True
+        perfect = mod.confusion(reference.copy(), reference, self._all((10, 10), True))
+        assert perfect.agreement == pytest.approx(100.0)
+        assert perfect.kappa == pytest.approx(1.0)
+
+    def test_the_confusion_counts_are_the_four_cells_of_the_table(self) -> None:
+        ours = np.array([[True, True], [False, False]])
+        reference = np.array([[True, False], [True, False]])
+        c = mod.confusion(ours, reference, self._all((2, 2), True))
+        assert (c.both_ground, c.ours_only, c.reference_only, c.neither) == (1, 1, 1, 1)
+        assert c.n == 4
+
+
+class TestSeamCells:
+    """Tile edges are where the reference's per-tile grid and our AOI grid must disagree."""
+
+    @staticmethod
+    def _grid():
+        from microrelief.grid import Grid
+
+        return Grid(origin_x=0.0, origin_y=100.0, cell=1.0, n_cols=100, n_rows=100, crs_epsg=3763)
+
+    def test_cells_within_the_margin_of_a_tile_edge_are_marked(self) -> None:
+        provenance = {"sources": [{"bounds": [0.0, 0.0, 50.0, 100.0]}]}
+        seam = mod.seam_cells(provenance, self._grid(), margin_m=5.0)
+        assert seam[50, 50]  # right at the x = 50 edge
+        assert not seam[50, 70]  # 20 m away from any edge
+        assert seam[50, 0]  # the tile's own outer edge counts too
+
+    def test_a_reference_built_before_bounds_were_recorded_marks_nothing(self) -> None:
+        """Older reference files carry no `bounds`. Silently marking nothing is right -- but only
+        because the seam figure is reported beside the headline and never replaces it."""
+        seam = mod.seam_cells({"sources": [{"tile": "x.laz"}]}, self._grid(), margin_m=5.0)
+        assert not seam.any()
+
+
+class TestPredicatesMatchTheirPreRegistration:
+    """The predicates are written in two places, so they are locked to each other.
+
+    A number quoted in a document and applied in code is the shape that produced this repo's
+    worst near-misses: the instrument would report a verdict against one bound while the record
+    that justified it named another, and nothing would fail.
+    """
+
+    DOC = ROOT / "docs" / "smrf-build-preregistration.md"
+
+    def test_every_bound_in_the_code_appears_in_the_document(self) -> None:
+        text = self.DOC.read_text()
+        for name, value in (
+            ("P1_PLAIN_GROUND_MIN", mod.P1_PLAIN_GROUND_MIN),
+            ("P2_ROOF_MAX", mod.P2_ROOF_MAX),
+            ("P3_AGREEMENT_MIN", mod.P3_AGREEMENT_MIN),
+            ("P3_KAPPA_MIN", mod.P3_KAPPA_MIN),
+        ):
+            assert f"{value:g}" in text, f"{name} = {value} is not stated in {self.DOC.name}"
+
+    def test_the_reader_would_notice_a_bound_that_drifted(self) -> None:
+        """Control on the control: a bound the document does not carry must fail the check."""
+        assert "31.7" not in self.DOC.read_text()

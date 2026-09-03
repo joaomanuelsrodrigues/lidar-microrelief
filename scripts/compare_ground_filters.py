@@ -36,12 +36,13 @@ from scipy.ndimage import binary_erosion
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from microrelief.accumulate import Accumulator  # noqa: E402
+from microrelief.accumulate import Accumulator, _grouped_extrema  # noqa: E402
 from microrelief.cli import aoi_bounds  # noqa: E402
 from microrelief.density import BASIS_INTERPOLATED, BASIS_MEASURED, compute_basis  # noqa: E402
 from microrelief.grid import Grid, grid_for_bounds  # noqa: E402
 from microrelief.ground import GroundParams, classify_ground  # noqa: E402
 from microrelief.read import read_laz  # noqa: E402
+from microrelief.smrf import SmrfParams, classify_ground_smrf  # noqa: E402
 
 # PDAL's `filters.smrf` ignores this class in the pipeline recorded in `docs/live-smoke.md`, and
 # passes those points through untouched. They are therefore not judged, and counting them as
@@ -130,6 +131,14 @@ class Reference:
     n_class5: NDArray[np.int32]
     n_class6: NDArray[np.int32]
     n_reference_ground: NDArray[np.int32]
+    # The minimum over the returns the reference filter actually reads (last/only, class 7 aside),
+    # so that a difference in the *input* to the two filters is never read as a difference between
+    # the filters. The pipeline's own surface is over all returns.
+    min_z_judged: NDArray[np.float32]
+    # The lowest point the reference filter called ground in each cell. Its distance above
+    # `min_z_all` measures the one design difference of a cell-level membership test: the
+    # reference calls a cell ground if *any* judged point passes, this package tests the lowest.
+    min_z_reference_ground: NDArray[np.float32]
     grid: Grid
     cell: float
     controls: dict[str, int]
@@ -146,6 +155,28 @@ def _flat_counts(
     return counts
 
 
+def _flat_min(
+    grid: Grid,
+    x: NDArray[np.float64],
+    y: NDArray[np.float64],
+    z: NDArray[np.float64],
+    keep: NDArray[np.bool_],
+    into: NDArray[np.float64],
+) -> None:
+    """Fold the minimum of a subset of points into `into`, in place.
+
+    Reuses the accumulator's own grouped reduction rather than restating it: this is the same
+    sort-once, `reduceat` pattern, and two copies of it could drift apart while both look right.
+    """
+    row, col, inside = grid.cell_indices(x, y)
+    take = inside & keep
+    if not take.any():
+        return
+    flat = row[take] * grid.n_cols + col[take]
+    cells, mins, _maxs, _counts = _grouped_extrema(flat, z[take])
+    into[cells] = np.minimum(into[cells], mins)
+
+
 def build_reference(
     tiles: list[Path], smrf_dir: Path, grid: Grid, cell: float, suffix: str
 ) -> Reference:
@@ -159,6 +190,8 @@ def build_reference(
     n_class5 = np.zeros(grid.n_cells, dtype=np.int64)
     n_class6 = np.zeros(grid.n_cells, dtype=np.int64)
     n_reference_ground = np.zeros(grid.n_cells, dtype=np.int64)
+    min_z_judged = np.full(grid.n_cells, np.inf, dtype=np.float64)
+    min_z_reference_ground = np.full(grid.n_cells, np.inf, dtype=np.float64)
     controls = {"into_ground": 0, "out_of_ground": 0, "passed_through_class2": 0, "judged": 0}
     sources: list[dict[str, Any]] = []
 
@@ -203,17 +236,32 @@ def build_reference(
         n_class6 += _flat_counts(grid, x, y, delivery_class == 6)
         n_reference_ground += _flat_counts(grid, x, y, judged & (reference_class == 2))
 
+        z = np.asarray(delivery.z, dtype=np.float64)
+        _flat_min(grid, x, y, z, judged, min_z_judged)
+        _flat_min(grid, x, y, z, judged & (reference_class == 2), min_z_reference_ground)
+
         sources.append(
             {
                 "tile": tile.name,
                 "tile_sha256": batch.source_sha256,
                 "reference": reference_path.name,
                 "points": int(len(delivery.points)),
+                # The reference filter ran once per tile, on its own bounds, while this package
+                # runs on one AOI grid. Cells near these lines are where that difference lands,
+                # so the comparison can report them apart instead of averaging over them.
+                "bounds": [float(v) for v in batch.bounds],
             }
         )
 
     stats = accumulator.finish()
     shape = grid.shape
+
+    def as_surface(values: NDArray[np.float64]) -> NDArray[np.float32]:
+        """`inf` is the seed of a minimum that never ran, and NaN is how this package says so."""
+        out = values.astype(np.float32)
+        out[np.isinf(values)] = np.nan
+        return out.reshape(shape)
+
     return Reference(
         min_z_all=stats.min_z_all,
         max_z_all=stats.max_z_all,
@@ -222,6 +270,8 @@ def build_reference(
         n_class5=n_class5.reshape(shape).astype(np.int32),
         n_class6=n_class6.reshape(shape).astype(np.int32),
         n_reference_ground=n_reference_ground.reshape(shape).astype(np.int32),
+        min_z_judged=as_surface(min_z_judged),
+        min_z_reference_ground=as_surface(min_z_reference_ground),
         grid=grid,
         cell=cell,
         controls=controls,
@@ -267,6 +317,8 @@ def _cmd_reference(args: argparse.Namespace) -> int:
         n_class5=reference.n_class5,
         n_class6=reference.n_class6,
         n_reference_ground=reference.n_reference_ground,
+        min_z_judged=reference.min_z_judged,
+        min_z_reference_ground=reference.min_z_reference_ground,
         provenance=np.array(json.dumps(provenance)),
     )
     print(json.dumps(provenance, indent=2))
@@ -284,6 +336,100 @@ def _load_reference(path: Path) -> tuple[dict[str, NDArray[Any]], dict[str, Any]
 def _share(mask: NDArray[np.bool_], population: NDArray[np.bool_]) -> float:
     n = int(population.sum())
     return 100.0 * float((mask & population).sum()) / n if n else float("nan")
+
+
+def populations_of(
+    arrays: dict[str, NDArray[Any]], roof_margin: int
+) -> dict[str, NDArray[np.bool_]]:
+    """The audited populations, defined once for every command that reports over them.
+
+    Rows A and B, the canopy control and the plain-ground control all reproduce the recorded cell
+    counts EXACTLY. Row C does not: "B, >= 2 cells inside the edge" names an erosion the record
+    never defines operationally, and none of eight readings of it reaches the recorded 3,524,239
+    (closest 3,487,782). Row C' is our reading, reported as ours and not as a replication -- see
+    `docs/reference-instrument-result.md`.
+
+    The delivery's ASPRS classification decides no cell in any filter here; it names who is being
+    audited, which is the role it already has in `agreement()`.
+    """
+    has_c2 = arrays["n_ground_asprs"] > 0
+    has_c5 = arrays["n_class5"] > 0
+    has_c6 = arrays["n_class6"] > 0
+    building = has_c6 & ~has_c2
+    return {
+        "A: any class-6 return": has_c6,
+        "B: class-6, no class-2": building,
+        "C': B eroded by roof-margin (OUR reading, not the recorded size)": interior(
+            building, margin=roof_margin
+        ),
+        "control: canopy (class 5, no class 2, no class 6)": has_c5 & ~has_c2 & ~has_c6,
+        "control: plain ground (class 2, no class 5, no class 6)": has_c2 & ~has_c5 & ~has_c6,
+    }
+
+
+@dataclass(frozen=True)
+class Confusion:
+    """Cell-by-cell agreement between our filter and the reference, over one population."""
+
+    n: int
+    both_ground: int
+    ours_only: int
+    reference_only: int
+    neither: int
+
+    @property
+    def agreement(self) -> float:
+        return 100.0 * (self.both_ground + self.neither) / self.n if self.n else float("nan")
+
+    @property
+    def kappa(self) -> float:
+        """Cohen's kappa, because raw agreement is passed by the degenerate answer.
+
+        On this AOI most cells are ground, so a filter that called everything ground would post a
+        high agreement while agreeing about nothing. Kappa divides out that prevalence and scores
+        it at 0 -- which is the whole reason a second number is here.
+        """
+        if not self.n:
+            return float("nan")
+        ours = self.both_ground + self.ours_only
+        theirs = self.both_ground + self.reference_only
+        expected = (ours * theirs + (self.n - ours) * (self.n - theirs)) / (self.n * self.n)
+        observed = (self.both_ground + self.neither) / self.n
+        return (observed - expected) / (1.0 - expected) if expected < 1.0 else float("nan")
+
+
+def confusion(
+    ours: NDArray[np.bool_], reference: NDArray[np.bool_], population: NDArray[np.bool_]
+) -> Confusion:
+    a, b = ours[population], reference[population]
+    return Confusion(
+        n=int(population.sum()),
+        both_ground=int((a & b).sum()),
+        ours_only=int((a & ~b).sum()),
+        reference_only=int((~a & b).sum()),
+        neither=int((~a & ~b).sum()),
+    )
+
+
+def seam_cells(provenance: dict[str, Any], grid: Grid, margin_m: float) -> NDArray[np.bool_]:
+    """Cells within `margin_m` of the edge of any delivery tile.
+
+    Not a defect of either filter and not corrected for: the reference ran once per tile on its
+    own bounds, this package runs on one AOI grid, and those lines are where that difference
+    lands. Reported apart so it cannot be mistaken for algorithmic disagreement.
+    """
+    xs = grid.origin_x + (np.arange(grid.n_cols) + 0.5) * grid.cell
+    ys = grid.origin_y - (np.arange(grid.n_rows) + 0.5) * grid.cell
+    near_col = np.zeros(grid.n_cols, dtype=bool)
+    near_row = np.zeros(grid.n_rows, dtype=bool)
+    for source in provenance.get("sources", []):
+        bounds = source.get("bounds")
+        if not bounds:
+            continue
+        minx, miny, maxx, maxy = bounds
+        near_col |= (np.abs(xs - minx) < margin_m) | (np.abs(xs - maxx) < margin_m)
+        near_row |= (np.abs(ys - miny) < margin_m) | (np.abs(ys - maxy) < margin_m)
+    return np.asarray(near_row[:, None] | near_col[None, :], dtype=bool)
 
 
 def _cmd_compare(args: argparse.Namespace) -> int:
@@ -308,26 +454,8 @@ def _cmd_compare(args: argparse.Namespace) -> int:
     )
     basis = compute_basis(is_ground, stats, cell, args.k_min_returns, args.d_max_interp_m)
 
-    has_c2 = arrays["n_ground_asprs"] > 0
-    has_c5 = arrays["n_class5"] > 0
-    has_c6 = arrays["n_class6"] > 0
     reference_ground = arrays["n_reference_ground"] > 0
-
-    # Rows A and B, the canopy control and the plain-ground control all reproduce the recorded
-    # cell counts EXACTLY. Row C does not: "B, >= 2 cells inside the edge" names an erosion the
-    # record never defines operationally, and none of eight readings of it reaches the recorded
-    # 3,524,239 (closest 3,487,782). Row C' is our reading, reported as ours and not as a
-    # replication -- see `docs/reference-instrument-result.md`.
-    building = has_c6 & ~has_c2
-    populations = {
-        "A: any class-6 return": has_c6,
-        "B: class-6, no class-2": building,
-        "C': B eroded by roof-margin (OUR reading, not the recorded size)": interior(
-            building, margin=args.roof_margin
-        ),
-        "control: canopy (class 5, no class 2, no class 6)": has_c5 & ~has_c2 & ~has_c6,
-        "control: plain ground (class 2, no class 5, no class 6)": has_c2 & ~has_c5 & ~has_c6,
-    }
+    populations = populations_of(arrays, args.roof_margin)
 
     measured = basis.basis == BASIS_MEASURED
     interpolated = basis.basis == BASIS_INTERPOLATED
@@ -353,6 +481,117 @@ def _cmd_compare(args: argparse.Namespace) -> int:
     print(f"falsely-measured roof cells, ours:      {int((measured & roof).sum()):,d}")
     print(f"falsely-measured roof cells, reference: {int((reference_ground & roof).sum()):,d}")
     return 0
+
+
+# The acceptance predicates of `docs/smrf-build-preregistration.md`, fixed before the first run.
+# They live here as well as there because a predicate quoted in prose and applied in code is two
+# sets of literals that can drift; `tests/test_compare_ground_filters.py` fails if they disagree.
+P1_PLAIN_GROUND_MIN = 97.0
+P2_ROOF_MAX = 30.0
+P3_AGREEMENT_MIN = 90.0
+P3_KAPPA_MIN = 0.60
+
+
+def _verdict(name: str, value: float, bound: float, direction: str) -> tuple[str, bool]:
+    ok = value >= bound if direction == ">=" else value <= bound
+    return f"{name}: {value:.3f} {direction} {bound} -> {'PASS' if ok else 'FAIL'}", ok
+
+
+def _cmd_smrf(args: argparse.Namespace) -> int:
+    """Run this repository's SMRF over the cached arrays and compare it, cell by cell.
+
+    Seconds, not minutes: everything a LAZ read would provide is already in the reference file.
+    """
+    arrays, provenance = _load_reference(args.reference)
+    grid_info = provenance["grid"]
+    grid = Grid(
+        origin_x=float(grid_info["origin_x"]),
+        origin_y=float(grid_info["origin_y"]),
+        cell=float(grid_info["cell"]),
+        n_cols=int(grid_info["n_cols"]),
+        n_rows=int(grid_info["n_rows"]),
+        crs_epsg=int(grid_info["crs_epsg"]),
+    )
+    params = SmrfParams(
+        cell=args.smrf_cell,
+        slope=args.smrf_slope,
+        scalar=args.smrf_scalar,
+        threshold=args.smrf_threshold,
+        window=args.smrf_window,
+    )
+
+    surface_name = args.surface
+    if surface_name not in arrays:
+        print(f"the reference file has no array named {surface_name}", file=sys.stderr)
+        return 2
+    surface = arrays[surface_name]
+
+    is_ground = classify_ground_smrf(surface.astype(np.float64), grid.cell, params)
+    reference_ground = arrays["n_reference_ground"] > 0
+    measured = arrays["n_all"] > 0
+    populations = populations_of(arrays, args.roof_margin)
+
+    print(f"reference filter:  {provenance.get('reference_filter', '?')}")
+    print(f"our surface:       {surface_name}")
+    print(f"our SMRF params:   {params}  (window_m = {params.window_m})")
+    print(f"controls:          {json.dumps(provenance.get('controls', {}))}")
+    print()
+
+    header = f"{'population':<62}{'cells':>12}{'ours ground':>13}{'ref ground':>12}"
+    print(header)
+    print("-" * len(header))
+    shares: dict[str, float] = {}
+    for name, population in populations.items():
+        shares[name] = _share(is_ground, population)
+        print(
+            f"{name:<62}{int(population.sum()):>12,d}"
+            f"{shares[name]:>12.1f}%{_share(reference_ground, population):>11.1f}%"
+        )
+
+    print()
+    overall = confusion(is_ground, reference_ground, measured)
+    print(f"cells compared (measured):       {overall.n:>12,d}")
+    print(f"  both ground:                   {overall.both_ground:>12,d}")
+    print(f"  ours only:                     {overall.ours_only:>12,d}")
+    print(f"  reference only:                {overall.reference_only:>12,d}")
+    print(f"  neither:                       {overall.neither:>12,d}")
+    print(f"  agreement:                     {overall.agreement:>12.2f}%")
+    print(f"  Cohen's kappa:                 {overall.kappa:>12.3f}")
+
+    seam = seam_cells(provenance, grid, args.seam_margin_m)
+    away = confusion(is_ground, reference_ground, measured & ~seam)
+    print()
+    print(f"excluding {args.seam_margin_m:g} m either side of a tile edge (reported, not a gate):")
+    print(f"  cells compared:                {away.n:>12,d}")
+    print(f"  agreement:                     {away.agreement:>12.2f}%")
+    print(f"  Cohen's kappa:                 {away.kappa:>12.3f}")
+
+    # The load-bearing assumption of a cell-level membership test, measured rather than argued:
+    # the reference calls a cell ground if ANY judged point passes, this package tests the lowest
+    # one. Where those are the same point the two tests ask the same question.
+    lifted = arrays["min_z_reference_ground"] - arrays["min_z_all"]
+    has_ref = reference_ground & np.isfinite(lifted)
+    print()
+    print("the reference's ground verdict came from a point above the cell minimum:")
+    for bound in (0.05, 0.25, 1.00):
+        share = _share(lifted > bound, has_ref)
+        print(f"  more than {bound:>4.2f} m above:       {share:>12.2f}%")
+
+    plain = shares["control: plain ground (class 2, no class 5, no class 6)"]
+    roof = shares["B: class-6, no class-2"]
+    print()
+    print("pre-registered predicates (docs/smrf-build-preregistration.md):")
+    lines = [
+        _verdict("P1 plain ground called ground", plain, P1_PLAIN_GROUND_MIN, ">="),
+        _verdict("P2 row B called ground", roof, P2_ROOF_MAX, "<="),
+        _verdict("P3 agreement", overall.agreement, P3_AGREEMENT_MIN, ">="),
+        _verdict("P3 kappa", overall.kappa, P3_KAPPA_MIN, ">="),
+    ]
+    for text, _ok in lines:
+        print(f"  {text}")
+    passed = all(ok for _text, ok in lines)
+    print(f"\nVERDICT: {'PASS' if passed else 'FAIL'}")
+    return 0 if passed else 1
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -381,6 +620,27 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--d-max-interp-m", type=float, default=2.0)
     c.add_argument("--roof-margin", type=int, default=2)
     c.set_defaults(func=_cmd_compare)
+
+    # PDAL's own defaults, so the two filters are compared at the settings the reference ran with.
+    # `--smrf-window` is left unset on purpose: `SmrfParams` then applies 18 * cell, which is what
+    # `prepared()` does, and passing 18.0 here would hide that rule behind a literal.
+    s = sub.add_parser("smrf", help="run this repository's SMRF and compare it cell by cell")
+    s.add_argument("--reference", type=Path, required=True)
+    s.add_argument(
+        "--surface",
+        default="min_z_all",
+        choices=("min_z_all", "min_z_judged"),
+        help="which minimum surface to hand the filter: the pipeline's (all returns) or the "
+        "reference's own input rule (last/only)",
+    )
+    s.add_argument("--smrf-cell", type=float, default=1.0)
+    s.add_argument("--smrf-slope", type=float, default=0.15)
+    s.add_argument("--smrf-scalar", type=float, default=1.25)
+    s.add_argument("--smrf-threshold", type=float, default=0.5)
+    s.add_argument("--smrf-window", type=float, default=None)
+    s.add_argument("--roof-margin", type=int, default=2)
+    s.add_argument("--seam-margin-m", type=float, default=20.0)
+    s.set_defaults(func=_cmd_smrf)
 
     args = ap.parse_args(argv)
     result: int = args.func(args)
