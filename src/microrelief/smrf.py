@@ -276,16 +276,20 @@ def provisional_dem(z_min: FloatGrid, params: SmrfParams) -> tuple[FloatGrid, Fl
 
     cut_out = filled.copy()
     cut_out[objects | low] = np.nan
-    if bool(np.isnan(cut_out).all()):
-        # Every cell was cut as object or low outlier, so there is nothing left to interpolate
-        # the provisional DEM FROM. `knn_fill` returns an all-void surface untouched, by design,
-        # and the membership test then quietly calls every cell non-ground: a DTM of nothing,
-        # exit 0. The all-void guard on the INPUT catches the same situation from the other
-        # side; a small AOI filled by one building or one steep face reaches it from here.
-        raise SmrfError(
-            "every cell was cut as object or low outlier, so there is no ground left to "
-            "interpolate a provisional DEM from; the AOI holds no terrain this filter can find"
-        )
+    # No refusal here, deliberately. When the filter and the low-outlier mask together cut every
+    # cell, `knn_fill` returns the all-void surface untouched and every cell reads non-ground.
+    # This function reports that; it does not adjudicate it. One stage on, `density.compute_basis`
+    # already refuses the case by name ("no measured cells: nothing to interpolate from"), as it
+    # has since d9eda03, so a guard here would be a second refusal for one situation, raised
+    # earlier and from the module with less context about it (operator ruling, 2026-09-03).
+    #
+    # Whether an all-cut AOI should REFUSE or publish `fraction_measured` 0.0 is a real question
+    # and an open one -- answering "publish" means changing `density.py`, not this file. Note
+    # what it costs today: the run stops before `build_surfaces`, so the DSM is lost too, and the
+    # DSM is `max_z` and never touches the ground filter.
+    #
+    # The refusal that DOES live here is on the INPUT, in `classify_ground_smrf`: nothing
+    # measured anywhere is a different case, because then there is no measurement to publish.
     dem = knn_fill(cut_out)
 
     scaled = dem / params.cell

@@ -388,25 +388,29 @@ def test_the_all_void_guard_does_not_fire_on_a_surface_that_holds_one_cell() -> 
     assert bool(out[2, 2]), "the one measured cell sits on the provisional DEM and is ground"
 
 
-def test_a_surface_where_every_cell_is_cut_refuses_instead_of_publishing_nothing() -> None:
-    """The all-void guard closes the INPUT side; this is the same situation from the other end.
+def test_a_surface_where_every_cell_is_cut_publishes_nothing_found_rather_than_refusing() -> None:
+    """This function reports "no cell is ground"; it does not adjudicate it.
 
-    When the progressive filter and the low-outlier mask together cover every coarse cell, the
-    surface handed to the second fill is all-void. `knn_fill` returns it untouched, by design,
-    the tolerance is all-NaN, and the membership test then calls every cell non-ground: a DTM of
-    nothing, exit 0. Measured before the fix on this exact input -- 0 of 16 cells ground, no
-    refusal. A small AOI filled by one building or one steep face reaches it.
+    `density.compute_basis` already refuses the case one stage on, and has since d9eda03, so a
+    guard here would be a second refusal for one situation (operator ruling, 2026-09-03). What
+    the pipeline as a whole should do with an all-cut AOI -- refuse, or publish
+    `fraction_measured` 0.0 -- is open, and lives in `density.py` rather than here.
+
+    The refusal that DOES stay in this module is on the input: nothing measured anywhere is a
+    different case, because then there is no measurement to publish.
     """
     steep = np.repeat(
         np.repeat(np.array([[91.96, 105.42], [119.56, 114.20]]), 2, axis=0), 2, axis=1
     )
-    with pytest.raises(SmrfError, match="no ground left"):
-        classify_ground_smrf(steep, cell=0.5, params=SmrfParams(cell=1.0))
+    out = classify_ground_smrf(steep, cell=0.5, params=SmrfParams(cell=1.0))
+    assert out.shape == steep.shape
+    assert not out.any(), "every cell was cut, so no cell is ground -- and that is the answer"
 
 
-def test_the_all_cut_guard_leaves_an_ordinary_surface_alone() -> None:
-    """The quiet arm. A guard that fires on a normal surface would refuse every real run."""
+def test_an_ordinary_surface_is_still_mostly_ground() -> None:
+    """The discriminating arm: 'no cell is ground' has to mean something, so a normal surface
+    must not produce it."""
     rng = np.random.default_rng(0)
     gentle = rng.normal(100.0, 0.05, (8, 8))
     out = classify_ground_smrf(gentle, cell=0.5, params=SmrfParams(cell=1.0))
-    assert out.any(), "a nearly flat surface is mostly ground; the guard must not reach it"
+    assert out.any(), "a nearly flat surface is mostly ground"
