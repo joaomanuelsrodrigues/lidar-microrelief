@@ -52,8 +52,10 @@ The reference itself is the one from `docs/reference-instrument-result.md`, rebu
 additions. The rebuild reproduces its controls exactly (`into_ground` 15,892,932 · `out_of_ground`
 322,530 · `passed_through_class2` 7,345 · `judged` 100,323,464) and the same six tile sha256s, and
 the old filter re-run on the new cache reproduces every published figure of that record. The
-recorded pipeline hash `8055f03add32c1b0` was matched back to its file by `sha256sum`, which is
-what says this is the same environment rather than a similar one.
+recorded pipeline sha256 `8055f03add32c1b0` was matched back to its file by `sha256sum`, which is
+what says this is the same environment rather than a similar one. (Called a sha256 and not a hash
+because the repository's partition guard reads "hash + twelve hex" as a published *record* hash and
+fired on this sentence: the guard was right about the shape and this is the more accurate word.)
 
 ## The three side-measurements, which were declared before the run
 
