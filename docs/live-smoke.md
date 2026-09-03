@@ -1493,3 +1493,289 @@ private reporting channel the document names as its **only** one is a public-rep
 so it cannot be verified while this repo is private. Both belong to the flip sitting: enable them
 and re-verify by API, or change the sentence — the policy must not describe a posture the
 repository does not have.
+
+---
+
+## 2026-08-31 — the second AOI: Valongo / Paredes, six tiles, 675 MB
+
+Pre-registered at `181d95d` before the run (`docs/second-aoi-preregistration.md`); verdict and
+analysis in `docs/second-aoi-gate-result.md`. **Verdict: FAIL** — the DTM publishes buildings as
+terrain. Recorded here because the commands and their outputs are what the verdict rests on.
+
+**Acquisition — automated this time, and the reason the earlier entry could not be.** `SITE.md`
+records the direct grant refused: `POST /token` with `grant_type=password` answers 401
+`unauthorized_client`, and that remains true. The *browser* flow is a different endpoint and it
+does authenticate this account: the OIDC authorization-code exchange at
+`/realms/dgterritorio/.../auth` yields a portal session, and with that session a download href
+returns 206. Both controls fired — a junk password and a non-existent user are each refused with
+*"Nome de utilizador ou palavra-passe inválida"* — so the accepted login is evidence and not a
+server that says yes to everything.
+
+**The href's 64-hex segment is a short-lived token, not a stable identifier.** An href minted 30
+minutes earlier answered `403 {"status":403,"message":"Forbidden Access - Expired token or file
+not found"}`; a fresh one from the same search answered `206` with `LASF` in the first four bytes.
+So each href is minted and spent in one pass. Acceptance stayed the artefact — every file's byte
+count against the catalogue's `file:size`, and the `LASF` magic:
+
+    LO-160470-07-2025: 123,901,792 bytes (declared 123,901,792) magic=b'LASF' OK
+    LO-160471-07-2025: 106,466,721 bytes (declared 106,466,721) magic=b'LASF' OK
+    LO-161470-07-2025: 124,866,796 bytes (declared 124,866,796) magic=b'LASF' OK
+    LO-161471-07-2025:  95,203,665 bytes (declared  95,203,665) magic=b'LASF' OK
+    LO-162470-07-2025: 120,315,748 bytes (declared 120,315,748) magic=b'LASF' OK
+    LO-162471-07-2025: 104,665,870 bytes (declared 104,665,870) magic=b'LASF' OK
+    accepted 6/6, 675,420,592 bytes
+
+**select and precheck:**
+
+```
+$ microrelief select --aoi aoi/valongo.geojson --out selection.json
+6 tiles, coverage 1.0000, 1 sortie(s), 1 stamp(s) -> selection.json
+
+$ microrelief precheck --aoi aoi/valongo.geojson
+LO-160470-07-2025   21.4 pts/m2  2025-12-08  void(open)=0.477%  void(f=0.4)=11.8%
+LO-160471-07-2025   17.7 pts/m2  2025-12-08  void(open)=1.201%  void(f=0.4)=17.1%
+LO-161470-07-2025   20.9 pts/m2  2025-12-08  void(open)=0.534%  void(f=0.4)=12.3%
+LO-161471-07-2025   16.0 pts/m2  2025-12-08  void(open)=1.844%  void(f=0.4)=20.2%
+LO-162470-07-2025   20.8 pts/m2  2025-12-08  void(open)=0.551%  void(f=0.4)=12.5%
+LO-162471-07-2025   17.1 pts/m2  2025-12-08  void(open)=1.386%  void(f=0.4)=18.1%
+```
+
+**A refusal, correct, from pointing `--laz` at a directory holding tiles outside the selection:**
+
+```
+LO-179556-07-2025 is not in the selection (LO-160470-07-2025, ...); refusing to publish
+catalogue facts for some tiles and none for others
+exit=2
+```
+
+**The run, twice, at identical parameters — byte-identical both times:**
+
+```
+grid 3960 x 5960 cells of 0.5 m (5.9004 km2), 6 tile(s), 1472090 return(s) outside the AOI
+measured 87.3% | interpolated 12.6% | undetermined 0.1%
+expected void at f=1: 0.854% (measured density 19.1 pts/m2)
+ground recall 1.000 | non-ground recall 0.262 | accuracy 0.700 | majority-class null 0.594
+flight dates 2025-12-08T00:00:00Z | mixed epochs False
+reproducibility_hash ee05b4e174a92a10567f058c07463f9a0188f360d756a57a0b9b900161b1e5bf
+```
+
+run 1: wall 34.29 s, peak RSS 3,205,920 KB · run 2: wall 32.74 s, peak RSS 3,206,016 KB.
+Both `reproducibility_hash` identical, `grid`/`honesty`/`agreement` identical, 6 of 6 raster file
+digests matching. **The declared read instability did not reproduce** on a grid 1.5x Sistelo's.
+
+**What the run found.** Over cells holding official class-6 (building) returns, CHM median
+**0.06 m**, 79.8% below 0.5 m — buildings published as terrain, with `agreement` reporting ground
+recall 1.000 and nothing in `known_limitations` naming it. Controls in the same tile: class 5
+vegetation median 5.87 m (8.9% flat), class 2 ground median 0.05 m. The same measurement on
+Sistelo's own outputs gives 0.17 m and 66.5% flat, over 32,937 building cells against 575,771
+here — **the defect is already in the published piece**, hidden by a site with almost nothing
+built in it. Diagnostic at `--max-window-m 40`: flat-building share 79.8% → 61.8%, non-ground
+recall 0.262 → 0.540, undetermined 0.1% → 7.5%. Load-bearing, and not fixed by any value tested.
+
+**The CRS read this AOI could not have been reached without** is 0.4.3's fix, exercised here
+against the live catalogue: before it, this AOI's own delivery was refused with *"Supply an AOI in
+EPSG:9001"*, which is false and cannot be followed.
+
+## 2026-08-31 — T-E6r: what excuses a building, and what SMRF does instead
+
+Predicates pre-registered at `57a3c1c` before the run; analysis, controls and the ruling in
+`docs/ground-filter-diagnosis.md`. Recorded here because the README quotes these numbers and this
+file is where a README number is allowed to come from.
+
+**The population.** Cells holding official ASPRS class-6 returns, no class-2 return in the cell,
+and at least two cells inside the class-6 footprint — an unambiguous roof interior, where the
+minimum surface cannot be the ground by class. The delivery's classification defines the
+population being audited; it decides no cell in either filter.
+
+**What the shipped filter claims over a roof**, from the `basis` band of the Valongo run and of
+the published Sistelo run (`outputs_0.4.2`):
+
+    Valongo, default parameters
+      roof interior       3,524,239 cells   measured 89.7%  interpolated 10.2%  undetermined  0.1%
+      control: canopy     2,493,967 cells   measured 33.9%  interpolated 65.5%  undetermined  0.7%
+      control: ground    12,062,527 cells   measured 100.0% interpolated  0.0%  undetermined  0.0%
+
+    Sistelo, the SHIPPED run 0.4.2
+      roof interior          86,759 cells   measured 77.2%  interpolated 22.3%  undetermined  0.5%
+      control: ground     4,126,962 cells   measured  99.9% interpolated  0.1%  undetermined  0.0%
+
+3.16 million falsely-measured roof cells at Valongo, **13.7%** of that AOI; 0.43% of the published
+Sistelo AOI. Neither knob separates a roof from terrain: best single height threshold **0.712**
+balanced accuracy over 2,062 components, best single width threshold **0.528**.
+
+**PDAL, installed without root and exercised against the same tiles.** conda-forge via micromamba;
+the version is read from the binary, not remembered:
+
+```
+$ ./bin/micromamba create -y -p ./env -c conda-forge pdal
+$ ./env/bin/pdal --version
+pdal 2.10.2 (git-version: e8618b)
+$ ./env/bin/pdal --drivers | grep smrf
+filters.smrf                 Simple Morphological Filter (Pingel et al., 2013)
+```
+
+The pipeline, out of the box but for the noise exclusion this tool already does:
+
+```json
+[{"type":"readers.las","filename":"<tile>.laz"},
+ {"type":"filters.smrf","ignore":"Classification[7:7]"},
+ {"type":"writers.las","filename":"<out>.laz","compression":"true","forward":"all"}]
+```
+
+**Control before the comparison**, because a filter that silently did not run would look like an
+excellent one. On LO-162471, SMRF moves 2,014,732 returns into ground that the delivery calls
+non-ground and 90,837 the other way, so the output is its verdict and not the delivery's labels
+read back. Its `returns` default is `[last, only]`; the points it passes through untouched are
+7,345 class-2 against 100,326,647 judged (0.007%) and are excluded.
+
+**The comparison**, cell counted as ground if it holds at least one ground return — the rule
+`agreement()` already uses:
+
+    population                     cells        ours (measured)   SMRF (ground)
+    roof interior              3,524,239                 89.7%           16.1%
+    control: canopy            2,493,967                 33.9%           19.5%
+    control: plain ground     12,062,527                100.0%           99.4%
+
+Falsely-measured roof cells 3,160,305 -> 566,299. **And it does not eat the terraces:** in the
+documented 150 m window around the tallest verified riser, SMRF keeps ground in 91.8% of the cells
+this filter calls ground and 86.5% of those on a step above 2.5 m in 3.5 m; where both call a cell
+ground the surfaces agree to +0.000 m median over 46,449 cells.
+
+> **Declared gap, and it is the first task of the build that follows.** The PDAL commands above
+> replay from this file. The per-cell measurement that produced the tables does **not**: it ran
+> from a script that is not in this tree, so these numbers are recorded with their method described
+> rather than with a command a reader can run. That instrument is the acceptance check the SMRF
+> implementation will be measured against, so it lands in `scripts/` with that work rather than
+> being reconstructed later from prose.
+
+---
+
+## 2026-09-03 — the in-repo SMRF, measured cell by cell against PDAL's
+
+`src/microrelief/smrf.py` is SMRF (Pingel et al. 2013) re-implemented here; PDAL 2.10.2 is the
+reference it is validated against, not a runtime dependency. The acceptance predicates were fixed
+and committed in `4fdc82b` **before** any of this ran — `docs/smrf-build-preregistration.md`.
+Nothing below is wired into the pipeline: the CLI default is still the old filter.
+
+### The reference cache, rebuilt with three additions
+
+```
+$ python scripts/compare_ground_filters.py reference \
+    --tiles ~/data/dgt-laz-valongo --smrf <work> --aoi aoi/valongo.geojson \
+    --cell 0.5 --pipeline <work>/smrf-LO-162471.json --out <work>/valongo-reference-v2.npz
+"controls": {
+    "into_ground": 15892932,
+    "out_of_ground": 322530,
+    "passed_through_class2": 7345,
+    "judged": 100323464
+  }
+wrote <work>/valongo-reference-v2.npz (287.8 MB)
+```
+
+Byte-for-byte the same controls and the same six tile sha256s as the 2026-09-02 build, so the
+additions (`min_z_judged`, `min_z_reference_ground`, per-tile bounds) changed no measurement. The
+recorded pipeline hash `8055f03add32c1b0` was matched back to its file (`smrf-LO-162471.json`) by
+`sha256sum`, which is what says this is the same environment and not a similar one.
+
+### The old filter on the new cache — the 2026-09-02 table, re-derived
+
+reference filter: PDAL filters.smrf
+controls: {"into_ground": 15892932, "out_of_ground": 322530, "passed_through_class2": 7345, "judged": 100323464}
+
+population                                                           cells  ours meas.  ref ground ours interp
+--------------------------------------------------------------------------------------------------------------
+A: any class-6 return                                            4,738,087       88.9%       24.6%       10.9%
+B: class-6, no class-2                                           4,270,425       87.7%       16.4%       12.1%
+C': B eroded by roof-margin (OUR reading, not the recorded size)   2,223,855       95.7%       19.3%        4.2%
+control: canopy (class 5, no class 2, no class 6)                2,493,967       33.9%       19.5%       65.5%
+control: plain ground (class 2, no class 5, no class 6)         12,062,527      100.0%       99.4%        0.0%
+
+falsely-measured roof cells, ours:      2,127,452
+falsely-measured roof cells, reference: 429,336
+
+Every published figure of `docs/reference-instrument-result.md` reproduces exactly: rows A and B,
+both controls, and their shares. Row C is still absent, for the reason recorded there.
+
+### The in-repo SMRF, same cache, PDAL's own defaults
+
+```
+reference filter:  PDAL filters.smrf
+our surface:       min_z_all
+our SMRF params:   SmrfParams(cell=1.0, slope=0.15, scalar=1.25, threshold=0.5, window=None, cut=0.0)  (window_m = 18.0)
+controls:          {"into_ground": 15892932, "out_of_ground": 322530, "passed_through_class2": 7345, "judged": 100323464}
+
+population                                                           cells  ours ground  ref ground
+---------------------------------------------------------------------------------------------------
+A: any class-6 return                                            4,738,087        24.6%       24.6%
+B: class-6, no class-2                                           4,270,425        16.4%       16.4%
+C': B eroded by roof-margin (OUR reading, not the recorded size)   2,223,855        19.3%       19.3%
+control: canopy (class 5, no class 2, no class 6)                2,493,967        19.5%       19.5%
+control: plain ground (class 2, no class 5, no class 6)         12,062,527        99.4%       99.4%
+
+cells compared (measured):         23,058,525
+  both ground:                     16,720,892
+  ours only:                           42,055
+  reference only:                      35,900
+  neither:                          6,259,678
+  agreement:                            99.66%
+  Cohen's kappa:                        0.991
+
+excluding 20 m either side of a tile edge (reported, not a gate):
+  cells compared:                  21,607,897
+  agreement:                            99.73%
+  Cohen's kappa:                        0.993
+
+the reference's ground verdict came from a point above the cell minimum:
+  more than 0.05 m above:               0.02%
+  more than 0.25 m above:               0.01%
+  more than 1.00 m above:               0.00%
+
+pre-registered predicates (docs/smrf-build-preregistration.md):
+  P1 plain ground called ground: 99.410 >= 97.0 -> PASS
+  P2 row B called ground: 16.426 <= 30.0 -> PASS
+  P3 agreement: 99.662 >= 90.0 -> PASS
+  P3 kappa: 0.991 >= 0.6 -> PASS
+
+VERDICT: PASS
+```
+
+### Must-fire control: the same comparison, with the parameters wrong
+
+A table where our filter matches the reference on every population to the first decimal is a
+result or a tautology, and the difference is whether it can fail. Run with a one-metre window, a
+1.5 slope tolerance and a five-metre threshold:
+
+```
+--smrf-window 1.0      B: 88.0% ground (ref 16.4%)   agreement 83.30%   kappa 0.482   VERDICT: FAIL
+--smrf-slope 1.5       B: 86.3% ground (ref 16.4%)   agreement 82.54%   kappa 0.452   VERDICT: FAIL
+--smrf-threshold 5.0   B: 52.2% ground (ref 16.4%)   agreement 86.86%   kappa 0.611   VERDICT: FAIL
+```
+
+The comparison can fail, and a badly parameterised SMRF degrades into exactly the failure mode of
+the filter shipping today: it publishes roofs as ground.
+
+### Declared side-measurement: the input rule is not the residual
+
+```
+our surface:       min_z_judged
+  agreement:                            99.68%
+  Cohen's kappa:                        0.992
+  agreement:                            99.75%
+  Cohen's kappa:                        0.994
+  P1 plain ground called ground: 99.408 >= 97.0 -> PASS
+  P2 row B called ground: 16.411 <= 30.0 -> PASS
+  P3 agreement: 99.684 >= 90.0 -> PASS
+  P3 kappa: 0.992 >= 0.6 -> PASS
+VERDICT: PASS
+```
+
+Handing the filter the minimum over the returns the reference itself reads (last/only, class 7
+excluded) instead of the pipeline's minimum over all returns moves agreement from 99.66% to
+99.68%. So the 0.34% of cells the two filters disagree about are not an artefact of the input.
+
+### Derived, by command rather than by hand
+
+```
+$ python -c "b, measured = 4_270_425, 23_058_525; print(...)"
+row B is 4,270,425 of 23,058,525 measured cells = 18.5%
+```

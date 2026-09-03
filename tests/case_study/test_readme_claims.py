@@ -87,6 +87,10 @@ _PUBLISHED_HASH = re.compile(
 DATED_RECORDS = {
     "docs/live-smoke.md": "append-only log of past runs; every superseded hash is the point",
     "docs/self-check.md": "a dated self-check, corrected beside its original rather than over it",
+    "docs/second-aoi-gate-result.md": (
+        "a dated gate result; the hash it publishes is the Valongo run's, and the point of "
+        "recording it is that it is that run's and no other"
+    ),
 }
 
 

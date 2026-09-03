@@ -1,0 +1,27 @@
+{
+  "type": "Feature",
+  "properties": {
+    "name": "Valongo / Paredes — second-AOI gate",
+    "municipality": "Valongo and Paredes, Porto, Portugal",
+    "chosen_on": "2026-08-31",
+    "criteria": "docs/second-aoi-preregistration.md — chosen for capacity to fail, not convenience",
+    "bounds": [-39990.0, 169010.0, -37010.0, 170990.0],
+    "bounds_epsg": 3763,
+    "note_bounds": "The working bounds are these metres in EPSG:3763 (ETRS89/PT-TM06).",
+    "note_inset": "Inset 10 m inside the six-tile block so the AOI stays strictly interior to the declared footprints.",
+    "tiles": [
+      "LO-160470-07-2025",
+      "LO-160471-07-2025",
+      "LO-161470-07-2025",
+      "LO-161471-07-2025",
+      "LO-162470-07-2025",
+      "LO-162471-07-2025"
+    ],
+    "flight_date": "2025-12-08T00:00:00Z",
+    "density_pts_m2": [16.0, 21.4],
+    "download_mb": 675,
+    "source": "Direção-Geral do Território, LiDAR 2024/PRR, collection LAZ",
+    "licence": "CC BY 4.0 — see ATTRIBUTION.md"
+  },
+  "geometry": null
+}

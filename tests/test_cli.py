@@ -372,6 +372,43 @@ def test_a_matching_crs_still_selects(tmp_path: Path, monkeypatch: pytest.Monkey
     assert json.loads(out.read_text())["covered_fraction"] == pytest.approx(1.0)
 
 
+def test_the_crs_guard_is_not_disabled_by_a_neighbour_in_another_crs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The guard read `if len(tile_crs) == 1 and only != epsg`, so one tile in a second CRS
+    anywhere in the search box switched the whole check off -- and `select_tiles` compares CRSs
+    only among the tiles that *touch* the AOI. Measured against the live catalogue on
+    2026-08-31: an AOI over six tiles read as EPSG:9001 was accepted, coverage 1.0000, because
+    a single neighbouring tile read as 3763 made the set size two.
+
+    `_overlap_area` compares every searched tile's box against the AOI bounds, so the condition
+    that has to hold is that every one of them is in the AOI's CRS -- not that they agree
+    among themselves.
+    """
+    import microrelief.cli as cli
+    from microrelief.providers.dgt import TileRef
+
+    stranger = TileRef(
+        item_id="LO-stranger",
+        collection="LAZ",
+        minx=500000.0,
+        miny=4600000.0,
+        maxx=501000.0,
+        maxy=4601000.0,
+        crs_epsg=32629,
+        point_count=1,
+        flight_date="2024-11-22T00:00:00Z",
+        file_size=1,
+        href="https://example.invalid/t",
+    )
+    monkeypatch.setattr(cli, "_dgt", lambda: _provider_serving([*_pt_tm06_tiles(), stranger]))
+    aoi = _aoi_file(tmp_path, "ptm.geojson", [48200.0, 169200.0, 50200.0, 171200.0], 3763)
+
+    assert cli.main(["select", "--aoi", str(aoi), "--out", str(tmp_path / "sel.json")]) == 2
+    err = capsys.readouterr().err
+    assert "32629" in err and "3763" in err
+
+
 def test_declared_bounds_that_are_not_a_box_of_four_numbers_are_refused(tmp_path: Path) -> None:
     aoi = tmp_path / "aoi.geojson"
     aoi.write_text(
@@ -498,3 +535,38 @@ def test_the_density_denominator_is_the_grid_not_the_requested_aoi(tmp_path: Pat
     # Control positive: the two denominators must actually give different answers, or this test
     # would pass against either implementation and discriminate nothing.
     assert doc["honesty"]["measured_density_pts_m2"] != pytest.approx(in_grid / requested_area)
+
+
+def test_the_record_declares_that_buildings_are_published_as_terrain() -> None:
+    """The defect the second-AOI gate found, with every number tied to the run that measured it.
+
+    A limitation is the strongest thing this tool says about its own failures, and it travels into
+    every `provenance.json`. A shipped record claiming `basis=measured` over a roof, with ten
+    declared limitations and none of them naming it, is the product asserting what it cannot
+    support -- which is the one failure the honesty layer exists to prevent.
+
+    So the line is pinned to its evidence rather than to a phrasing: every figure it quotes must
+    appear in the diagnosis that measured it, so the two cannot drift apart the way a number typed
+    into two files does.
+    """
+    import re
+
+    from microrelief.cli import LIMITATIONS
+
+    declared = [line for line in LIMITATIONS if "buildings" in line]
+    assert len(declared) == 1, (
+        "exactly one limitation must name the building defect; "
+        f"found {len(declared)} lines mentioning buildings"
+    )
+    evidence = Path(__file__).resolve().parents[1] / "docs" / "ground-filter-diagnosis.md"
+    assert evidence.exists(), f"the limitation cites {evidence.name}, which is not in the tree"
+    text = evidence.read_text(encoding="utf-8")
+    assert evidence.name in declared[0], "the limitation must cite where it was measured"
+
+    figures = re.findall(r"\d+\.\d+%?", declared[0])
+    assert figures, "a limitation that quotes no measurement is an opinion"
+    missing = [f for f in figures if f not in text]
+    assert not missing, (
+        f"the record publishes {missing} which {evidence.name} does not contain: "
+        "a declared limitation may not carry a number its own evidence cannot show"
+    )

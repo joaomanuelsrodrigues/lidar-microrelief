@@ -61,6 +61,12 @@ LIMITATIONS = (
     "The only resource ceiling is a cell count (200,000,000 cells, ~12 GB of per-cell "
     "arrays), not a memory bound: a grid inside it can still exhaust memory, and that "
     "failure is an OOM kill rather than a refusal with a reason.",
+    "The ground filter does not remove buildings, and the basis band calls the result measured: "
+    "over cells holding official building returns and no ground return, 77.2% publish as measured "
+    "ground at the site shipped here and 89.7% at a built site, both measured 2026-08-31. No "
+    "parameter fixes it: the best single height threshold separates a roof from the terrain it "
+    "stands on at 0.712 balanced accuracy and the best width threshold at 0.528 "
+    "(docs/ground-filter-diagnosis.md).",
 )
 
 
@@ -171,12 +177,24 @@ def _selection_for(args: argparse.Namespace) -> Any:
     # overlap arithmetic, because that arithmetic is exactly what goes silently wrong: boxes in two
     # different CRSs do not overlap, so the failure would surface as "no tile intersects" and send
     # the reader looking for a coverage problem they do not have.
+    # `len(tile_crs) == 1` was the wrong condition, and the way it was wrong is the point: a
+    # single tile in a second CRS anywhere in the search box turned the check off, and
+    # `select_tiles` compares CRSs only among the tiles that *touch* the AOI. Every searched
+    # tile's box is compared against these bounds by `_overlap_area`, so what has to hold is
+    # that all of them are in the AOI's CRS -- not that they agree among themselves.
     tile_crs = {t.crs_epsg for t in tiles}
-    if len(tile_crs) == 1 and (only := tile_crs.pop()) != epsg:
+    if tile_crs and tile_crs != {epsg}:
+        named = ", ".join(f"EPSG:{c}" for c in sorted(tile_crs))
+        advice = (
+            f"Supply an AOI in EPSG:{next(iter(tile_crs))}, or set properties.bounds_epsg / "
+            f"--crs accordingly."
+            if len(tile_crs) == 1
+            else f"This provider is serving {len(tile_crs)} coordinate systems over this box, "
+            f"so no single AOI CRS matches them all; narrow the AOI or ask the provider."
+        )
         raise SystemExit(
-            f"the AOI is in EPSG:{epsg} and this provider's tiles are in EPSG:{only}. "
-            f"Comparing their boxes would intersect two different coordinate systems. "
-            f"Supply an AOI in EPSG:{only}, or set properties.bounds_epsg / --crs accordingly."
+            f"the AOI is in EPSG:{epsg} and this provider's tiles are in {named}. "
+            f"Comparing their boxes would intersect two different coordinate systems. {advice}"
         )
 
     return dgt.select_tiles(tiles, bounds, allow_mixed_epochs=args.allow_mixed_epochs)

@@ -106,6 +106,7 @@ def test_every_module_in_the_package_is_either_covered_or_exempt_with_a_reason()
         "provenance.py",
         "read.py",
         "render.py",
+        "smrf.py",
         "sorties.py",
         "surfaces.py",
     }
