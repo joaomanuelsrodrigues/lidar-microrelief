@@ -100,12 +100,15 @@ def block_factor(cell: float, params: SmrfParams) -> int:
     **0**, and a factor of zero is not an error anywhere downstream: it makes a block of no
     cells, which tiles no grid and reads like a filter that never ran.
     """
-    if cell <= 0:
+    if not math.isfinite(cell) or cell <= 0:
         # By name, and here: this used to be caught by `grid_for_bounds`, which the composition
         # root now calls AFTER this function -- so `--cell 0` reached the division and came out
-        # as a bare ZeroDivisionError, and `--cell -0.5` came out blaming the whole-multiple
-        # rule for a value that fails a simpler test first.
-        raise SmrfError(f"cell must be positive, got {cell}")
+        # as a bare ZeroDivisionError, and `--cell -0.5` came out blaming the whole-multiple rule
+        # for a value that fails a simpler test first. `math.isfinite` leads because
+        # `float("nan") <= 0` is False: a NaN cell slipped past the positivity test on its own
+        # and died in `int(round(1.0 / nan))` -- the bare-arithmetic failure this guard exists to
+        # replace, surviving inside the guard.
+        raise SmrfError(f"cell must be a positive, finite length in metres, got {cell}")
     ratio = params.cell / cell
     factor = int(round(ratio))
     if factor < 1 or abs(ratio - factor) > 1e-9:
@@ -264,6 +267,16 @@ def provisional_dem(z_min: FloatGrid, params: SmrfParams) -> tuple[FloatGrid, Fl
 
     cut_out = filled.copy()
     cut_out[objects | low] = np.nan
+    if bool(np.isnan(cut_out).all()):
+        # Every cell was cut as object or low outlier, so there is nothing left to interpolate
+        # the provisional DEM FROM. `knn_fill` returns an all-void surface untouched, by design,
+        # and the membership test then quietly calls every cell non-ground: a DTM of nothing,
+        # exit 0. The all-void guard on the INPUT catches the same situation from the other
+        # side; a small AOI filled by one building or one steep face reaches it from here.
+        raise SmrfError(
+            "every cell was cut as object or low outlier, so there is no ground left to "
+            "interpolate a provisional DEM from; the AOI holds no terrain this filter can find"
+        )
     dem = knn_fill(cut_out)
 
     scaled = dem / params.cell

@@ -353,7 +353,16 @@ def test_a_non_positive_grid_cell_is_refused_by_name_not_by_arithmetic() -> None
     `--cell 0` produced a bare `ZeroDivisionError` and `--cell -0.5` blamed the whole-multiple
     rule, which is not the first thing wrong with it."""
     for bad in (0.0, -0.5, -1.0):
-        with pytest.raises(SmrfError, match="must be positive"):
+        with pytest.raises(SmrfError, match="positive, finite"):
+            block_factor(bad, SmrfParams(cell=1.0))
+
+
+def test_a_non_finite_grid_cell_is_refused_too() -> None:
+    """`float("nan") <= 0` is False, so a NaN cell walked through a bare positivity test and
+    died in `int(round(1.0 / nan))` -- the bare-arithmetic failure the guard replaced, surviving
+    inside the guard. `inf` reached a named refusal but blamed the whole-multiple rule."""
+    for bad in (float("nan"), float("inf"), float("-inf")):
+        with pytest.raises(SmrfError, match="positive, finite"):
             block_factor(bad, SmrfParams(cell=1.0))
 
 
@@ -377,3 +386,27 @@ def test_the_all_void_guard_does_not_fire_on_a_surface_that_holds_one_cell() -> 
     out = classify_ground_smrf(almost, cell=0.5, params=SmrfParams(cell=1.0))
     assert out.shape == (4, 4)
     assert bool(out[2, 2]), "the one measured cell sits on the provisional DEM and is ground"
+
+
+def test_a_surface_where_every_cell_is_cut_refuses_instead_of_publishing_nothing() -> None:
+    """The all-void guard closes the INPUT side; this is the same situation from the other end.
+
+    When the progressive filter and the low-outlier mask together cover every coarse cell, the
+    surface handed to the second fill is all-void. `knn_fill` returns it untouched, by design,
+    the tolerance is all-NaN, and the membership test then calls every cell non-ground: a DTM of
+    nothing, exit 0. Measured before the fix on this exact input -- 0 of 16 cells ground, no
+    refusal. A small AOI filled by one building or one steep face reaches it.
+    """
+    steep = np.repeat(
+        np.repeat(np.array([[91.96, 105.42], [119.56, 114.20]]), 2, axis=0), 2, axis=1
+    )
+    with pytest.raises(SmrfError, match="no ground left"):
+        classify_ground_smrf(steep, cell=0.5, params=SmrfParams(cell=1.0))
+
+
+def test_the_all_cut_guard_leaves_an_ordinary_surface_alone() -> None:
+    """The quiet arm. A guard that fires on a normal surface would refuse every real run."""
+    rng = np.random.default_rng(0)
+    gentle = rng.normal(100.0, 0.05, (8, 8))
+    out = classify_ground_smrf(gentle, cell=0.5, params=SmrfParams(cell=1.0))
+    assert out.any(), "a nearly flat surface is mostly ground; the guard must not reach it"

@@ -15,13 +15,18 @@ input it must REFUSE as well as one it must accept -- a guard only exercised on 
 is indistinguishable from no guard.
 """
 
+import argparse
 import importlib.util
+import json
 import sys
 from pathlib import Path
 from types import ModuleType
 
 import numpy as np
 import pytest
+
+from microrelief.grid import Grid
+from microrelief.smrf import SmrfError, SmrfParams, classify_ground_smrf
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "compare_ground_filters.py"
@@ -726,40 +731,89 @@ class TestTerracesCommandRefusals:
 
 class TestReferenceGridSnapsLikeThePipeline:
     """The reference command dumps the arrays `compare` and `terraces` feed to SMRF, so its grid
-    has to tile into whole SMRF blocks exactly as the pipeline's does. It did not, and nothing
-    here exercised the command -- which is also how the first fix shipped `block_factor(cell,
-    args.smrf)` where `args.smrf` is the reference-output DIRECTORY, an AttributeError waiting
-    for the one caller nobody runs in the suite."""
+    has to tile into whole SMRF blocks exactly as the pipeline's does.
 
-    def test_the_block_is_sized_from_smrf_params_not_from_the_directory_argument(self) -> None:
-        import inspect
+    The first version of this class asserted on `inspect.getsource(_cmd_reference)` and never ran
+    the command. Measured: those assertions passed with the snap replaced by `block=1` and with
+    the wrong object passed to `block_factor` -- which is the exact defect they were written
+    for, an `AttributeError` in the one command the suite never invoked. Reading a function's
+    source is not executing it.
+    """
 
-        source = inspect.getsource(mod._cmd_reference)
-        assert "block=" in source, "the reference grid must be snapped like the pipeline's"
-        assert "block_factor(args.cell, args.smrf)" not in source, (
-            "args.smrf is a Path (the reference-output directory), not SmrfParams"
-        )
-
-    def test_an_odd_cell_count_would_refuse_without_the_snap_and_is_accepted_with_it(self) -> None:
-        """Both arms, on the real functions rather than on the script's text."""
-        import numpy as np
-
-        from microrelief.grid import grid_for_bounds
-        from microrelief.smrf import SmrfParams, block_factor, classify_ground_smrf
-
-        params = SmrfParams()
-        cell = 0.5
-        bounds = (0.0, 0.0, 150.5, 150.5)
-        unsnapped = grid_for_bounds(*bounds, cell, 3763)
-        snapped = grid_for_bounds(*bounds, cell, 3763, block=block_factor(cell, params))
-        assert unsnapped.n_cols % 2 == 1, "the fixture must actually be odd, or it proves nothing"
-
-        rng = np.random.default_rng(0)
-        with pytest.raises(mod.SmrfError if hasattr(mod, "SmrfError") else ValueError):
-            classify_ground_smrf(
-                rng.normal(100.0, 0.5, (unsnapped.n_rows, unsnapped.n_cols)), cell, params
+    @staticmethod
+    def _aoi(tmp_path: Path, extent: float) -> Path:
+        """An AOI whose extent gives an ODD cell count at 0.5 m, so the snap has work to do."""
+        aoi = tmp_path / "aoi.geojson"
+        aoi.write_text(
+            json.dumps(
+                {
+                    "type": "Feature",
+                    "properties": {"bounds": [0.0, 0.0, extent, extent], "bounds_epsg": 3763},
+                    "geometry": {
+                        "type": "Polygon",
+                        "coordinates": [[[0, 0], [0, 1], [1, 1], [1, 0], [0, 0]]],
+                    },
+                }
             )
-        out = classify_ground_smrf(
-            rng.normal(100.0, 0.5, (snapped.n_rows, snapped.n_cols)), cell, params
         )
-        assert out.shape == (snapped.n_rows, snapped.n_cols)
+        return aoi
+
+    def _run_reference(self, tmp_path: Path, extent: float) -> Grid:
+        """Invoke `_cmd_reference` for real and return the Grid it actually built.
+
+        It refuses at the empty tile directory (exit 2), which is *after* grid construction --
+        so this exercises the composition without needing a LAZ pair. The grid is captured by
+        wrapping the module's own `grid_for_bounds`, so a wrong `block=` or a wrong object
+        passed to `block_factor` surfaces here as a failure or an exception, not as text.
+        """
+        captured: list[Grid] = []
+        real = mod.grid_for_bounds
+
+        def spy(*args: object, **kwargs: object) -> Grid:
+            grid = real(*args, **kwargs)
+            captured.append(grid)
+            return grid
+
+        tiles = tmp_path / "tiles"
+        tiles.mkdir()
+        args = argparse.Namespace(
+            aoi=self._aoi(tmp_path, extent),
+            crs=None,
+            cell=0.5,
+            tiles=tiles,
+            smrf=tmp_path / "smrf-out",
+            suffix="-smrf",
+            out=tmp_path / "ref.npz",
+        )
+        mod.grid_for_bounds = spy
+        try:
+            rc = mod._cmd_reference(args)
+        finally:
+            mod.grid_for_bounds = real
+        assert rc == 2, "the fixture must refuse at the empty tile directory, after the grid"
+        assert len(captured) == 1, f"expected one grid, captured {len(captured)}"
+        return captured[0]
+
+    def test_the_reference_grid_is_snapped_to_whole_smrf_blocks(self, tmp_path: Path) -> None:
+        grid = self._run_reference(tmp_path, 150.5)
+        assert (grid.n_rows, grid.n_cols) == (302, 302), (
+            "301 cells is what the unsnapped grid gives; the reference must snap like the "
+            "pipeline or it builds arrays no later command can read"
+        )
+        assert grid.n_rows % 2 == 0 and grid.n_cols % 2 == 0
+
+    def test_the_fixture_would_be_odd_without_the_snap(self, tmp_path: Path) -> None:
+        """The discriminating half: if the unsnapped grid were already even, the test above
+        would pass with the snap deleted and prove nothing."""
+        from microrelief.grid import grid_for_bounds as real_grid
+
+        unsnapped = real_grid(0.0, 0.0, 150.5, 150.5, 0.5, 3763)
+        assert (unsnapped.n_rows, unsnapped.n_cols) == (301, 301)
+
+    def test_an_odd_grid_is_refused_by_the_filter_and_a_snapped_one_is_not(self) -> None:
+        """Why the snap is load-bearing, on the real refusal rather than on any ValueError."""
+        rng = np.random.default_rng(0)
+        with pytest.raises(SmrfError, match="divisible"):
+            classify_ground_smrf(rng.normal(100.0, 0.5, (301, 301)), 0.5, SmrfParams())
+        out = classify_ground_smrf(rng.normal(100.0, 0.5, (302, 302)), 0.5, SmrfParams())
+        assert out.shape == (302, 302)

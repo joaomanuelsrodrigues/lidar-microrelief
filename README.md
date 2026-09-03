@@ -214,11 +214,13 @@ exercised, which is the same reason the module refuses `cut > 0` rather than ign
 still declares all five, so a reader can see what ran, and `CALIBRATIONS.md` gives each one a
 calibration target. One consequence is a real restriction: the publishing grid cell must divide the
 1 m analysis cell, so `--cell` takes 1/k metres and refuses anything else, naming what would work.
-A second is that the grid grows outward to whole 1 m blocks — up to `(1 m / --cell) - 1` cells per
-axis past the AOI you asked for, which is one cell at `--cell 0.5`, four at `0.2` and nine at
-`0.1`. Those cells are not free of consequence: membership is decided against the grid, not the
-AOI, so one that falls inside a source tile publishes what was measured in it rather than
-`undetermined`. Both products shipped here are already whole blocks, so neither moved.
+A second is that the grid grows outward to whole 1 m blocks. The grid already overhung the
+requested AOI by up to one cell on each side before this — `grid_for_bounds` floors the origin and
+ceils the count — and the snap **adds** up to `(1 m / --cell) - 1` cells per axis on top: one more
+at `--cell 0.5`, four at `0.2`, nine at `0.1`. Those cells are not free of consequence: membership
+is decided against the grid, not the AOI, so one falling inside a source tile publishes what was
+measured in it rather than `undetermined`. Both products shipped here are already whole blocks, so
+neither moved.
 
 **What it replaced, and what that cost.** Up to 0.4.4 this was a progressive morphological filter
 (Zhang et al., 2003) whose `max_elevation_m` capped every tolerance — the parameter that decided

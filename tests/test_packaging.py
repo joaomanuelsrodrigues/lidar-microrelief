@@ -124,3 +124,28 @@ def test_importing_the_module_entry_point_does_not_run_the_cli() -> None:
         f"importing the entry point ended the interpreter; rc={completed.returncode}, "
         f"stdout={completed.stdout!r}, stderr={completed.stderr!r}"
     )
+
+
+def test_the_citation_release_date_is_the_date_the_published_record_was_produced() -> None:
+    """`version:` was locked to `__version__`; `date-released:` was locked to nothing.
+
+    A review found it carrying 0.4.4's date against a 0.5.0 version. The value was corrected by
+    hand and, without this, the identical defect returns at the next release under a green suite
+    -- the one fix in that round with no discriminator behind it. The date is derived, not typed:
+    a citation's release date is the day the artefact it cites was built, and the tracked record
+    of the published product says which day that was.
+    """
+    import json
+    import re
+
+    root = Path(__file__).resolve().parents[1]
+    produced = json.loads((root / "docs" / "viewer" / "provenance.json").read_text())
+    day = produced["created_utc"][:10]
+
+    cff = (root / "CITATION.cff").read_text(encoding="utf-8")
+    found = re.search(r"^date-released:\s*(\S+)\s*$", cff, re.M)
+    assert found, "CITATION.cff declares no date-released"
+    assert found.group(1) == day, (
+        f"CITATION.cff says the release is {found.group(1)}; the published record "
+        f"(docs/viewer/provenance.json) was produced on {day} -- copy it from the record"
+    )

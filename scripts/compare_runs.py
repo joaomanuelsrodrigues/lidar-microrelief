@@ -186,7 +186,7 @@ def compare(
         compared += 1
         print(f"{name}: {ba.size} cells compared")
     if record_only:
-        print(f"bands not compared ({len(new_bands)} present): --record-only")
+        print(f"band CONTENTS not compared ({len(new_bands)} present, set checked): --record-only")
     else:
         print(f"{compared} raster(s) compared")
 
@@ -266,7 +266,8 @@ def compare(
             print(f"  {p}", file=sys.stderr)
         return 1
     verdict = (
-        "the bands were not compared; every record field that moved is named above, and "
+        "the band contents were not compared (the band SET was); every record field that "
+        "moved is named above, and "
         if record_only
         else "identical in every band and every record field but the three permitted, and "
     )
@@ -303,12 +304,17 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument(
         "--record-only",
         action="store_true",
-        help="skip the band comparison and assert only the record. The one use is a release that "
-        "changes every band ON PURPOSE -- swapping the ground filter, say -- where the "
-        "band-identity spine has no verdict to give and the limitation transformation would "
-        "otherwise never be exercised by an acceptance run. Refuses two runs of the same "
-        "version, where the bands are the whole question. Record fields that moved are printed "
-        "by name rather than permitted silently.",
+        help="skip the per-cell band comparison and assert the record. The one use is a release "
+        "that changes every band's CONTENT on purpose -- swapping the ground filter, say -- "
+        "where the pixel-identity spine has no verdict to give and the limitation transformation "
+        "would otherwise never be exercised by an acceptance run. The band SET and the "
+        "nothing-scanned guard still hold: they cost no reads, and putting them under this flag "
+        "once let two directories holding zero rasters return the full success verdict. A "
+        "release that ADDS or RENAMES a band therefore has no accepting path here and is "
+        "refused; that has not happened, and inventing the flag for it before it does would be "
+        "an unexercised branch. Refuses two runs of the same version, where the bands are the "
+        "whole question. Record fields that moved are printed by name, never permitted "
+        "silently.",
     )
     return ap
 

@@ -369,7 +369,11 @@ def test_record_only_compares_the_record_across_two_versions(tmp_path: Path) -> 
     got = _run("--record-only", FLAG, str(old), str(new))
     assert got.returncode == 0, got.stderr
     assert "0 raster(s) compared" not in got.stdout, "the mode must say it skipped the bands"
-    assert "bands not compared" in got.stdout
+    # What it skipped is the band CONTENTS. The set is still compared, and the message has to
+    # say which -- it said "the bands were not compared" while comparing the set, which is the
+    # sentence a reader uses to decide what was checked.
+    assert "band CONTENTS not compared" in got.stdout
+    assert "set checked" in got.stdout
 
 
 def test_record_only_still_fails_on_a_limitation_the_release_did_not_declare(
