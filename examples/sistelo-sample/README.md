@@ -19,8 +19,8 @@ Run it:
     uv run microrelief run --aoi examples/sistelo-sample/aoi.geojson --laz examples/sistelo-sample \
         --out outputs/sample --attribution "$(cat examples/sistelo-sample/attribution.txt)"
 
-What comes out, on the author's machine: a 300 × 300 grid of 0.5 m cells; basis 56.2 % measured ·
-43.1 % interpolated · 0.7 % undetermined; measured density 17.3 pts/m²; record hash `f67b2f033d23`.
+What comes out, on the author's machine: a 300 × 300 grid of 0.5 m cells; basis 51.6% measured ·
+42.3% interpolated · 6.1% undetermined; measured density 17.3 pts/m²; record hash `2da06987808e`.
 Without `--selection` (the DGT catalogue step) the record says it does not know what the provider
 claimed — `flight_date` and `point_count_catalogue` are `null` — rather than repeating what it
 measured.

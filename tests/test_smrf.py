@@ -14,6 +14,7 @@ import pytest
 from microrelief.smrf import (
     SmrfError,
     SmrfParams,
+    block_factor,
     block_min,
     classify_cells,
     classify_ground_smrf,
@@ -313,3 +314,34 @@ def test_the_smrf_cell_must_be_a_whole_multiple_of_the_grid_cell() -> None:
 def test_the_grid_must_divide_into_whole_blocks() -> None:
     with pytest.raises(SmrfError, match="divis"):
         classify_ground_smrf(np.zeros((5, 4)), cell=0.5, params=SmrfParams(cell=1.0))
+
+
+# --- the block factor, single-sourced ------------------------------------------------------
+#
+# The CLI has to know the block size before it builds the grid (to snap the grid to whole
+# blocks) and the filter has to know it after (to take block minima). Computing it twice is
+# how the two drift, so it is computed once here and both callers read it.
+
+
+def test_the_block_factor_is_the_ratio_of_the_two_cell_sizes() -> None:
+    assert block_factor(0.5, SmrfParams(cell=1.0)) == 2
+    assert block_factor(1.0, SmrfParams(cell=1.0)) == 1
+    assert block_factor(0.25, SmrfParams(cell=1.0)) == 4
+
+
+def test_a_grid_cell_that_does_not_divide_the_smrf_cell_is_refused_by_name() -> None:
+    """The message has to say what IS admissible, or the caller cannot act on it."""
+    with pytest.raises(SmrfError, match="multiple") as exc:
+        block_factor(0.3, SmrfParams(cell=1.0))
+    assert "0.5" in str(exc.value), "a refusal that names no admissible value is a dead end"
+
+
+def test_a_grid_cell_coarser_than_the_smrf_cell_is_refused_rather_than_rounded_to_zero() -> None:
+    """`round(1.0 / 2.0)` is 0, and a factor of 0 is not an error anywhere downstream: it makes
+    a block size of zero, which divides no grid and reads as a filter that never ran. This is
+    the case the ratio check catches only because it is written as a whole-multiple test rather
+    than as a rounding."""
+    with pytest.raises(SmrfError, match="multiple"):
+        block_factor(2.0, SmrfParams(cell=1.0))
+    with pytest.raises(SmrfError, match="multiple"):
+        block_factor(0.75, SmrfParams(cell=1.0))

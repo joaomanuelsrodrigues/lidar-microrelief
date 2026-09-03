@@ -136,20 +136,28 @@ class TestDefaultsTrackTheShippedFilter:
     the record instead of copied from it (24.0/0.2/3.0 against the shipped 4.0/0.3/2.0). Nothing
     would have failed: the table would simply have described a filter nobody runs. So the two
     sets of literals are locked to each other, and drift in EITHER file fails here.
+
+    Since 0.5.0 the shipped filter is SMRF and the CLI no longer declares this one's parameters,
+    so the lock's subject moved rather than being dropped: the four belonging to the retired
+    filter are now pinned in `GroundParams` (the configuration 0.4.4 shipped and every recorded
+    measurement used), and the two the pipeline still takes are still read off the CLI. Drift in
+    either direction fails here.
     """
 
+    RETIRED = (
+        "max_window_m",
+        "slope_threshold",
+        "elevation_threshold_m",
+        "max_elevation_m",
+    )
     SHARED = (
-        "max-window-m",
-        "slope-threshold",
-        "elevation-threshold-m",
-        "max-elevation-m",
         "k-min-returns",
         "d-max-interp-m",
     )
 
     @staticmethod
-    def _defaults(source: str) -> dict[str, str]:
-        """Every declaration of each shared flag, not the first one.
+    def _defaults(source: str, flags: tuple[str, ...]) -> dict[str, str]:
+        """Every declaration of each flag, not the first one.
 
         `re.search` stops at the first match, so this lock only ever read the `compare` parser.
         The `terraces` parser re-declares all six of these, and drifted past the lock unseen
@@ -159,7 +167,7 @@ class TestDefaultsTrackTheShippedFilter:
         import re
 
         found = {}
-        for flag in TestDefaultsTrackTheShippedFilter.SHARED:
+        for flag in flags:
             values = re.findall(
                 rf'add_argument\(\s*"--{re.escape(flag)}",\s*type=\w+,\s*default=([0-9.]+)\)',
                 source,
@@ -168,23 +176,65 @@ class TestDefaultsTrackTheShippedFilter:
                 found[flag] = values[0] if len(set(values)) == 1 else f"DISAGREES:{set(values)}"
         return found
 
+    @staticmethod
+    def _pinned(source: str, names: tuple[str, ...]) -> dict[str, str]:
+        """The retired filter's configuration, read off `GroundParams`'s field defaults."""
+        import re
+
+        found = {}
+        for name in names:
+            values = re.findall(rf"^\s*{re.escape(name)}: float = ([0-9.]+)\s*$", source, re.M)
+            if values:
+                found[name] = values[0] if len(set(values)) == 1 else f"DISAGREES:{set(values)}"
+        return found
+
     def test_every_shared_default_matches_the_cli(self) -> None:
-        cli = self._defaults((ROOT / "src" / "microrelief" / "cli.py").read_text())
-        instrument = self._defaults(SCRIPT.read_text())
+        """The two parameters the shipped pipeline still takes."""
+        cli = self._defaults((ROOT / "src" / "microrelief" / "cli.py").read_text(), self.SHARED)
+        instrument = self._defaults(SCRIPT.read_text(), self.SHARED)
 
         assert set(cli) == set(self.SHARED), f"could not read the CLI's defaults: found {cli}"
         assert set(instrument) == set(self.SHARED), f"could not read ours: found {instrument}"
         assert instrument == cli
 
+    def test_every_retired_default_matches_the_configuration_that_shipped(self) -> None:
+        """The four the CLI stopped declaring. The instrument compares SMRF against *the filter
+        that shipped at 0.4.4*, so its settings have to be that filter's, not a fresh guess."""
+        pinned = self._pinned(
+            (ROOT / "src" / "microrelief" / "ground.py").read_text(), self.RETIRED
+        )
+        flags = tuple(name.replace("_", "-") for name in self.RETIRED)
+        instrument = self._defaults(SCRIPT.read_text(), flags)
+
+        assert set(pinned) == set(self.RETIRED), f"could not read GroundParams: found {pinned}"
+        assert set(instrument) == set(flags), f"could not read ours: found {instrument}"
+        assert {k.replace("-", "_"): v for k, v in instrument.items()} == pinned
+
     def test_the_reader_would_notice_a_changed_default(self) -> None:
-        """Control on the control: the comparison above must be able to fail."""
-        mutated = SCRIPT.read_text().replace(
+        """Control on the control, on BOTH arms: each comparison must be able to fail.
+
+        One arm was enough while both groups came from the same file. They no longer do, so a
+        control that exercises one leaves the other's reader unproven -- which is how the newest
+        half of an instrument becomes the untested half.
+        """
+        cli = (ROOT / "src" / "microrelief" / "cli.py").read_text()
+        ground = (ROOT / "src" / "microrelief" / "ground.py").read_text()
+
+        shared_mutant = SCRIPT.read_text().replace(
+            'c.add_argument("--d-max-interp-m", type=float, default=2.0)',
+            'c.add_argument("--d-max-interp-m", type=float, default=20.0)',
+        )
+        assert shared_mutant != SCRIPT.read_text(), "the planted shared default did not apply"
+        assert self._defaults(shared_mutant, self.SHARED) != self._defaults(cli, self.SHARED)
+
+        retired_mutant = SCRIPT.read_text().replace(
             'c.add_argument("--max-window-m", type=float, default=4.0)',
             'c.add_argument("--max-window-m", type=float, default=40.0)',
         )
-        cli = self._defaults((ROOT / "src" / "microrelief" / "cli.py").read_text())
-
-        assert self._defaults(mutated) != cli
+        assert retired_mutant != SCRIPT.read_text(), "the planted retired default did not apply"
+        flags = tuple(name.replace("_", "-") for name in self.RETIRED)
+        got = {k.replace("-", "_"): v for k, v in self._defaults(retired_mutant, flags).items()}
+        assert got != self._pinned(ground, self.RETIRED)
 
 
 class TestConfusionAndKappa:

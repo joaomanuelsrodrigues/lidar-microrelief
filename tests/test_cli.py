@@ -7,6 +7,7 @@ it calls were finished, and drifted from them in ways only running it exposes.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -537,6 +538,71 @@ def test_the_density_denominator_is_the_grid_not_the_requested_aoi(tmp_path: Pat
     assert doc["honesty"]["measured_density_pts_m2"] != pytest.approx(in_grid / requested_area)
 
 
+_FIGURE = re.compile(r"\d+\.\d+%?")
+_CITATION = re.compile(r"docs/[A-Za-z0-9._/-]+\.md")
+
+
+def _figures(line: str) -> list[str]:
+    return _FIGURE.findall(line)
+
+
+def _assert_every_figure_has_evidence(line: str) -> None:
+    """Every figure a limitation publishes must appear in a document that same line cites.
+
+    The documents come from the line, not from a list kept here: a limitation may be measured in
+    one record and re-measured in another, and the check has to follow the citation rather than
+    force the prose back to whichever file the test was written against.
+    """
+    root = Path(__file__).resolve().parents[1]
+    cited = _CITATION.findall(line)
+    assert cited, f"a limitation quoting figures must cite where they were measured: {line!r}"
+
+    corpus = ""
+    for name in cited:
+        path = root / name
+        assert path.exists(), f"the limitation cites {name}, which is not in the tree"
+        corpus += path.read_text(encoding="utf-8")
+
+    missing = [f for f in _figures(line) if f not in corpus]
+    assert not missing, (
+        f"the record publishes {missing} which {cited} do not contain: a declared limitation "
+        "may not carry a number its own evidence cannot show"
+    )
+
+
+def test_every_limitation_that_quotes_a_figure_can_show_where_it_was_measured() -> None:
+    """The partition, over the whole list rather than over the one line a test remembered.
+
+    Each limitation either quotes no figure, or cites documents that carry every figure it
+    quotes. Nothing is exempt: an exemption here would be a number in every published record
+    with nothing behind it.
+    """
+    from microrelief.cli import LIMITATIONS
+
+    quoting = [line for line in LIMITATIONS if _figures(line)]
+    assert quoting, "this check scanned nothing: no limitation quotes a figure"
+    for line in quoting:
+        _assert_every_figure_has_evidence(line)
+
+
+def test_the_evidence_check_fires_on_a_figure_no_cited_document_contains() -> None:
+    """Both arms. Without this, a check that cannot fail reads exactly like a clean list."""
+    real = (
+        "16.4% publish as measured ground at a built site near Valongo "
+        "(docs/reference-instrument-result.md)."
+    )
+    _assert_every_figure_has_evidence(real)  # the quiet arm
+
+    with pytest.raises(AssertionError, match="99.9%"):
+        _assert_every_figure_has_evidence(
+            "99.9% of cells are ground (docs/reference-instrument-result.md)."
+        )
+    with pytest.raises(AssertionError, match="not in the tree"):
+        _assert_every_figure_has_evidence("16.4% of cells (docs/no-such-record.md).")
+    with pytest.raises(AssertionError, match="must cite"):
+        _assert_every_figure_has_evidence("16.4% of cells, measured somewhere.")
+
+
 def test_the_record_declares_that_buildings_are_published_as_terrain() -> None:
     """The defect the second-AOI gate found, with every number tied to the run that measured it.
 
@@ -546,27 +612,81 @@ def test_the_record_declares_that_buildings_are_published_as_terrain() -> None:
     support -- which is the one failure the honesty layer exists to prevent.
 
     So the line is pinned to its evidence rather than to a phrasing: every figure it quotes must
-    appear in the diagnosis that measured it, so the two cannot drift apart the way a number typed
-    into two files does.
-    """
-    import re
+    appear in a document it cites, so the two cannot drift apart the way a number typed into two
+    files does.
 
+    The evidence is read from the line's own citations rather than from one filename fixed here.
+    Pinned to `ground-filter-diagnosis.md` alone, this test went red the moment the defect was
+    measured a second time and the line moved to the newer record -- a lock that fires on a
+    correction is a lock that gets edited to whatever the code says.
+    """
     from microrelief.cli import LIMITATIONS
 
-    declared = [line for line in LIMITATIONS if "buildings" in line]
+    declared = [line for line in LIMITATIONS if "building" in line]
     assert len(declared) == 1, (
         "exactly one limitation must name the building defect; "
-        f"found {len(declared)} lines mentioning buildings"
+        f"found {len(declared)} lines mentioning a building"
     )
-    evidence = Path(__file__).resolve().parents[1] / "docs" / "ground-filter-diagnosis.md"
-    assert evidence.exists(), f"the limitation cites {evidence.name}, which is not in the tree"
-    text = evidence.read_text(encoding="utf-8")
-    assert evidence.name in declared[0], "the limitation must cite where it was measured"
-
-    figures = re.findall(r"\d+\.\d+%?", declared[0])
+    figures = _figures(declared[0])
     assert figures, "a limitation that quotes no measurement is an opinion"
-    missing = [f for f in figures if f not in text]
-    assert not missing, (
-        f"the record publishes {missing} which {evidence.name} does not contain: "
-        "a declared limitation may not carry a number its own evidence cannot show"
-    )
+    _assert_every_figure_has_evidence(declared[0])
+
+
+# --- the filter the pipeline runs, and the parameters the record declares -------------------
+
+
+def test_the_record_declares_the_smrf_parameters_and_none_of_the_retired_ones(
+    tmp_path: Path,
+) -> None:
+    """The record states what ran. The retired filter's parameters are not merely unused here --
+    their presence would say a filter ran that did not."""
+    code, out = _synthetic_run(tmp_path)
+    assert code == 0
+    doc = json.loads((out / "provenance.json").read_text())
+    params = doc["parameters"]
+
+    assert params["smrf_cell"] == 1.0
+    assert params["smrf_slope"] == 0.15
+    assert params["smrf_scalar"] == 1.25
+    assert params["smrf_threshold"] == 0.5
+    # The resolved width, not the `None` that stands for "18 * cell" in the dataclass: a record
+    # that publishes a sentinel has not said what ran.
+    assert params["smrf_window_m"] == 18.0
+
+    retired = {"max_window_m", "slope_threshold", "elevation_threshold_m", "max_elevation_m"}
+    assert not retired & set(params), f"the record still declares {retired & set(params)}"
+    assert not retired & set(doc["uncalibrated_thresholds"])
+    for name in ("smrf_cell", "smrf_slope", "smrf_scalar", "smrf_threshold", "smrf_window_m"):
+        assert name in doc["uncalibrated_thresholds"], name
+
+
+@pytest.mark.parametrize(
+    "flag,value",
+    [
+        ("--max-window-m", "4.0"),
+        ("--slope-threshold", "0.3"),
+        ("--elevation-threshold-m", "0.3"),
+        ("--max-elevation-m", "3.5"),
+    ],
+)
+def test_the_retired_parameters_are_rejected_rather_than_silently_ignored(
+    tmp_path: Path, flag: str, value: str
+) -> None:
+    """A removal is asserted, not assumed. An accepted-and-ignored flag is the worse failure:
+    the caller believes they set something."""
+    with pytest.raises(SystemExit) as exc:  # argparse exits 2 on an unknown option
+        _synthetic_run(tmp_path, extra=[flag, value])
+    assert exc.value.code == 2
+
+
+def test_a_cell_that_does_not_divide_the_analysis_cell_refuses_and_says_what_would_work(
+    tmp_path: Path, capsys: Any
+) -> None:
+    """Pinning the SMRF cell at 1 m narrows the admissible `--cell` to 1/k. That is a real
+    restriction, so it refuses at the composition root with an actionable message rather than
+    somewhere inside the filter."""
+    code, _out = _synthetic_run(tmp_path, extra=["--cell", "0.3"])
+    assert code != 0
+    err = capsys.readouterr().err
+    assert "multiple" in err
+    assert "0.5" in err, "the refusal must name a cell size that would work"

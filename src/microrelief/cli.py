@@ -17,6 +17,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 from pyproj import Transformer
 
 from microrelief.accumulate import Accumulator
@@ -24,23 +25,29 @@ from microrelief.crs import CRSError, require_metric_crs
 from microrelief.density import compute_basis, honesty_report
 from microrelief.export import export
 from microrelief.grid import Grid, grid_for_bounds
-from microrelief.ground import GroundParams, agreement, classify_ground
+from microrelief.ground import agreement
 from microrelief.precheck import check_tiles
 from microrelief.provenance import InputRef, build_provenance
 from microrelief.read import read_laz
+from microrelief.smrf import SmrfParams, block_factor, classify_ground_smrf
 from microrelief.surfaces import build_surfaces
 
-# max_elevation_m is deliberately absent since 0.3.0: it carries a site measurement (tallest
-# verified terrace riser 2.98 m, docs/riser-measurement.md) rather than a declared guess, which
-# is what this list exists to disclose. The measured value is Sistelo's, not a constant of
-# terraces - CALIBRATIONS.md says so in its row.
+# PDAL 2.10.2's defaults, pinned rather than exposed. This is the one configuration
+# `src/microrelief/smrf.py` is validated against cell-for-cell (docs/smrf-build-result.md);
+# every other setting is a branch no reference run has exercised, which is the same reason that
+# module refuses `cut > 0` rather than ignoring it. Changing one of these is a code change and a
+# version bump, not a flag.
+SMRF_PARAMS = SmrfParams()
+
 UNCALIBRATED = (
     "cell",
     "k_min_returns",
     "d_max_interp_m",
-    "max_window_m",
-    "slope_threshold",
-    "elevation_threshold_m",
+    "smrf_cell",
+    "smrf_slope",
+    "smrf_scalar",
+    "smrf_threshold",
+    "smrf_window_m",
 )
 LIMITATIONS = (
     "Interpolated cells borrow the nearest measured value; no smoothing is applied.",
@@ -61,12 +68,19 @@ LIMITATIONS = (
     "The only resource ceiling is a cell count (200,000,000 cells, ~12 GB of per-cell "
     "arrays), not a memory bound: a grid inside it can still exhaust memory, and that "
     "failure is an OOM kill rather than a refusal with a reason.",
-    "The ground filter does not remove buildings, and the basis band calls the result measured: "
-    "over cells holding official building returns and no ground return, 77.2% publish as measured "
-    "ground at the site shipped here and 89.7% at a built site, both measured 2026-08-31. No "
-    "parameter fixes it: the best single height threshold separates a roof from the terrain it "
-    "stands on at 0.712 balanced accuracy and the best width threshold at 0.528 "
-    "(docs/ground-filter-diagnosis.md).",
+    "The ground filter does not remove every building, and the basis band calls what it keeps "
+    "measured: over cells holding official building returns and no ground return, 16.4% publish "
+    "as measured ground at a built site near Valongo. The filter this release replaces published "
+    "87.7% of that same population (docs/reference-instrument-result.md).",
+    "Terrace preservation is measured, not enforced. This filter has no cap on how far it may "
+    "cut, so that risers survive is an empirical result at one site: 91.078% of the cells the "
+    "previous filter called measured ground are kept, and 95.082% of those standing on a step "
+    "above 2.5 m (docs/p4-terrace-result.md). The filter it replaces guaranteed it by "
+    "construction, through a parameter this one does not have.",
+    "The grid cell must divide the 1 m analysis cell, so --cell takes 1/k metres and refuses "
+    "anything else. The grid is also grown outward to whole analysis blocks, which can add one "
+    "cell per axis beyond the requested AOI; a cell added there publishes what was measured in "
+    "it, not undetermined, whenever it falls inside a source tile.",
 )
 
 
@@ -320,16 +334,17 @@ def _cmd_run(args: argparse.Namespace) -> int:
         print(f"no .laz files in {args.laz}", file=sys.stderr)
         return 2
 
-    grid = grid_for_bounds(minx, miny, maxx, maxy, args.cell, epsg)
+    # The block size is settled before the grid exists, because the grid has to be built in
+    # whole blocks for the filter to read it. `block_factor` refuses a `--cell` that does not
+    # divide the analysis cell, here at the composition root rather than deep inside the filter.
+    block = block_factor(args.cell, SMRF_PARAMS)
+    grid = grid_for_bounds(minx, miny, maxx, maxy, args.cell, epsg, block=block)
     acc, inputs, flight_dates, official_ground = _read_inputs(
         paths, grid, _catalogue_facts(args.selection)
     )
     stats = acc.finish()
 
-    params = GroundParams(
-        args.max_window_m, args.slope_threshold, args.elevation_threshold_m, args.max_elevation_m
-    )
-    is_ground = classify_ground(stats.min_z_all, args.cell, params)
+    is_ground = classify_ground_smrf(stats.min_z_all.astype(np.float64), args.cell, SMRF_PARAMS)
     basis = compute_basis(is_ground, stats, args.cell, args.k_min_returns, args.d_max_interp_m)
     surfaces = build_surfaces(grid, stats, basis)
 
@@ -346,10 +361,13 @@ def _cmd_run(args: argparse.Namespace) -> int:
             "cell": args.cell,
             "k_min_returns": args.k_min_returns,
             "d_max_interp_m": args.d_max_interp_m,
-            "max_window_m": args.max_window_m,
-            "slope_threshold": args.slope_threshold,
-            "elevation_threshold_m": args.elevation_threshold_m,
-            "max_elevation_m": args.max_elevation_m,
+            "smrf_cell": SMRF_PARAMS.cell,
+            "smrf_slope": SMRF_PARAMS.slope,
+            "smrf_scalar": SMRF_PARAMS.scalar,
+            "smrf_threshold": SMRF_PARAMS.threshold,
+            # The resolved width, never the `None` that stands for `18 * cell`: a record that
+            # publishes a sentinel has not said what ran.
+            "smrf_window_m": SMRF_PARAMS.window_m,
         },
         inputs=inputs,
         honesty=honesty.as_dict(),
@@ -429,13 +447,9 @@ def main(argv: list[str] | None = None) -> int:
             )
             p.add_argument("--k-min-returns", type=int, default=1)
             p.add_argument("--d-max-interp-m", type=float, default=2.0)
-            p.add_argument("--max-window-m", type=float, default=4.0)
-            p.add_argument("--slope-threshold", type=float, default=0.3)
-            p.add_argument("--elevation-threshold-m", type=float, default=0.3)
-            # 3.5, not the original 3.0: the tallest verified terrace riser at the calibration
-            # site measures 2.98 m, and a cap 2 cm above a riser is not above it within the
-            # 0.2-0.3 m LiDAR error band (docs/riser-measurement.md, operator ruling 2026-08-08).
-            p.add_argument("--max-elevation-m", type=float, default=3.5)
+            # The ground filter's own parameters are deliberately absent: they are PDAL's
+            # defaults, pinned in `SMRF_PARAMS`, and no reference run has exercised any other
+            # setting. See the comment there.
             p.add_argument(
                 "--attribution",
                 required=True,

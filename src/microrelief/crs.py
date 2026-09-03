@@ -1,7 +1,7 @@
 """Whether the coordinates are the kind this package can do arithmetic on.
 
-`cell`, `d_max_interp_m`, `max_window_m`, `elevation_threshold_m` and every distance in
-`ground.py` are metres. Handed a geographic CRS, all of them silently become degrees: a
+`cell`, `d_max_interp_m` and every distance in `smrf.py` and `ground.py` are metres. Handed a
+geographic CRS, all of them silently become degrees: a
 0.5 "m" cell becomes roughly 55 km, and the output is plausible, complete and wrong. That
 is the failure this package's refusal inventory exists to make impossible, so it is refused
 at the one place every metric path passes through rather than checked at each use.

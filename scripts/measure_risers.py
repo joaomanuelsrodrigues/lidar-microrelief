@@ -3,8 +3,10 @@
 Instrument for `docs/riser-measurement.md`, which pre-registers the method, the zone, every
 parameter below, and the verdict rule — read it first. This script deliberately measures the
 per-cell minimum of official ASPRS class-2 returns (`min_z_ground_asprs`), never our own DTM:
-`max_elevation_m` is the parameter being calibrated, so a surface shaped by our own filter would
-be circular here.
+`max_elevation_m` was the parameter being calibrated when this ran, so a surface shaped by our
+own filter would have been circular. It stayed that way after 0.5.0 retired that parameter from
+the pipeline, for the same reason — the riser heights are a property of the terrain, and reading
+them off a surface our filter shaped would make them a property of the filter.
 
 Two stages, so analysis does not re-read 845 MB:
 

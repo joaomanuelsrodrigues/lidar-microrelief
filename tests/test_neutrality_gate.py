@@ -121,9 +121,13 @@ def test_the_tracked_tree_is_clean_and_the_summary_names_every_denominator(tmp_p
     result = _run(ROOT, tmp_path)
     assert result.returncode == 0, result.stdout + result.stderr
     assert _summary_for(ROOT, tmp_path) in result.stdout, result.stdout
-    # one PNG in the tree carries e-mail-shaped bytes by coincidence (measured 2026-08-27); the
-    # count above is derived, and this line only documents why it is not zero today
-    assert "e-mail-shaped bytes in 1 of them not judged" in result.stdout
+    # Some PNGs in the tree carry e-mail-shaped bytes by coincidence in their compressed data
+    # (first measured 2026-08-27, and the count moves whenever a raster is re-rendered: the
+    # 0.5.0 run took it from one to two). It used to be pinned here as a literal, which made a
+    # legitimate re-render fail a gate about neutrality; the number is derived by `_summary_for`
+    # and already asserted above, so what is left to state is only that the phrase is present
+    # and that this is why the count is not zero.
+    assert re.search(r"e-mail-shaped bytes in \d+ of them not judged", result.stdout)
 
 
 def test_the_scan_covers_the_whole_tree_from_a_subdirectory(tmp_path: Path) -> None:

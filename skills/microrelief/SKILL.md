@@ -4,7 +4,7 @@ description: Build a DTM, DSM and CHM from a LAS/LAZ point cloud where every cel
 license: Apache-2.0
 compatibility: Python 3.12+ and the microrelief package installed in the working repository (README, Install). The dgt extra is needed only for the DGT catalogue commands.
 metadata:
-  version: "0.4.4"
+  version: "0.5.0"
 ---
 
 # microrelief — terrain products from LiDAR that say what they do not know
@@ -33,9 +33,9 @@ Worked example in this repository — real data, about a minute:
         --out outputs/sample --attribution "$(cat examples/sistelo-sample/attribution.txt)"
 
 On the author's machine and on GitHub's runner this gives a 300 × 300 grid of 0.5 m cells; basis
-56.2 % measured, 43.1 % interpolated, 0.7 % undetermined; expected void 1.3 %; agreement with the
-delivery's ground class: accuracy 0.837 against a majority-class null of 0.587 (recall ground
-0.999, non-ground 0.723); record hash `f67b2f033d23…`. `tests/test_sample.py` locks the values and
+51.6% measured, 42.3% interpolated, 6.1% undetermined; expected void 1.3%; agreement with the
+delivery's ground class: accuracy 0.866 against a majority-class null of 0.587 (recall ground
+0.977, non-ground 0.788); record hash `2da06987808e…`. `tests/test_sample.py` locks the values and
 `tests/case_study/test_readme_claims.py` locks this copy of the hash.
 
 ## Before running — the input contract (ask the user, never assume)
@@ -48,11 +48,15 @@ delivery's ground class: accuracy 0.837 against a majority-class null of 0.587 (
 - `--attribution` is required and has no default: ask for the data source and licence, verbatim.
 - ASPRS class 2 is optional (present, the record reports agreement against it); classes 7 and 18
   are excluded as noise and counted.
-- Parameters the record declares **uncalibrated** (`CALIBRATIONS.md`): `--cell`,
-  `--k-min-returns`, `--d-max-interp-m`, `--max-window-m`, `--slope-threshold`,
-  `--elevation-threshold-m`. `--max-elevation-m` (3.5 m) is the one that was measured, at one
-  site, against a 2.98 m terrace riser — re-measure at a new site. Change a parameter only when
-  the user asks, and report the change.
+- Parameters the record declares **uncalibrated** (`CALIBRATIONS.md`) and the run takes:
+  `--cell`, `--k-min-returns`, `--d-max-interp-m`. Change one only when the user asks, and
+  report the change.
+- The ground filter's own parameters are **not settable**. They are PDAL's SMRF defaults, pinned
+  in the code, because that is the one configuration the implementation is validated against
+  cell-for-cell; the record still declares them, so a reader can see what ran. They are in the
+  uncalibrated list too — pinned is not calibrated.
+- `--cell` must divide the 1 m analysis cell, so it takes 1/k metres (1, 0.5, 0.25, 0.2, …) and
+  **refuses** anything else, naming what would work. Ask for a cell size, do not round one.
 - `precheck` has its own triage knobs (`--ground-fraction`, `--max-void-fraction`,
   `--allow-sparse`); `select` refuses tiles flown on different dates unless
   `--allow-mixed-epochs`.

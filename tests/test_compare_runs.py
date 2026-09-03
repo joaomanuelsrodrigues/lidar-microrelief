@@ -62,6 +62,15 @@ NEW_IN_0_4_1 = (
 )
 
 
+def _known_releases() -> tuple[str, ...]:
+    """Read at collection time, because `parametrize` needs the list before any test runs."""
+    with _loaded() as mod:
+        return tuple(sorted(mod.RELEASE_LIMITATIONS))
+
+
+_KNOWN_RELEASES = _known_releases()
+
+
 def _a_run(d: Path, version: str, limitations: tuple[str, ...]) -> Path:
     d.mkdir(parents=True, exist_ok=True)
     band = np.arange(4, dtype=np.float32).reshape(2, 2)
@@ -114,7 +123,11 @@ def test_the_flag_in_its_recorded_position_is_parsed_not_swallowed(tmp_path: Pat
     got = _run(FLAG, str(old), str(new))
     assert got.returncode != 2, f"argparse rejected the recorded form: {got.stderr}"
     assert got.returncode == 0, f"acceptance failed: {got.stderr}"
-    assert "gained exactly the two declared gaps" in got.stdout
+    # That the flag took effect, without hard-coding the count it reports: the success line used
+    # to say "the two declared gaps" whatever the release declared, and this assertion is what
+    # kept that wording alive.
+    assert "0.4.1's declared transformation" in got.stdout
+    assert "2 added" in got.stdout
 
 
 def test_the_bare_command_still_requires_the_list_to_be_unchanged(tmp_path: Path) -> None:
@@ -150,17 +163,31 @@ def test_a_release_with_no_recorded_additions_is_named_not_crashed(tmp_path: Pat
     )
 
 
-@pytest.mark.parametrize("release", sorted({"0.4.0", "0.4.1"}))
+@pytest.mark.parametrize("release", _KNOWN_RELEASES)
 def test_every_release_the_instrument_knows_is_reachable_from_a_record(
     tmp_path: Path, release: str
 ) -> None:
-    """A release whose entry exists but that no record can select is a dead branch."""
+    """A release whose entry exists but that no record can select is a dead branch.
+
+    The parameters are DERIVED from the mapping, not typed here. Typed, this test listed 0.4.0
+    and 0.4.1 while the instrument knew three releases: 0.4.4 was exactly the dead branch the
+    docstring names, green, for as long as the entry existed. A population selected by a
+    hand-written list is not a population.
+    """
     with _loaded() as mod:
-        assert release in mod.EXPECTED_NEW_LIMITATIONS
-        old = _a_run(tmp_path / "old", "0.0.0", LIMS_0_4_0)
-        new = _a_run(tmp_path / "new", release, LIMS_0_4_0 + mod.EXPECTED_NEW_LIMITATIONS[release])
+        change = mod.RELEASE_LIMITATIONS[release]
+        old_lims = LIMS_0_4_0 + tuple(old for old, _new in change.replaced)
+        old = _a_run(tmp_path / "old", "0.0.0", old_lims)
+        new = _a_run(tmp_path / "new", release, mod.apply_change(old_lims, change))
     got = _run(FLAG, str(old), str(new))
     assert got.returncode == 0, got.stderr
+
+
+def test_the_parametrisation_covers_every_release_the_instrument_knows() -> None:
+    """The completeness half: deriving the list is only safe if nothing filters it on the way."""
+    with _loaded() as mod:
+        assert set(_KNOWN_RELEASES) == set(mod.RELEASE_LIMITATIONS)
+        assert len(_KNOWN_RELEASES) >= 3, _KNOWN_RELEASES
 
 
 # --- The class this file exists for, one level up -------------------------------------------
@@ -259,3 +286,114 @@ def test_the_two_sweeps_fire_on_a_planted_defect_and_stay_quiet_on_the_fixed_for
 
     assert _version_after_flag(f"| `{FLAG} 0.4.0` | 1 | the release name |") == [(1, "0.4.0")]
     assert _version_after_flag(f"so `{FLAG}` stays a bare flag and both") == []
+
+
+# --- a release that REPLACES a line, not only appends ---------------------------------------
+#
+# 0.5.0 swaps the ground filter. One declared limitation stops being true of the shipped tool
+# and is rewritten; two more are added. An append-only expectation cannot express that: it can
+# only ever say "the old list plus N", so a replacement reads as one removal and one addition
+# that the instrument was never told to expect.
+
+
+def test_a_release_may_replace_a_line_in_place_and_the_position_is_asserted(
+    tmp_path: Path,
+) -> None:
+    with _loaded() as mod:
+        change = mod.LimitationChange(replaced=(("b", "b, rewritten"),), added=("c",))
+        assert mod.apply_change(("a", "b"), change) == ("a", "b, rewritten", "c")
+
+
+def test_a_replacement_of_a_line_the_old_run_does_not_carry_is_a_refusal(tmp_path: Path) -> None:
+    """Otherwise a typo in the `old` half appends a second copy and both look declared."""
+    with _loaded() as mod:
+        change = mod.LimitationChange(replaced=(("not present", "new"),))
+        with pytest.raises(mod.ChangeError, match="not present"):
+            mod.apply_change(("a", "b"), change)
+
+
+def test_the_transformation_is_replace_then_append_not_the_other_way_round(
+    tmp_path: Path,
+) -> None:
+    """Order is part of the contract: the record's list is compared element by element."""
+    with _loaded() as mod:
+        change = mod.LimitationChange(replaced=(("a", "A"),), added=("z",))
+        assert mod.apply_change(("a", "b"), change) == ("A", "b", "z")
+
+
+def test_a_release_that_replaces_and_adds_is_accepted_end_to_end(tmp_path: Path) -> None:
+    """The shape 0.5.0 actually has, through the real script and the recorded argv position."""
+    with _loaded() as mod:
+        release = sorted(mod.RELEASE_LIMITATIONS)[-1]
+        change = mod.RELEASE_LIMITATIONS[release]
+        old_lims = LIMS_0_4_0 + tuple(old for old, _new in change.replaced)
+        new_lims = mod.apply_change(old_lims, change)
+    old = _a_run(tmp_path / "old", "0.4.0", old_lims)
+    new = _a_run(tmp_path / "new", release, new_lims)
+    got = _run(FLAG, str(old), str(new))
+    assert got.returncode == 0, got.stderr
+
+
+def test_the_message_names_what_the_release_declares_rather_than_saying_two(
+    tmp_path: Path,
+) -> None:
+    """`the two declared gaps` was hard-coded in the failure line and the success line, and was
+    already false for 0.4.4, which declared one. A count typed into a message is a published
+    number: it comes from the mapping."""
+    with _loaded() as mod:
+        change = mod.RELEASE_LIMITATIONS["0.4.4"]
+        assert len(change.added) + len(change.replaced) == 1, "0.4.4 declares exactly one"
+    old = _a_run(tmp_path / "old", "0.4.0", LIMS_0_4_0)
+    new = _a_run(tmp_path / "new", "0.4.4", LIMS_0_4_0)  # missing the declared change
+    got = _run(FLAG, str(old), str(new))
+    assert got.returncode == 1
+    assert "two declared gaps" not in got.stderr, f"a hard-coded count survived: {got.stderr}"
+
+
+# --- comparing across a release that changes the data on purpose ----------------------------
+#
+# The band comparison is the instrument's spine, so the one release that changes every band by
+# design has no acceptance path through it: `--record-only` is that path, and it is deliberately
+# unusable anywhere else.
+
+
+def test_record_only_compares_the_record_across_two_versions(tmp_path: Path) -> None:
+    with _loaded() as mod:
+        change = mod.RELEASE_LIMITATIONS["0.5.0"]
+        old_lims = LIMS_0_4_0 + tuple(old for old, _new in change.replaced)
+        new_lims = mod.apply_change(old_lims, change)
+    old = _a_run(tmp_path / "old", "0.4.0", old_lims)
+    new = _a_run(tmp_path / "new", "0.5.0", new_lims)
+    # The bands are identical here, but that is not what is being asserted: the point is that
+    # the mode reaches a verdict on the record across a version boundary.
+    got = _run("--record-only", FLAG, str(old), str(new))
+    assert got.returncode == 0, got.stderr
+    assert "0 raster(s) compared" not in got.stdout, "the mode must say it skipped the bands"
+    assert "bands not compared" in got.stdout
+
+
+def test_record_only_still_fails_on_a_limitation_the_release_did_not_declare(
+    tmp_path: Path,
+) -> None:
+    """Skipping the bands must not skip the field this instrument exists for."""
+    with _loaded() as mod:
+        change = mod.RELEASE_LIMITATIONS["0.5.0"]
+        old_lims = LIMS_0_4_0 + tuple(old for old, _new in change.replaced)
+        new_lims = mod.apply_change(old_lims, change) + ("an undeclared limitation",)
+    old = _a_run(tmp_path / "old", "0.4.0", old_lims)
+    new = _a_run(tmp_path / "new", "0.5.0", new_lims)
+    got = _run("--record-only", FLAG, str(old), str(new))
+    assert got.returncode == 1
+    assert "an undeclared limitation" in got.stderr
+
+
+def test_record_only_refuses_two_runs_of_the_same_version(tmp_path: Path) -> None:
+    """The mode exists for a version boundary. Between two builds of one version the bands are
+    the whole question, and a flag that could skip them there would be a way to pass a
+    self-replay without replaying anything."""
+    old = _a_run(tmp_path / "old", "0.5.0", LIMS_0_4_0)
+    new = _a_run(tmp_path / "new", "0.5.0", LIMS_0_4_0)
+    got = _run("--record-only", str(old), str(new))
+    assert got.returncode == 2
+    assert "version boundary" in got.stderr
+    assert "0.5.0" in got.stderr, "the refusal must name the version both runs declare"

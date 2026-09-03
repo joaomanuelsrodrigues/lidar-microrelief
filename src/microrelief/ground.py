@@ -26,10 +26,23 @@ class GroundError(RuntimeError):
 
 @dataclass(frozen=True)
 class GroundParams:
-    max_window_m: float
-    slope_threshold: float
-    elevation_threshold_m: float
-    max_elevation_m: float
+    """The configuration this filter shipped with, pinned here since it stopped being the default.
+
+    These four numbers were the CLI's defaults up to 0.4.4 and are the settings every recorded
+    measurement of this filter used -- the ground-filter diagnosis, the second-AOI gate, and the
+    terrace comparison SMRF was accepted against. They live here, with defaults, because the CLI
+    no longer declares them and the comparison instrument must still measure *the filter that
+    shipped* rather than one nobody ran (`tests/test_compare_ground_filters.py` locks the two
+    sets of literals to each other; that lock previously read them off the CLI).
+    """
+
+    max_window_m: float = 4.0
+    slope_threshold: float = 0.3
+    elevation_threshold_m: float = 0.3
+    # 3.5, not the original 3.0: the tallest verified terrace riser at the calibration site
+    # measures 2.98 m, and a cap 2 cm above a riser is not above it within the 0.2-0.3 m LiDAR
+    # error band (docs/riser-measurement.md, operator ruling 2026-08-08).
+    max_elevation_m: float = 3.5
 
 
 def _fill_nearest(z: NDArray[np.float32], invalid: NDArray[np.bool_]) -> NDArray[np.float64]:

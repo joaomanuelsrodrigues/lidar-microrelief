@@ -4,10 +4,11 @@ Pingel, T.J., Clarke, K.C. and McBride, W.A. (2013), "An improved simple morphol
 the terrain classification of airborne LIDAR data", *ISPRS Journal of Photogrammetry and Remote
 Sensing* 77, 21-30, https://doi.org/10.1016/j.isprsjprs.2012.12.002.
 
-Why it is here at all: the filter this package shipped until now publishes buildings as terrain --
-it claims `BASIS_MEASURED`, the strongest thing it says about a cell, over 87.7% of the roof cells
-of a built AOI where SMRF claims 16.4%, at a cost of 0.6 points on plain ground
-(`docs/ground-filter-diagnosis.md`, re-derived in `docs/reference-instrument-result.md`).
+Why it is here at all: the filter this package shipped up to 0.4.4 published buildings as terrain
+-- it claimed `BASIS_MEASURED`, the strongest thing the band says about a cell, over 87.7% of the
+roof cells of a built AOI where SMRF claims 16.4%, at a cost of 0.6 points on plain ground
+(`docs/ground-filter-diagnosis.md`, re-derived in `docs/reference-instrument-result.md`). Since
+0.5.0 this module is the pipeline's ground filter and that one is the comparison arm.
 
 Why re-implemented rather than depended on: an install a reader can run without conda. That is a
 stated assumption, not a fact -- if it stops holding, a runtime dependency on PDAL is strictly
@@ -85,6 +86,30 @@ class SmrfParams:
         at every explicit value.
         """
         return 18.0 * self.cell if self.window is None else self.window
+
+
+def block_factor(cell: float, params: SmrfParams) -> int:
+    """How many grid cells make one SMRF cell along each axis.
+
+    Single-sourced because two callers need it on opposite sides of the grid: the composition
+    root has to know the block size *before* the grid exists (to size the grid in whole blocks)
+    and `classify_ground_smrf` needs it *after* (to take block minima). Computed twice, the two
+    drift, and the drift is silent.
+
+    Written as a whole-multiple test rather than a rounding on purpose. `round(1.0 / 2.0)` is
+    **0**, and a factor of zero is not an error anywhere downstream: it makes a block of no
+    cells, which tiles no grid and reads like a filter that never ran.
+    """
+    ratio = params.cell / cell
+    factor = int(round(ratio))
+    if factor < 1 or abs(ratio - factor) > 1e-9:
+        admissible = ", ".join(f"{params.cell / k:g}" for k in (1, 2, 4, 8))
+        raise SmrfError(
+            f"the SMRF cell ({params.cell:g} m) must be a whole multiple of the grid cell "
+            f"({cell:g} m); block minima are exact only when the blocks tile the grid. "
+            f"Admissible grid cells here include {admissible} m"
+        )
+    return factor
 
 
 def max_radius_for(window: float, cell: float) -> int:
@@ -278,13 +303,7 @@ def classify_ground_smrf(min_z: FloatGrid, cell: float, params: SmrfParams) -> B
     neighbour interpolation the reference uses, evaluated per cell instead of per point.
     """
     z = np.asarray(min_z, dtype=np.float64)
-    ratio = params.cell / cell
-    factor = int(round(ratio))
-    if factor < 1 or abs(ratio - factor) > 1e-9:
-        raise SmrfError(
-            f"the SMRF cell ({params.cell} m) must be a whole multiple of the grid cell "
-            f"({cell} m); block minima are exact only when the blocks tile the grid"
-        )
+    factor = block_factor(cell, params)
     if z.shape[0] % factor or z.shape[1] % factor:
         raise SmrfError(
             f"a grid of {z.shape[0]}x{z.shape[1]} cells is not divisible into whole "

@@ -1863,3 +1863,157 @@ PDAL's 91.8% on the base population reproduces the 2026-08-31 figure to the prec
 and the both-ground control lands 22 cells from its 46,449. **Its 86.5% on the steep population
 does not reproduce** — 95.1% here — which places the whole disagreement inside the one phrase that
 record left undefined. Detail and consequence in `docs/p4-terrace-result.md`.
+
+---
+
+## 2026-09-03 — SMRF becomes the ground filter (0.5.0): both products re-run
+
+The filter built and measured in 0.4.4's aftermath is now the one the pipeline runs. The
+progressive morphological filter stays in the tree as the comparison arm and nothing else.
+
+**What the release is accepted on.** Not `compare_runs.py old new`: every band changes on
+purpose, so the band-identity spine has no verdict to give across this boundary. The acceptance
+is **self-replay** — each product run twice, required byte-identical — plus the declared
+limitation transformation checked across the version boundary, plus a table of what moved.
+
+### The sample, against a target fixed before the wiring existed
+
+`docs/smrf-default-preregistration.md` fixed the eleven figures the wired CLI had to produce,
+measured by a script that calls the library directly and never touches the CLI. The control
+that makes it worth anything: the same script reproduced the *current* filter's published
+record exactly, down to `fp = 14327`.
+
+```
+$ .venv/bin/microrelief run --aoi examples/sistelo-sample/aoi.geojson \
+    --laz examples/sistelo-sample --out <tmp>/sample-a --cell 0.5 \
+    --attribution "$(cat examples/sistelo-sample/attribution.txt)"
+grid 300 x 300 cells of 0.5 m (0.0225 km2), 1 tile(s), 1 return(s) outside the AOI
+measured 51.6% | interpolated 42.3% | undetermined 6.1%
+expected void at f=1: 1.312% (measured density 17.3 pts/m2)
+ground recall 0.977 | non-ground recall 0.788 | accuracy 0.866 | majority-class null 0.587
+flight dates (none declared) | mixed epochs False
+reproducibility_hash 096b82c54327ef0ba05506457bcae975ae21402360ca3e04c31cea9ad0807ada
+```
+
+Eleven of eleven matched, the four confusion counts exactly (`tp 35470 fp 10934 fn 844
+tn 40730`, `n_cells 87978`). The hash above is the pre-bump run — the version moved afterwards,
+which is what carries it to `2da06987808e983b611144b5ddce217be2eb7f513b9ab9e8268ff51dd98e32dd`.
+
+The filter itself was accepted earlier the same day: re-implemented from PDAL 2.10.2's
+`filters/SMRFilter.cpp`, it agrees with that build on **99.662%** of cells at κ 0.991, over the
+sample (`docs/smrf-build-result.md`, and the `P3 agreement: 99.662 >= 90.0 -> PASS` line in this
+file's 2026-09-03 SMRF-build entry). What is wired here is that implementation, not PDAL's.
+
+### Self-replay, both products
+
+```
+$ .venv/bin/python scripts/compare_runs.py <tmp>/sample-b <tmp>/sample-c
+n_ground_asprs.tif: 90000 cells compared
+6 raster(s) compared
+provenance.created_utc: 2026-09-03T14:37:25.658887+00:00 -> 2026-09-03T14:37:26.202591+00:00
+provenance.package_version: 0.5.0 -> 0.5.0
+provenance.reproducibility_hash: 2da06987808e... -> 2da06987808e...
+provenance.known_limitations: 13 -> 13 entries
+
+identical in every band and every record field but the three permitted, and unchanged
+```
+
+```
+$ /usr/bin/time -f "%e s wall, %M kB peak RSS" .venv/bin/microrelief run \
+    --aoi aoi/aoi.geojson --laz ~/data/dgt-laz-sistelo --out outputs_0.5.0/ --cell 0.5 \
+    --selection outputs_0.2.0/selection.json --attribution "Source: Direção-Geral do Território (DGT), ..."
+grid 3960 x 3960 cells of 0.5 m (3.9204 km2), 4 tile(s), 3250766 return(s) outside the AOI
+measured 69.7% | interpolated 28.2% | undetermined 2.1%
+expected void at f=1: 0.117% (measured density 27.0 pts/m2)
+ground recall 0.993 | non-ground recall 0.588 | accuracy 0.792 | majority-class null 0.503
+flight dates 2026-03-30T00:00:00Z | mixed epochs False
+reproducibility_hash 09b79da9fff731caeebbb4b37b8c5508eb10ed0399940382212c48ba810518c2
+34.64 s wall, 4618688 kB peak RSS
+
+$ .venv/bin/python scripts/compare_runs.py outputs_0.5.0 outputs_0.5.0_replay
+identical in every band and every record field but the three permitted, and unchanged
+```
+
+**SMRF's cost, measured rather than assumed:** 34.64 s against 0.4.2's 30.62 s, and
+4,618,688 kB peak RSS against 4,612,952 kB — about four seconds and no extra memory, on a run
+holding two extra k-d tree fills over the full grid.
+
+**`--laz ~/data/dgt-laz` no longer reproduces the recorded command.** That directory has since
+gained the six Valongo tiles, and the selection guard refused, correctly and by name:
+`LO-160470-07-2025 is not in the selection (...); refusing to publish catalogue facts for some
+tiles and none for others`. The four Sistelo tiles were symlinked into
+`~/data/dgt-laz-sistelo`. The refusal is the mechanism working; the old command line is left in
+its own entry above, because that is a record of what ran.
+
+### What gated the release
+
+SMRF was accepted against the terraces before being wired, on bounds pre-registered before the
+run: it keeps **91.078%** of the cells the old filter called measured ground (bound 85.0) and
+**95.082%** of those standing on a step above 2.5 m (bound 80.0), with the must-fail control at
+58.601% / 60.197% returning FAIL at exit 1. Full record, including the ramp confound measured and
+declared, in `docs/p4-terrace-result.md`.
+
+### The declared limitation transformation, across the version boundary
+
+```
+$ .venv/bin/python scripts/compare_runs.py --record-only --expect-new-limitations <0.4.4-record> <tmp>/sample-b
+bands not compared (6 present): --record-only
+provenance.agreement: changed (not asserted under --record-only)
+provenance.honesty: changed (not asserted under --record-only)
+provenance.parameters: changed (not asserted under --record-only)
+provenance.uncalibrated_thresholds: changed (not asserted under --record-only)
+provenance.package_version: 0.4.4 -> 0.5.0
+provenance.known_limitations: 11 -> 13 entries
+
+the bands were not compared; every record field that moved is named above, and
+known_limitations is exactly the old list under 0.5.0's declared transformation (1 replaced, 2 added)
+```
+
+The same command against `outputs_0.4.2` **fails**, and the failure is the finding below: the
+last full-run record was never regenerated at 0.4.4, so the list it carries is 0.4.2's ten and
+the line 0.5.0 replaces is not in it.
+
+### Found by the new guard: the published viewer record was a release behind
+
+`docs/viewer/provenance.json` — the record a reader of the published piece actually opens — sat
+at **0.4.2 with ten limitations, the buildings line absent**. 0.4.4 declared that limitation,
+bumped the version and regenerated the *sample*; the full product was never re-run, so the most
+important disclosure of that release never reached the artefact a reader sees. The suite was
+green throughout: the sample had a test locking its record, and the viewer's record had only the
+hash partition guard, which asks whether every *document* quotes a current hash and never
+whether the *records* themselves are current.
+
+Two guards now close it (`tests/case_study/test_readme_claims.py`): every published record must
+declare the package's current version, and must carry the exact limitation list the code
+declares. Both were red on the tree before this release re-rendered the viewer.
+
+### What moved
+
+| the full product (3960 x 3960) | 0.4.2 (PMF) | 0.5.0 (SMRF) |
+|---|---|---|
+| measured | 74.6022% | 69.7423% |
+| interpolated | 25.2074% | 28.1972% |
+| undetermined | 0.1903% | 2.0605% |
+| ground recall | 0.9993 | 0.9932 |
+| non-ground recall | 0.4954 | 0.5881 |
+| accuracy | 0.7491 | 0.7921 |
+| majority-class null | 0.5035 | 0.5035 |
+| fp (ours ground, official none) | 3,889,074 | 3,174,486 |
+
+| the shipped sample (300 x 300) | 0.4.4 (PMF) | 0.5.0 (SMRF) |
+|---|---|---|
+| measured | 56.2189% | 51.5600% |
+| interpolated | 43.1067% | 42.3411% |
+| undetermined | 0.6744% | 6.0989% |
+| ground recall | 0.9988 | 0.9768 |
+| non-ground recall | 0.7227 | 0.7884 |
+| accuracy | 0.8367 | 0.8661 |
+| majority-class null | 0.5872 | 0.5872 |
+| fp | 14,327 | 10,934 |
+
+Read the two tables together and the shape is one trade: the filter answers over fewer cells and
+is right more often about the ones it answers over. `undetermined` rises because a cell it cannot
+call ground now publishes as nothing rather than as terrain — nine-fold on the sample, ten-fold on
+the full product. Against the delivery's own ground class, non-ground recall rises 9.3 points on
+the full product and `fp` falls by 714,588 cells: those are roofs and canopy the old filter called
+ground. Ground recall falls 0.6 points, which is the same trade read from the other side.

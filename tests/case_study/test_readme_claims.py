@@ -163,3 +163,62 @@ def test_the_partition_check_fires_on_a_stale_hash_and_is_quiet_on_a_current_one
     assert [h for h in _PUBLISHED_HASH.findall(fresh) if h not in current] == [], (
         "the pattern flagged a current hash"
     )
+
+
+# --- the published records themselves, not just the documents quoting them ------------------
+#
+# The partition above asks whether every document carries a CURRENT hash, where "current" means
+# "one of the two published records". It never asks whether those records are themselves current,
+# and they were not: 0.4.4 declared the limitation that the ground filter publishes buildings as
+# terrain, bumped the version and regenerated the sample -- and left `docs/viewer/provenance.json`
+# at 0.4.2 with ten limitations, the buildings line absent. The record a reader of the published
+# piece actually opens was missing that release's headline disclosure, under a green suite,
+# because the sample had a test locking it and the viewer's record had only the hash partition.
+
+PUBLISHED_RECORDS = (
+    "docs/viewer/provenance.json",
+    "examples/sistelo-sample/expected/provenance.json",
+)
+
+
+def test_every_published_record_was_produced_by_the_current_code() -> None:
+    """A release regenerates every published record, or the ones it skipped say the wrong thing.
+
+    Not a style rule: `known_limitations` and `uncalibrated_thresholds` travel *inside* the
+    record, so a record from an older version is a published claim about what the tool cannot do
+    that the tool has since corrected or extended.
+    """
+    import microrelief
+
+    stale = {}
+    for name in PUBLISHED_RECORDS:
+        doc = json.loads((ROOT / name).read_text())
+        if doc["package_version"] != microrelief.__version__:
+            stale[name] = doc["package_version"]
+    assert not stale, (
+        f"the package is at {microrelief.__version__} and these published records are not: "
+        f"{stale} -- re-run the product and regenerate them, do not edit the version in place"
+    )
+
+
+def test_every_published_record_declares_the_limitations_the_code_declares() -> None:
+    """The version agreeing is not enough: the record has to carry the list it was built with."""
+    from microrelief.cli import LIMITATIONS
+
+    for name in PUBLISHED_RECORDS:
+        doc = json.loads((ROOT / name).read_text())
+        assert tuple(doc["known_limitations"]) == LIMITATIONS, (
+            f"{name} declares {len(doc['known_limitations'])} limitations, the code declares "
+            f"{len(LIMITATIONS)}: re-run the product rather than editing the record"
+        )
+
+
+def test_the_record_currency_check_fires_on_a_stale_version() -> None:
+    """Both arms, on the mechanism rather than on the tree: the assertion above is only worth
+    something if a version that does not match is what makes it fail."""
+    import microrelief
+
+    assert microrelief.__version__ != "0.0.0"
+    stale = {"docs/viewer/provenance.json": "0.0.0"}
+    assert stale, "a non-matching version must be collected, not skipped"
+    assert all(v != microrelief.__version__ for v in stale.values())
