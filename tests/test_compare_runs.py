@@ -439,3 +439,14 @@ def test_record_only_still_refuses_a_missing_band(tmp_path: Path) -> None:
     got = _run("--record-only", str(old), str(new))
     assert got.returncode == 1
     assert "band sets differ" in got.stderr
+
+
+def test_the_bare_command_names_what_is_unchanged_in_its_success_line(tmp_path: Path) -> None:
+    """The success line of the bare path had no test -- only its failure line did, which is how
+    a refactor left it reading "...and every record field but the three permitted, and
+    unchanged", with no subject, published that way in docs/live-smoke.md."""
+    old = _a_run(tmp_path / "old", "0.4.0", LIMS_0_4_0)
+    new = _a_run(tmp_path / "new", "0.4.0", LIMS_0_4_0)
+    got = _run(str(old), str(new))
+    assert got.returncode == 0, got.stderr
+    assert "known_limitations is unchanged" in got.stdout, got.stdout

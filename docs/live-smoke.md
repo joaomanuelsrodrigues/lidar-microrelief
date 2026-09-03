@@ -2081,3 +2081,44 @@ Correcting the limitation text did **not** move `reproducibility_hash`: the hash
 `{package_version, grid, parameters, inputs}` and a disclosure sits outside it by design. Verified
 rather than assumed — both products re-run, all six band arrays byte-identical, and only
 `created_utc` and `known_limitations` differing in either record.
+
+### What the merge-gate review changed, 2026-09-03
+
+A fourth round, run because the operator asked for a review before merging and because two
+commits had had no outside instrument on them. **Six findings, 6/6 reproduced.** One was HIGH and
+on the shipped path.
+
+- **`run --d-max-interp-m nan` published a false honesty band at exit 0.** Measured on the
+  shipped sample: `measured 51.6% | interpolated 0.0% | undetermined 48.4%` against the true
+  51.6/42.3/6.1, because `distances * cell <= nan` is False everywhere. `inf` inverted it —
+  every hole became `interpolated` and `undetermined` went to zero, which is the one class the
+  band exists to publish. The record then carried a bare `NaN` token: Python's reader accepts it,
+  a strict RFC 8259 parser rejects it, so the published record would not have parsed everywhere.
+- **`precheck --max-void-fraction nan` accepted a tile with 99.99% expected void**, because
+  `void_at_f > nan` is False. That is the only refusal `precheck` makes, switched off silently —
+  and the same mechanism a comment eleven lines above already documented, on the operand the
+  previous round had guarded.
+- **A non-positive SMRF window made the object stage flag nothing.** `range(1, radius + 1)` is
+  empty, so on a 20×20 fixture with a raised block the filter went from 7 of 400 cells ground to
+  259 of 400, no refusal. Reachable through `--smrf-window` on the instrument that produced the
+  published agreement figures. `inf` did the same by way of a radius of 0; `0.0` raised a bare
+  `ZeroDivisionError`, which is the failure mode these guards replace rather than a refusal.
+
+**The contract that was supposed to prevent exactly this had a hand-written membership rule.**
+`tests/test_lengths.py` claimed in its docstring to cover "every entry point that takes a length"
+and covered eight of them; three of the four defects above were parameters it did not list. Its
+population is derived now — the package is walked for float parameters whose name says they are a
+length, and a partition test requires each to be covered, delegating, or exempt with a reason.
+Turned on, it immediately found eleven more sites, of which five accepted `inf` or died bare on
+`0.0`. Guards went into the two shared helpers (`smrf.max_radius_for`, `ground._radii`) rather
+than into eleven call sites.
+
+**Third instance of a test that could not fail, and it was mine again.** The previous round's
+"discriminator" asserted `not (float("nan") <= 0)` and `not isfinite(nan)` — facts about Python,
+true with every guard in this package deleted. The count of these across the arc is now: a dict
+the test wrote itself, an assertion on `inspect.getsource`, and float semantics. All three were
+written while fixing a review finding, and all three were described in a commit body as covering
+the thing they did not reach.
+
+Neither the sample nor the full product moved: both re-run byte-identical in every band, same
+hashes, `known_limitations` unchanged.

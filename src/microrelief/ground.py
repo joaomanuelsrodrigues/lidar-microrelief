@@ -11,6 +11,7 @@ tautology.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 import numpy as np
@@ -57,6 +58,16 @@ def _fill_nearest(z: NDArray[np.float32], invalid: NDArray[np.bool_]) -> NDArray
 
 
 def _radii(max_window_m: float, cell: float) -> list[int]:
+    """The radius schedule, guarded at the one place both public callers pass through.
+
+    `max(1, ...)` clamps rather than refuses, so a zero or negative window silently became a
+    one-cell search and `inf` became a radius of 0 -- a filter that runs and flags nothing. The
+    retired arm still has to refuse a nonsense length: it is what reproduces the published
+    comparison figures, and a clamp there would answer with a schedule nobody asked for.
+    """
+    for name, value in (("max_window_m", max_window_m), ("cell", cell)):
+        if not math.isfinite(value) or value <= 0:
+            raise ValueError(f"{name} must be a positive, finite length in metres, got {value}")
     max_radius = max(1, int(round(max_window_m / cell / 2)))
     radii, radius = [], 1
     while radius <= max_radius:

@@ -133,7 +133,23 @@ def block_factor(cell: float, params: SmrfParams) -> int:
 def max_radius_for(window: float, cell: float) -> int:
     """ "The maximum window radius is supplied as a distance metric [...] but is internally
     converted to a pixel equivalent by dividing it by the cell size and rounding the result
-    toward positive infinity" (Pingel et al. 2013, quoted in the PDAL source)."""
+    toward positive infinity" (Pingel et al. 2013, quoted in the PDAL source).
+
+    The window is a length, and a non-positive one does not fail: it makes `range(1, radius + 1)`
+    empty in `progressive_filter`, so the object stage flags nothing and the filter calls far
+    more of the surface ground than it should -- measured on a 20x20 surface with a raised
+    block, 7 of 400 cells ground at the default window against 259 of 400 at `window=0`, no
+    refusal and no warning. `nan` dies bare in `int(math.ceil(nan))`. Reachable through
+    `--smrf-window` on the comparison instrument that produced the published agreement figures.
+    """
+    if not math.isfinite(window) or window <= 0:
+        raise SmrfError(f"window must be a positive, finite length in metres, got {window}")
+    if not math.isfinite(cell) or cell <= 0:
+        # Both operands. `18.0 / inf` is 0.0, so the radius is 0, `range(1, 1)` is empty and the
+        # object stage flags nothing -- the same silent no-op a non-positive window produced.
+        # `18.0 / 0.0` raised a bare ZeroDivisionError, which is the failure mode these guards
+        # replace, not a refusal.
+        raise SmrfError(f"cell must be a positive, finite length in metres, got {cell}")
     return int(math.ceil(window / cell))
 
 

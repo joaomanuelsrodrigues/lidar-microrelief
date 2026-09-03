@@ -236,6 +236,10 @@ def compare(
         )
 
     expected = old_lims
+    # Names its subject. The refactor left this as the bare word "unchanged", so the success line
+    # read "...and every record field but the three permitted, and unchanged" -- unchanged WHAT.
+    # Published that way in docs/live-smoke.md, and no test read the bare path's success line,
+    # only its failure line, which is how it moved unseen.
     wanted = "unchanged"
     if expect_new_limitations and not unknown_release:
         change = RELEASE_LIMITATIONS[release]
@@ -274,7 +278,7 @@ def compare(
     print(
         "\n"
         + verdict
-        + (f"known_limitations is exactly {wanted}" if expect_new_limitations else wanted)
+        + f"known_limitations is {'exactly ' if expect_new_limitations else ''}{wanted}"
     )
     return 0
 

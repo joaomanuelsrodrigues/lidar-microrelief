@@ -99,6 +99,15 @@ def check_tiles(
     max_void_fraction: float = 0.35,
     allow_sparse: bool = False,
 ) -> list[TileEstimate]:
+    # The ceiling itself, not only the operands that reach `exp()`. `worst.void_at_f > nan` is
+    # False, so a NaN ceiling switched off the ONLY refusal this command makes: a tile with
+    # 99.99% expected void was accepted, silently. Same mechanism the comment in
+    # `expected_void_fraction` documents; that fix guarded one side of it and not this one.
+    if not math.isfinite(max_void_fraction):
+        raise ValueError(
+            f"max_void_fraction must be a finite fraction, got {max_void_fraction}; a "
+            f"non-finite ceiling silently accepts every tile"
+        )
     estimates = estimate_tiles(tiles, cell, ground_fraction)
     worst = max(estimates, key=lambda e: e.void_at_f)
     if worst.void_at_f > max_void_fraction and not allow_sparse:
