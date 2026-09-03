@@ -53,10 +53,17 @@ things happened, and where they split is the informative part.
 | share differing by more than 0.5 m | 0.03% | **0.03%** | reproduces |
 | PDAL's share on a step > 2.5 m | 86.5% | **95.1%** | **does not reproduce** |
 
-So the base population and the surface control land on the old numbers, and the *step* population
-does not. That is as sharp a localisation as this could have given: the disagreement sits exactly
-in the phrase the old record left undefined — "cells sitting on a real vertical step in 3.5 m" —
-and nowhere else in the construction.
+So the base population and the surface control land on the old numbers, and the *step*
+population does not. The disagreement is localised in the phrase the old record left undefined —
+"cells sitting on a real vertical step in 3.5 m" — and not elsewhere in the construction.
+
+**One alternative explanation was raised in review and tested rather than dismissed:** that this
+population is the anomalous one, because its ramp-permissiveness (below) admits smooth slope the
+old one may have excluded. Measured, that cannot account for the gap — the near-planar cells are
+**1.2%** of the population and retain at 94.6%, so removing all of them moves P4b by less than a
+point, while the gap to be explained is 8.6. What the old population actually held is not
+recoverable either way: its script was never in this tree. The 22-cell residual on the
+both-ground control is likewise unexplained and was not investigated.
 
 The direction differs too, not only the value. The old record reports retention **falling** with
 steepness (90.7% at > 1.5 m, 89.3% at > 2.0 m, 86.5% at > 2.5 m) and reads that as "the steeper
@@ -83,10 +90,59 @@ cites.
   (`--smrf-slope 0.01 --smrf-threshold 0.05`) the same command reports
   **P4a 58.601% FAIL · P4b 60.197% FAIL · VERDICT: FAIL**, exit 1. The gate is measuring
   something.
-- **Mutation.** 10 of 10 mutants of `step_magnitude` were caught by the tests above — border
-  exclusion removed, the two-finite-cell floor dropped to one, either NaN seed changed from
-  ±inf, the range inverted, the even-window guard weakened, the window widened by two cells, the
-  margin computed one cell short, the counts kernel narrowed, and undefined reported as flat.
+- **Mutation.** 10 of 10 mutants of `step_magnitude` were caught — border exclusion removed,
+  the two-finite-cell floor dropped to one, either NaN seed changed from ±inf, the range
+  inverted, the even-window guard weakened, `STEP_WINDOW_CELLS` widened, the margin computed one
+  cell short, the counts kernel narrowed, and undefined reported as flat.
+
+  **Corrected 2026-09-03, after review.** That list overstated what it demonstrated. The
+  "widened window" mutant changed the *constant*, which a test asserts directly (`7 × 0.5 =
+  3.5`), so it was killed by arithmetic on a literal rather than by any test of what the window
+  does. A mutant widening only the two extremum filters — leaving the constant, the counts
+  kernel and the border margin alone — **survived all eight tests**, which means the extent the
+  range is taken over was not pinned at all. Found by `/code-review`, not by me, and reproduced
+  before being believed. `TestTheWindowExtentIsPinned` now places a wall four cells away, where
+  the declared 7-wide window must read 0.0 m and a 9-wide one must read 3.0 m; the surviving
+  mutant is caught by it.
+
+## The confound this population has, found after the run
+
+`step_magnitude` is a range in a window, so **it cannot tell a riser from a smooth slope steep
+enough to span the threshold.** Measured on planar ramps at 0.5 m cells, holding no step
+anywhere: 30° puts 0.0% of cells over 2.5 m, 35° puts 0.0%, and **40° puts 100%** (max range
+2.52 m; the window spans 3.0 m centre-to-centre, so 2.5 m of range needs 39.8°). The
+pre-registration's must-not-fire control was a *flat* surface, which is the easy case; the ramp
+is the input that fires while holding no step, and it was not among the controls. Raised by
+`/code-review` after the verdict, reproduced here before being accepted.
+
+**How much of the real denominator this is, measured rather than argued.** Fitting a
+least-squares plane to the observed cells of each window and taking the RMS residual separates
+the two by construction: a uniform ramp is planar at any steepness, a riser is not. Calibration —
+a 45° ramp gives a median residual of **0.000 m**, a 2.6 m wall on flat ground gives **0.719 m**.
+The real gate population sits far closer to the wall: median **0.381 m**, and only **1.2%** of
+cells fall below 0.10 m.
+
+**The verdict does not rest on it.** SMRF's retention over the gate population, restricted by how
+planar the window is:
+
+    subset                                          cells     SMRF     PDAL
+    all gate cells (the measured P4b)               7,625    95.1%    95.1%
+    residual >= 0.10 m  (drop the near-planar)      7,506    95.2%    95.2%
+    residual >= 0.20 m                              6,218    94.7%    94.6%
+    residual >= 0.30 m  (clearly not a ramp)        4,954    94.2%    94.1%
+    residual >= 0.50 m  (wall-like)                 2,646    92.1%    92.1%
+    residual <  0.10 m  (the ramp-like cells)          93    94.6%    94.6%
+
+Purging every cell that could be smooth slope leaves **92.1%**, twelve points clear of the 80.0%
+bound, with PDAL identical. So the confound is real by construction and is now a declared
+limitation pinned by a test (`TestTheRampIsADeclaredLimitation`), but P4b's verdict is not
+sensitive to it.
+
+**This is not a redefinition.** The population measured above is the one fixed before the run,
+and it stays the population of record; changing it after seeing the result is what the
+pre-registration forbids. A riser-only population — range plus a curvature or planarity term —
+would be a better instrument and is available as a **new dated pre-registration**, not an edit to
+this one.
 
 ## The commands
 

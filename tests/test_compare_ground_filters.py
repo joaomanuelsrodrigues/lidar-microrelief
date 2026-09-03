@@ -149,16 +149,23 @@ class TestDefaultsTrackTheShippedFilter:
 
     @staticmethod
     def _defaults(source: str) -> dict[str, str]:
+        """Every declaration of each shared flag, not the first one.
+
+        `re.search` stops at the first match, so this lock only ever read the `compare` parser.
+        The `terraces` parser re-declares all six of these, and drifted past the lock unseen
+        until a review found it. A flag declared twice with two values is a file that disagrees
+        with itself, so disagreement between declarations is recorded and fails the comparison.
+        """
         import re
 
         found = {}
         for flag in TestDefaultsTrackTheShippedFilter.SHARED:
-            m = re.search(
+            values = re.findall(
                 rf'add_argument\(\s*"--{re.escape(flag)}",\s*type=\w+,\s*default=([0-9.]+)\)',
                 source,
             )
-            if m:
-                found[flag] = m.group(1)
+            if values:
+                found[flag] = values[0] if len(set(values)) == 1 else f"DISAGREES:{set(values)}"
         return found
 
     def test_every_shared_default_matches_the_cli(self) -> None:
@@ -429,3 +436,67 @@ class TestP4BoundsMatchThePreRegistration:
             TestPredicatesMatchTheirPreRegistration._bound(loosened, r"\*\*P4b\*\*.*share of", "≥")
             == 5.0
         )
+
+
+class TestTheWindowExtentIsPinned:
+    """The extent the range is taken over, pinned independently of the counts kernel.
+
+    Found by review, not by me: a mutant that widens ONLY the two extremum filters -- leaving
+    `STEP_WINDOW_CELLS`, the counts kernel and the border margin alone -- passed every test in
+    `TestStepMagnitude`. My own "widened window" mutant changed the constant, which a test
+    asserts directly, so it was caught by arithmetic on a literal rather than by any test of
+    what the window does. These place a wall at a known distance, where a wider window reaches
+    it and the declared one does not.
+    """
+
+    @staticmethod
+    def _wall_at(distance_cells: int) -> np.ndarray:
+        surface = np.zeros((21, 21))
+        surface[:, 10 + distance_cells :] = 3.0
+        return surface
+
+    def test_the_declared_window_does_not_reach_a_wall_four_cells_away(self) -> None:
+        surface = self._wall_at(4)
+
+        step, defined = mod.step_magnitude(surface, window_cells=7, min_finite=2)
+
+        assert defined[10, 10]
+        assert step[10, 10] == pytest.approx(0.0)
+
+    def test_a_window_two_cells_wider_does_reach_it(self) -> None:
+        """Control on the control: the same cell, the same wall, a wider window."""
+        surface = self._wall_at(4)
+
+        step, defined = mod.step_magnitude(surface, window_cells=9, min_finite=2)
+
+        assert defined[10, 10]
+        assert step[10, 10] == pytest.approx(3.0)
+
+
+class TestTheRampIsADeclaredLimitation:
+    """A uniform hillside enters the population, and this pins that rather than hiding it.
+
+    `step_magnitude` is a range in a window, so it cannot tell a riser from a smooth slope steep
+    enough to span the threshold: above about 40 degrees at 0.5 m cells, EVERY cell of a planar
+    ramp holding no step at all reads as "on a step > 2.5 m". Found by review after the P4 run.
+    Measured consequence on the real window, in `docs/p4-terrace-result.md`: 1.2% of the gate
+    population is near-planar, and restricting to the wall-like cells moves P4b from 95.1% to
+    92.1%, still twelve points clear of the bound -- so the verdict does not rest on it. The
+    behaviour is pinned here so a later change to the operation has to face it.
+    """
+
+    @staticmethod
+    def _ramp(degrees: float) -> np.ndarray:
+        gradient = np.tan(np.radians(degrees))
+        return (np.mgrid[0:30, 0:30][1] * 0.5 * gradient).astype(np.float64)
+
+    def test_a_gentle_ramp_does_not_enter_the_population(self) -> None:
+        step, defined = mod.step_magnitude(self._ramp(30), window_cells=7, min_finite=2)
+
+        assert not (step[defined] > 2.5).any()
+
+    def test_a_steep_ramp_holding_no_step_enters_it_entirely(self) -> None:
+        """The declared limitation, asserted so it cannot change silently."""
+        step, defined = mod.step_magnitude(self._ramp(45), window_cells=7, min_finite=2)
+
+        assert (step[defined] > 2.5).all()

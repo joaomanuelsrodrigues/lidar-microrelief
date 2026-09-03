@@ -697,8 +697,32 @@ def _cmd_terraces(args: argparse.Namespace) -> int:
     this asks what it removes from the thing the tool exists to publish. Population, surface and
     step operation are `docs/p4-terrace-preregistration.md`, committed before this ran.
     """
+    # Usage errors return 2. `step_magnitude` raises ValueError for both of these, and an
+    # uncaught traceback exits 1 -- the code a measured FAIL verdict uses, so a typo in a flag
+    # would be indistinguishable from a filter that failed the predicate.
+    if args.step_window_cells < 3 or args.step_window_cells % 2 == 0:
+        print("--step-window-cells must be an odd number of cells >= 3", file=sys.stderr)
+        return 2
+    if args.step_min_finite < 2:
+        print("--step-min-finite must be at least 2: a range needs two points", file=sys.stderr)
+        return 2
+
     arrays, provenance = _load_reference(args.reference)
-    for needed in ("min_z_ground_asprs", "n_reference_ground"):
+    # Derived from what this command actually reads, `args.surface` included, rather than listed
+    # by hand: two of these entered the cache later than the others, so a cache built in between
+    # passes a hand-written guard and then dies mid-table on a KeyError, at exit 1.
+    for needed in sorted(
+        {
+            "min_z_all",
+            "max_z_all",
+            "n_all",
+            "n_ground_asprs",
+            "min_z_ground_asprs",
+            "n_reference_ground",
+            "min_z_reference_ground",
+            args.surface,
+        }
+    ):
         if needed not in arrays:
             print(
                 f"{args.reference} has no array named {needed}; rebuild it with the `reference` "
@@ -761,10 +785,11 @@ def _cmd_terraces(args: argparse.Namespace) -> int:
         f"{_share(smrf_ground, measured_ground):>13.1f}%"
         f"{_share(reference_ground, measured_ground):>13.1f}%"
     )
-    steep_at: dict[float, NDArray[np.bool_]] = {}
+    # The gate population is computed here, from the gate constant. Reading it out of the
+    # sweep below would make editing that reported-only tuple raise KeyError on the gate path.
+    gate_population = measured_ground & defined & (step > P4B_GATE_THRESHOLD_M)
     for bound in STEP_THRESHOLDS_M:
         population = measured_ground & defined & (step > bound)
-        steep_at[bound] = population
         gate = "  (GATE)" if bound == P4B_GATE_THRESHOLD_M else ""
         label = f"P4b: ... on a step > {bound:g} m{gate}"
         print(
@@ -773,7 +798,6 @@ def _cmd_terraces(args: argparse.Namespace) -> int:
             f"{_share(reference_ground, population):>13.1f}%"
         )
 
-    gate_population = steep_at[P4B_GATE_THRESHOLD_M]
     if not gate_population.any():
         # An empty population makes P4b's share `nan`, not 100%. Either way it is not a pass:
         # it is an instrument that selected nothing, and the pre-registration says so.
@@ -786,14 +810,18 @@ def _cmd_terraces(args: argparse.Namespace) -> int:
 
     print()
     print("reported, with nothing riding on it:")
+    # Never looser than the gate: with `--step-min-finite` above the constant this would be
+    # printed as the control on sparse neighbourhoods while admitting more of them than the
+    # population it is controlling.
+    dense_min_finite = max(STEP_DENSE_MIN_FINITE, args.step_min_finite)
     dense_step, dense_defined = step_magnitude(
         arrays["min_z_ground_asprs"].astype(np.float64),
         args.step_window_cells,
-        STEP_DENSE_MIN_FINITE,
+        dense_min_finite,
     )
     dense = measured_ground & dense_defined & (dense_step > P4B_GATE_THRESHOLD_M)
     print(
-        f"  P4b at > {P4B_GATE_THRESHOLD_M:g} m requiring >= {STEP_DENSE_MIN_FINITE} finite "
+        f"  P4b at > {P4B_GATE_THRESHOLD_M:g} m requiring >= {dense_min_finite} finite "
         f"cells: {int(dense.sum()):,d} cells, SMRF {_share(smrf_ground, dense):.1f}%, "
         f"PDAL {_share(reference_ground, dense):.1f}%"
     )
