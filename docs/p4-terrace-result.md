@@ -108,14 +108,33 @@ cites.
 ## The confound this population has, found after the run
 
 `step_magnitude` is a range in a window, so **it cannot tell a riser from a smooth slope steep
-enough to span the threshold.** Measured on planar ramps at 0.5 m cells, holding no step
-anywhere: 30° puts 0.0% of cells over 2.5 m, 35° puts 0.0%, and **40° puts 100%** (max range
-2.52 m; the window spans 3.0 m centre-to-centre, so 2.5 m of range needs 39.8°). The
-pre-registration's must-not-fire control was a *flat* surface, which is the easy case; the ramp
-is the input that fires while holding no step, and it was not among the controls. Raised by
-`/code-review` after the verdict, reproduced here before being accepted.
+enough to span the threshold.** The pre-registration's must-not-fire control was a *flat*
+surface, which is the easy case; the ramp is the input that fires while holding no step, and it
+was not among the controls. Raised by `/code-review` after the verdict, reproduced before being
+accepted.
 
-**How much of the real denominator this is, measured rather than argued.** Fitting a
+**And the window is square, which matters twice.** A 7 × 7 window separates cells by 3.0 m along
+an axis but by 3.0 √2 = **4.243 m** across the diagonal, so a planar ramp enters the population
+from **30.5°**, not the 39.8° an axis-aligned reading gives. Hillsides are not grid-aligned, so
+the diagonal is the number that governs. Measured on planar ramps at 0.5 m cells, holding no step
+anywhere — share of cells over 2.5 m:
+
+    slope     axis-aligned     diagonal
+     28deg            0.0%         0.0%
+     30deg            0.0%         0.0%
+     31deg            0.0%       100.0%
+     35deg            0.0%       100.0%
+     40deg          100.0%       100.0%
+
+**This correction is itself a review finding.** The first version of this section reported only
+the axis-aligned column and stated the limitation as 39.8°, understating it by about nine
+degrees, and the test pinning it used a 30° axis-aligned ramp — which passes while a 35° diagonal
+ramp fires 100%, so it did not bound what its own docstring claimed.
+
+**How much of the real denominator this is, measured rather than argued.** By
+`scripts/measure_ramp_confound.py`, which is tracked: the first version of these numbers lived in
+a session scratchpad, which is precisely the loss this branch exists to stop, and a review caught
+it being reintroduced for the figures that answer the review. Fitting a
 least-squares plane to the observed cells of each window and taking the RMS residual separates
 the two by construction: a uniform ramp is planar at any steepness, a riser is not. Calibration —
 a 45° ramp gives a median residual of **0.000 m**, a 2.6 m wall on flat ground gives **0.719 m**.

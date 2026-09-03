@@ -1847,6 +1847,8 @@ parameterisation chosen to cut terraces:
 ```
 $ python scripts/compare_ground_filters.py terraces --reference <cache>.npz \
     --smrf-slope 0.01 --smrf-threshold 0.05
+[abridged: the header block, the > 1.5 m and > 2 m sweep rows and the "reported, with nothing
+ riding on it" block are omitted. Every other transcript in this file is verbatim.]
 P4a: our measured ground                                50,596         58.6%         91.8%
 P4b: ... on a step > 2.5 m  (GATE)                       7,625         60.2%         95.1%
   P4a our measured ground kept: 58.601 >= 85.0 -> FAIL

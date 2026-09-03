@@ -517,13 +517,24 @@ def seam_cells(provenance: dict[str, Any], grid: Grid, margin_m: float) -> NDArr
 
 def _cmd_compare(args: argparse.Namespace) -> int:
     arrays, provenance = _load_reference(args.reference)
-    if "min_z_ground_asprs" not in arrays:
-        print(
-            f"{args.reference} was built before this array was cached; rebuild it with the "
-            "`reference` command rather than running over a substituted surface",
-            file=sys.stderr,
-        )
-        return 2
+    for needed in (
+        "min_z_all",
+        "max_z_all",
+        "n_all",
+        "n_ground_asprs",
+        "min_z_ground_asprs",
+        "n_class5",
+        "n_class6",
+        "n_reference_ground",
+        "min_z_reference_ground",
+    ):
+        if needed not in arrays:
+            print(
+                f"{args.reference} was built before {needed} was cached; rebuild it with the "
+                "`reference` command rather than running over a substituted surface",
+                file=sys.stderr,
+            )
+            return 2
     grid_info = provenance["grid"]
     cell = float(grid_info["cell"])
 
@@ -617,9 +628,12 @@ def _cmd_smrf(args: argparse.Namespace) -> int:
     )
 
     surface_name = args.surface
-    if surface_name not in arrays:
-        print(f"the reference file has no array named {surface_name}", file=sys.stderr)
-        return 2
+    for needed in sorted(
+        {surface_name, "n_reference_ground", "n_all", "min_z_all", "min_z_reference_ground"}
+    ):
+        if needed not in arrays:
+            print(f"the reference file has no array named {needed}", file=sys.stderr)
+            return 2
     surface = arrays[surface_name]
 
     is_ground = classify_ground_smrf(surface.astype(np.float64), grid.cell, params)
@@ -691,6 +705,21 @@ def _cmd_smrf(args: argparse.Namespace) -> int:
 
 
 def _cmd_terraces(args: argparse.Namespace) -> int:
+    """P4, with every refusal routed to exit 2.
+
+    The exit codes carry meaning here: 1 is a measured FAIL verdict and 2 is "this did not run".
+    An uncaught ValueError -- from `classify_ground_smrf` (`SmrfError` subclasses it),
+    `compute_basis`, or `step_magnitude` -- exits 1, so a typo in a flag would read as a filter
+    that failed the predicate to anything checking `$?`, which `docs/live-smoke.md` does.
+    """
+    try:
+        return _terraces(args)
+    except ValueError as exc:
+        print(f"terraces: {exc}", file=sys.stderr)
+        return 2
+
+
+def _terraces(args: argparse.Namespace) -> int:
     """P4: what the in-repo SMRF costs on the terraces, over the population fixed beforehand.
 
     The symmetric risk to the build's P1-P3. Those said SMRF stops publishing roofs as terrain;
