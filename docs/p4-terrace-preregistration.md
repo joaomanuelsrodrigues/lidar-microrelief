@@ -89,8 +89,8 @@ Both must hold.
 
 | | predicate | bound | why it is not passed by a degenerate filter |
 |---|---|---|---|
-| **P4a** | share of P4a the in-repo SMRF calls ground | **>= 85.0%** | a filter that calls everything object scores 0 |
-| **P4b** | share of P4b the in-repo SMRF calls ground | **>= 80.0%** | the steep cells are where an over-cutting filter loses the terraces first; P4a alone is dominated by the flat treads and would pass while the risers were eaten |
+| **P4a** | share of P4a the in-repo SMRF calls ground | **≥ 85.0%** | a filter that calls everything object scores 0 |
+| **P4b** | share of P4b the in-repo SMRF calls ground | **≥ 80.0%** | the steep cells are where an over-cutting filter loses the terraces first; P4a alone is dominated by the flat treads and would pass while the risers were eaten |
 
 P4b is the predicate with the work in it. P4a is reported and gating, but a filter can hold P4a
 comfortably while destroying exactly what this tool publishes, which is why the pair is the gate
