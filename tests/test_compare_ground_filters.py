@@ -149,16 +149,23 @@ class TestDefaultsTrackTheShippedFilter:
 
     @staticmethod
     def _defaults(source: str) -> dict[str, str]:
+        """Every declaration of each shared flag, not the first one.
+
+        `re.search` stops at the first match, so this lock only ever read the `compare` parser.
+        The `terraces` parser re-declares all six of these, and drifted past the lock unseen
+        until a review found it. A flag declared twice with two values is a file that disagrees
+        with itself, so disagreement between declarations is recorded and fails the comparison.
+        """
         import re
 
         found = {}
         for flag in TestDefaultsTrackTheShippedFilter.SHARED:
-            m = re.search(
+            values = re.findall(
                 rf'add_argument\(\s*"--{re.escape(flag)}",\s*type=\w+,\s*default=([0-9.]+)\)',
                 source,
             )
-            if m:
-                found[flag] = m.group(1)
+            if values:
+                found[flag] = values[0] if len(set(values)) == 1 else f"DISAGREES:{set(values)}"
         return found
 
     def test_every_shared_default_matches_the_cli(self) -> None:
@@ -311,3 +318,357 @@ class TestPredicatesMatchTheirPreRegistration:
         assert loosened != text, "the P1 bound is not written in the form this control mutates"
         assert self._bound(loosened, r"\*\*P1\*\*", "≥") == 10.0
         assert self._bound(loosened, r"\*\*P1\*\*", "≥") != mod.P1_PLAIN_GROUND_MIN
+
+
+class TestStepMagnitude:
+    """The terrace population of `docs/p4-terrace-preregistration.md`.
+
+    "Cells sitting on a real vertical step in 3.5 m" is the phrase the record leaves undefined,
+    and P4b's whole denominator is built from it, so the operation is pinned here on surfaces
+    where the right answer can be counted by hand. Every case is paired: a surface the mask must
+    fire on, and one it must stay silent on. A population that cannot come back empty is not
+    measuring anything.
+    """
+
+    def test_a_flat_surface_holds_no_step(self) -> None:
+        """Must-not-fire. A constant surface has a range of zero everywhere."""
+        surface = np.full((7, 7), 10.0)
+
+        step, defined = mod.step_magnitude(surface, window_cells=3, min_finite=2)
+
+        assert defined[1:-1, 1:-1].all()
+        assert np.allclose(step[defined], 0.0)
+
+    def test_a_known_step_is_measured_at_its_height(self) -> None:
+        """Must-fire. A 3.0 m wall between two flats reads 3.0 m, and only near the wall."""
+        surface = np.zeros((9, 9))
+        surface[:, 5:] = 3.0
+
+        step, defined = mod.step_magnitude(surface, window_cells=3, min_finite=2)
+
+        # Columns 4 and 5 straddle the discontinuity; their 3-wide windows span both flats.
+        assert np.allclose(step[1:-1, 4], 3.0)
+        assert np.allclose(step[1:-1, 5], 3.0)
+        # Column 2 lies wholly on the lower flat, column 7 wholly on the upper one.
+        assert np.allclose(step[1:-1, 2], 0.0)
+        assert np.allclose(step[1:-1, 7], 0.0)
+
+    def test_a_window_holding_one_finite_cell_is_undefined(self) -> None:
+        """A range needs two points. One is not a small range, it is no range."""
+        surface = np.full((7, 7), np.nan)
+        surface[3, 3] = 10.0
+
+        step, defined = mod.step_magnitude(surface, window_cells=3, min_finite=2)
+
+        assert not defined.any()
+        assert np.isnan(step).all()
+
+    def test_two_finite_cells_in_the_window_are_enough(self) -> None:
+        """The control on the control: the same surface with one more point does define a step."""
+        surface = np.full((7, 7), np.nan)
+        surface[3, 3] = 10.0
+        surface[3, 4] = 12.5
+
+        step, defined = mod.step_magnitude(surface, window_cells=3, min_finite=2)
+
+        assert bool(defined[3, 3])
+        assert step[3, 3] == pytest.approx(2.5)
+
+    def test_nan_does_not_propagate_through_the_range(self) -> None:
+        """Accumulating min/max over NaN gives NaN unless the fill is seeded at -inf/+inf."""
+        surface = np.zeros((7, 7))
+        surface[0, 0] = np.nan
+        surface[3, 4] = 4.0
+
+        step, defined = mod.step_magnitude(surface, window_cells=3, min_finite=2)
+
+        assert defined[3, 3]
+        assert step[3, 3] == pytest.approx(4.0)
+        assert np.isfinite(step[defined]).all()
+
+    def test_cells_within_the_margin_of_the_border_are_excluded(self) -> None:
+        """A cell whose 3.5 m neighbourhood runs off the grid was never observed.
+
+        The same reasoning `interior()` applies with `border_value=0`: a truncated window would
+        report the range of the part that happened to be inside, which is not the cell's step.
+        """
+        surface = np.zeros((9, 9))
+
+        _step, defined = mod.step_magnitude(surface, window_cells=7, min_finite=2)
+
+        assert not defined[:3, :].any()
+        assert not defined[-3:, :].any()
+        assert not defined[:, :3].any()
+        assert not defined[:, -3:].any()
+        assert int(defined.sum()) == 3 * 3  # the 3x3 interior of a 9x9 grid at margin 3
+
+    def test_the_window_must_be_odd_so_it_has_a_centre(self) -> None:
+        with pytest.raises(ValueError):
+            mod.step_magnitude(np.zeros((9, 9)), window_cells=4, min_finite=2)
+
+    def test_the_window_is_three_and_a_half_metres_at_half_metre_cells(self) -> None:
+        """The reading of "in 3.5 m" the pre-registration declares, pinned to the constant."""
+        assert mod.STEP_WINDOW_CELLS * 0.5 == 3.5
+
+
+class TestP4BoundsMatchThePreRegistration:
+    """The P4 bounds are two sets of literals -- prose and code -- and they can drift apart."""
+
+    DOC = ROOT / "docs" / "p4-terrace-preregistration.md"
+    ROWS = (
+        ("P4A_TERRACE_MIN", r"\*\*P4a\*\*.*share of", "≥"),
+        ("P4B_STEEP_MIN", r"\*\*P4b\*\*.*share of", "≥"),
+    )
+
+    def test_every_bound_in_the_code_is_the_one_its_own_row_states(self) -> None:
+        text = self.DOC.read_text()
+        for name, row_pattern, comparison in self.ROWS:
+            assert TestPredicatesMatchTheirPreRegistration._bound(
+                text, row_pattern, comparison
+            ) == getattr(mod, name), name
+
+    def test_a_loosened_bound_fails_this_lock(self) -> None:
+        """Mutation on the lock itself: a bound moved in the document must be seen."""
+        text = self.DOC.read_text()
+        loosened = text.replace("**≥ 80.0%**", "**≥ 5.0%**", 1)
+        assert loosened != text, "the P4b bound is not written in the form this control mutates"
+        assert (
+            TestPredicatesMatchTheirPreRegistration._bound(loosened, r"\*\*P4b\*\*.*share of", "≥")
+            == 5.0
+        )
+
+
+class TestTheWindowExtentIsPinned:
+    """The extent the range is taken over, pinned independently of the counts kernel.
+
+    Found by review, not by me: a mutant that widens ONLY the two extremum filters -- leaving
+    `STEP_WINDOW_CELLS`, the counts kernel and the border margin alone -- passed every test in
+    `TestStepMagnitude`. My own "widened window" mutant changed the constant, which a test
+    asserts directly, so it was caught by arithmetic on a literal rather than by any test of
+    what the window does. These place a wall at a known distance, where a wider window reaches
+    it and the declared one does not.
+    """
+
+    @staticmethod
+    def _wall_at(distance_cells: int) -> np.ndarray:
+        surface = np.zeros((21, 21))
+        surface[:, 10 + distance_cells :] = 3.0
+        return surface
+
+    def test_the_declared_window_does_not_reach_a_wall_four_cells_away(self) -> None:
+        surface = self._wall_at(4)
+
+        step, defined = mod.step_magnitude(surface, window_cells=7, min_finite=2)
+
+        assert defined[10, 10]
+        assert step[10, 10] == pytest.approx(0.0)
+
+    def test_a_window_two_cells_wider_does_reach_it(self) -> None:
+        """Control on the control: the same cell, the same wall, a wider window."""
+        surface = self._wall_at(4)
+
+        step, defined = mod.step_magnitude(surface, window_cells=9, min_finite=2)
+
+        assert defined[10, 10]
+        assert step[10, 10] == pytest.approx(3.0)
+
+
+class TestTheRampIsADeclaredLimitation:
+    """A uniform hillside enters the population, and this pins that rather than hiding it.
+
+    `step_magnitude` is a range in a window, so it cannot tell a riser from a smooth slope steep
+    enough to span the threshold: above about 40 degrees at 0.5 m cells, EVERY cell of a planar
+    ramp holding no step at all reads as "on a step > 2.5 m". Found by review after the P4 run.
+    Measured consequence on the real window, in `docs/p4-terrace-result.md`: 1.2% of the gate
+    population is near-planar, and restricting to the wall-like cells moves P4b from 95.1% to
+    92.1%, still twelve points clear of the bound -- so the verdict does not rest on it. The
+    behaviour is pinned here so a later change to the operation has to face it.
+    """
+
+    @staticmethod
+    def _ramp(degrees: float, diagonal: bool = False) -> np.ndarray:
+        """A planar surface holding no step, falling along an axis or across the diagonal."""
+        gradient = np.tan(np.radians(degrees))
+        rows, cols = np.mgrid[0:30, 0:30]
+        along = (rows + cols) / np.sqrt(2) if diagonal else cols
+        return (along * 0.5 * gradient).astype(np.float64)
+
+    def test_a_ramp_below_the_diagonal_threshold_does_not_enter_the_population(self) -> None:
+        """28 deg is below both thresholds, so neither orientation may fire."""
+        for diagonal in (False, True):
+            step, defined = mod.step_magnitude(
+                self._ramp(28, diagonal), window_cells=7, min_finite=2
+            )
+            assert not (step[defined] > 2.5).any(), f"diagonal={diagonal}"
+
+    def test_a_steep_ramp_holding_no_step_enters_it_entirely(self) -> None:
+        """The declared limitation, asserted so it cannot change silently."""
+        step, defined = mod.step_magnitude(self._ramp(45), window_cells=7, min_finite=2)
+
+        assert (step[defined] > 2.5).all()
+
+    def test_the_window_is_square_so_the_diagonal_fires_nine_degrees_earlier(self) -> None:
+        """The half of the limitation the first version of this test missed.
+
+        A 7x7 window separates cells by 3.0 m along an axis and 3.0 * sqrt(2) = 4.243 m across
+        the diagonal, so a planar ramp enters the gate population from 30.5 deg, not 39.8 deg.
+        Hillsides are not grid-aligned, so the diagonal is the number that governs.
+        """
+        axis_step, axis_defined = mod.step_magnitude(
+            self._ramp(35, diagonal=False), window_cells=7, min_finite=2
+        )
+        diag_step, diag_defined = mod.step_magnitude(
+            self._ramp(35, diagonal=True), window_cells=7, min_finite=2
+        )
+
+        assert not (axis_step[axis_defined] > 2.5).any()
+        assert (diag_step[diag_defined] > 2.5).all()
+
+
+class TestTheSmrfFlagsAgreeBetweenTheTwoParsers:
+    """`smrf` and `terraces` both declare the SMRF flags, and nothing locked them to each other.
+
+    The same drift class the `re.search` -> `re.findall` fix was written for, one flag family
+    over: if the `smrf` parser's defaults moved alone, P4 would be measured against a different
+    in-repo SMRF than P1-P3 while both records say "the in-repo SMRF", every gate green.
+    """
+
+    SMRF_FLAGS = ("smrf-cell", "smrf-slope", "smrf-scalar", "smrf-threshold", "smrf-window")
+
+    @staticmethod
+    def _declarations(source: str, flag: str) -> list[str]:
+        import re
+
+        return re.findall(
+            rf'add_argument\(\s*"--{re.escape(flag)}",\s*type=\w+,\s*default=([A-Za-z0-9._]+)\)',
+            source,
+        )
+
+    def test_each_smrf_flag_is_declared_with_one_value(self) -> None:
+        source = SCRIPT.read_text()
+        for flag in self.SMRF_FLAGS:
+            values = self._declarations(source, flag)
+            assert len(values) == 2, f"--{flag} is declared {len(values)} times, expected 2"
+            assert len(set(values)) == 1, f"--{flag} disagrees between parsers: {values}"
+
+    def test_a_drifted_declaration_fails_this_lock(self) -> None:
+        """Control on the control."""
+        mutated = SCRIPT.read_text().replace(
+            's.add_argument("--smrf-slope", type=float, default=0.15)',
+            's.add_argument("--smrf-slope", type=float, default=0.25)',
+            1,
+        )
+        assert mutated != SCRIPT.read_text(), "the smrf parser's flag is not in the mutated form"
+        assert len(set(self._declarations(mutated, "smrf-slope"))) == 2
+
+
+class TestTheGateThresholdMatchesThePreRegistration:
+    """The threshold that SELECTS the gate population was the one literal the lock did not cover."""
+
+    DOC = ROOT / "docs" / "p4-terrace-preregistration.md"
+
+    def test_the_gate_threshold_is_the_one_the_document_states(self) -> None:
+        """The document writes this one in code ticks, not bold, so it needs its own reader."""
+        import re
+
+        row = re.search(r"^\|\s*\*\*P4b\*\*.*intersected.*$", self.DOC.read_text(), re.M)
+        assert row, "no P4b population row in the pre-registration"
+        found = re.search(r"`step\(c\)\s*>\s*([0-9.]+)\s*m`", row.group(0))
+        assert found, f"the row {row.group(0)!r} states no threshold"
+        assert float(found.group(1)) == mod.P4B_GATE_THRESHOLD_M
+
+    def test_a_moved_threshold_fails_this_lock(self) -> None:
+        """Control on the control: the reader above must be able to disagree."""
+        import re
+
+        moved = self.DOC.read_text().replace("`step(c) > 2.5 m`", "`step(c) > 9.9 m`", 1)
+        assert moved != self.DOC.read_text(), "the threshold is not in the mutated form"
+        row = re.search(r"^\|\s*\*\*P4b\*\*.*intersected.*$", moved, re.M)
+        assert row
+        found = re.search(r"`step\(c\)\s*>\s*([0-9.]+)\s*m`", row.group(0))
+        assert found and float(found.group(1)) != mod.P4B_GATE_THRESHOLD_M
+
+    def test_the_gate_threshold_is_one_of_the_reported_thresholds(self) -> None:
+        """Otherwise the gate row -- and its denominator -- vanishes from the printed table
+        while the verdict is still computed over it."""
+        assert mod.P4B_GATE_THRESHOLD_M in mod.STEP_THRESHOLDS_M
+
+
+class TestTerracesCommandRefusals:
+    """`_cmd_terraces`'s refusals, exercised through `main` rather than described in a commit.
+
+    Four of the round-1 fixes live in the command body -- the derived needed-array guard, the two
+    flag validations, the density floor and the gate population -- and a review pointed out that
+    no test reached any of them. The exit code is the contract: 1 is a measured FAIL, 2 is "did
+    not run", and a traceback exits 1.
+    """
+
+    @staticmethod
+    def _cache(tmp_path, **overrides):
+        import json
+
+        n = 12
+        arrays = {
+            "min_z_all": np.zeros((n, n)),
+            "max_z_all": np.zeros((n, n)),
+            "n_all": np.ones((n, n), dtype=np.int32),
+            "n_ground_asprs": np.ones((n, n), dtype=np.int32),
+            "min_z_ground_asprs": np.zeros((n, n)),
+            "n_class5": np.zeros((n, n), dtype=np.int32),
+            "n_class6": np.zeros((n, n), dtype=np.int32),
+            "n_reference_ground": np.ones((n, n), dtype=np.int32),
+            "min_z_judged": np.zeros((n, n)),
+            "min_z_reference_ground": np.zeros((n, n)),
+        }
+        arrays.update(overrides)
+        for drop in [k for k, v in list(arrays.items()) if v is None]:
+            del arrays[drop]
+        provenance = {
+            "grid": {
+                "origin_x": 0.0,
+                "origin_y": 0.0,
+                "cell": 0.5,
+                "n_rows": n,
+                "n_cols": n,
+                "crs_epsg": 3763,
+            },
+            "reference_filter": "test",
+            "controls": {},
+            "sources": [],
+        }
+        path = tmp_path / "cache.npz"
+        np.savez_compressed(path, provenance=np.array(json.dumps(provenance)), **arrays)
+        return path
+
+    def test_an_even_window_is_a_usage_error_not_a_failed_verdict(self, tmp_path) -> None:
+        cache = self._cache(tmp_path)
+
+        assert mod.main(["terraces", "--reference", str(cache), "--step-window-cells", "4"]) == 2
+
+    def test_a_min_finite_below_two_is_a_usage_error(self, tmp_path) -> None:
+        cache = self._cache(tmp_path)
+
+        assert mod.main(["terraces", "--reference", str(cache), "--step-min-finite", "1"]) == 2
+
+    def test_a_cache_missing_a_later_added_array_is_refused(self, tmp_path) -> None:
+        """It used to print the whole table and then die on KeyError, at exit 1."""
+        cache = self._cache(tmp_path, min_z_reference_ground=None)
+
+        assert mod.main(["terraces", "--reference", str(cache)]) == 2
+
+    def test_a_cache_missing_the_chosen_surface_is_refused(self, tmp_path) -> None:
+        cache = self._cache(tmp_path, min_z_judged=None)
+
+        assert mod.main(["terraces", "--reference", str(cache), "--surface", "min_z_judged"]) == 2
+
+    def test_a_flat_cache_holds_no_gate_population_and_is_refused(self, tmp_path) -> None:
+        """An empty population makes the share nan, not 100%. It is a broken instrument."""
+        cache = self._cache(tmp_path)
+
+        assert mod.main(["terraces", "--reference", str(cache)]) == 2
+
+    def test_a_bad_smrf_parameter_is_a_usage_error_not_a_failed_verdict(self, tmp_path) -> None:
+        """SmrfError subclasses ValueError, so it exited 1 -- the measured-FAIL code."""
+        cache = self._cache(tmp_path)
+
+        assert mod.main(["terraces", "--reference", str(cache), "--smrf-cell", "0.75"]) == 2

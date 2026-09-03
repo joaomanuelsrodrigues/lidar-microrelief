@@ -1,0 +1,14 @@
+[
+  {
+    "type": "readers.las"
+  },
+  {
+    "type": "filters.smrf",
+    "ignore": "Classification[7:7]"
+  },
+  {
+    "type": "writers.las",
+    "compression": "true",
+    "forward": "all"
+  }
+]
