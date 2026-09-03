@@ -15,13 +15,18 @@ input it must REFUSE as well as one it must accept -- a guard only exercised on 
 is indistinguishable from no guard.
 """
 
+import argparse
 import importlib.util
+import json
 import sys
 from pathlib import Path
 from types import ModuleType
 
 import numpy as np
 import pytest
+
+from microrelief.grid import Grid
+from microrelief.smrf import SmrfError, SmrfParams, classify_ground_smrf
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "compare_ground_filters.py"
@@ -136,20 +141,28 @@ class TestDefaultsTrackTheShippedFilter:
     the record instead of copied from it (24.0/0.2/3.0 against the shipped 4.0/0.3/2.0). Nothing
     would have failed: the table would simply have described a filter nobody runs. So the two
     sets of literals are locked to each other, and drift in EITHER file fails here.
+
+    Since 0.5.0 the shipped filter is SMRF and the CLI no longer declares this one's parameters,
+    so the lock's subject moved rather than being dropped: the four belonging to the retired
+    filter are now pinned in `GroundParams` (the configuration 0.4.4 shipped and every recorded
+    measurement used), and the two the pipeline still takes are still read off the CLI. Drift in
+    either direction fails here.
     """
 
+    RETIRED = (
+        "max_window_m",
+        "slope_threshold",
+        "elevation_threshold_m",
+        "max_elevation_m",
+    )
     SHARED = (
-        "max-window-m",
-        "slope-threshold",
-        "elevation-threshold-m",
-        "max-elevation-m",
         "k-min-returns",
         "d-max-interp-m",
     )
 
     @staticmethod
-    def _defaults(source: str) -> dict[str, str]:
-        """Every declaration of each shared flag, not the first one.
+    def _defaults(source: str, flags: tuple[str, ...]) -> dict[str, str]:
+        """Every declaration of each flag, not the first one.
 
         `re.search` stops at the first match, so this lock only ever read the `compare` parser.
         The `terraces` parser re-declares all six of these, and drifted past the lock unseen
@@ -159,7 +172,7 @@ class TestDefaultsTrackTheShippedFilter:
         import re
 
         found = {}
-        for flag in TestDefaultsTrackTheShippedFilter.SHARED:
+        for flag in flags:
             values = re.findall(
                 rf'add_argument\(\s*"--{re.escape(flag)}",\s*type=\w+,\s*default=([0-9.]+)\)',
                 source,
@@ -168,23 +181,65 @@ class TestDefaultsTrackTheShippedFilter:
                 found[flag] = values[0] if len(set(values)) == 1 else f"DISAGREES:{set(values)}"
         return found
 
+    @staticmethod
+    def _pinned(source: str, names: tuple[str, ...]) -> dict[str, str]:
+        """The retired filter's configuration, read off `GroundParams`'s field defaults."""
+        import re
+
+        found = {}
+        for name in names:
+            values = re.findall(rf"^\s*{re.escape(name)}: float = ([0-9.]+)\s*$", source, re.M)
+            if values:
+                found[name] = values[0] if len(set(values)) == 1 else f"DISAGREES:{set(values)}"
+        return found
+
     def test_every_shared_default_matches_the_cli(self) -> None:
-        cli = self._defaults((ROOT / "src" / "microrelief" / "cli.py").read_text())
-        instrument = self._defaults(SCRIPT.read_text())
+        """The two parameters the shipped pipeline still takes."""
+        cli = self._defaults((ROOT / "src" / "microrelief" / "cli.py").read_text(), self.SHARED)
+        instrument = self._defaults(SCRIPT.read_text(), self.SHARED)
 
         assert set(cli) == set(self.SHARED), f"could not read the CLI's defaults: found {cli}"
         assert set(instrument) == set(self.SHARED), f"could not read ours: found {instrument}"
         assert instrument == cli
 
+    def test_every_retired_default_matches_the_configuration_that_shipped(self) -> None:
+        """The four the CLI stopped declaring. The instrument compares SMRF against *the filter
+        that shipped at 0.4.4*, so its settings have to be that filter's, not a fresh guess."""
+        pinned = self._pinned(
+            (ROOT / "src" / "microrelief" / "ground.py").read_text(), self.RETIRED
+        )
+        flags = tuple(name.replace("_", "-") for name in self.RETIRED)
+        instrument = self._defaults(SCRIPT.read_text(), flags)
+
+        assert set(pinned) == set(self.RETIRED), f"could not read GroundParams: found {pinned}"
+        assert set(instrument) == set(flags), f"could not read ours: found {instrument}"
+        assert {k.replace("-", "_"): v for k, v in instrument.items()} == pinned
+
     def test_the_reader_would_notice_a_changed_default(self) -> None:
-        """Control on the control: the comparison above must be able to fail."""
-        mutated = SCRIPT.read_text().replace(
+        """Control on the control, on BOTH arms: each comparison must be able to fail.
+
+        One arm was enough while both groups came from the same file. They no longer do, so a
+        control that exercises one leaves the other's reader unproven -- which is how the newest
+        half of an instrument becomes the untested half.
+        """
+        cli = (ROOT / "src" / "microrelief" / "cli.py").read_text()
+        ground = (ROOT / "src" / "microrelief" / "ground.py").read_text()
+
+        shared_mutant = SCRIPT.read_text().replace(
+            'c.add_argument("--d-max-interp-m", type=float, default=2.0)',
+            'c.add_argument("--d-max-interp-m", type=float, default=20.0)',
+        )
+        assert shared_mutant != SCRIPT.read_text(), "the planted shared default did not apply"
+        assert self._defaults(shared_mutant, self.SHARED) != self._defaults(cli, self.SHARED)
+
+        retired_mutant = SCRIPT.read_text().replace(
             'c.add_argument("--max-window-m", type=float, default=4.0)',
             'c.add_argument("--max-window-m", type=float, default=40.0)',
         )
-        cli = self._defaults((ROOT / "src" / "microrelief" / "cli.py").read_text())
-
-        assert self._defaults(mutated) != cli
+        assert retired_mutant != SCRIPT.read_text(), "the planted retired default did not apply"
+        flags = tuple(name.replace("_", "-") for name in self.RETIRED)
+        got = {k.replace("-", "_"): v for k, v in self._defaults(retired_mutant, flags).items()}
+        assert got != self._pinned(ground, self.RETIRED)
 
 
 class TestConfusionAndKappa:
@@ -672,3 +727,93 @@ class TestTerracesCommandRefusals:
         cache = self._cache(tmp_path)
 
         assert mod.main(["terraces", "--reference", str(cache), "--smrf-cell", "0.75"]) == 2
+
+
+class TestReferenceGridSnapsLikeThePipeline:
+    """The reference command dumps the arrays `compare` and `terraces` feed to SMRF, so its grid
+    has to tile into whole SMRF blocks exactly as the pipeline's does.
+
+    The first version of this class asserted on `inspect.getsource(_cmd_reference)` and never ran
+    the command. Measured: those assertions passed with the snap replaced by `block=1` and with
+    the wrong object passed to `block_factor` -- which is the exact defect they were written
+    for, an `AttributeError` in the one command the suite never invoked. Reading a function's
+    source is not executing it.
+    """
+
+    @staticmethod
+    def _aoi(tmp_path: Path, extent: float) -> Path:
+        """An AOI whose extent gives an ODD cell count at 0.5 m, so the snap has work to do."""
+        aoi = tmp_path / "aoi.geojson"
+        aoi.write_text(
+            json.dumps(
+                {
+                    "type": "Feature",
+                    "properties": {"bounds": [0.0, 0.0, extent, extent], "bounds_epsg": 3763},
+                    "geometry": {
+                        "type": "Polygon",
+                        "coordinates": [[[0, 0], [0, 1], [1, 1], [1, 0], [0, 0]]],
+                    },
+                }
+            )
+        )
+        return aoi
+
+    def _run_reference(self, tmp_path: Path, extent: float) -> Grid:
+        """Invoke `_cmd_reference` for real and return the Grid it actually built.
+
+        It refuses at the empty tile directory (exit 2), which is *after* grid construction --
+        so this exercises the composition without needing a LAZ pair. The grid is captured by
+        wrapping the module's own `grid_for_bounds`, so a wrong `block=` or a wrong object
+        passed to `block_factor` surfaces here as a failure or an exception, not as text.
+        """
+        captured: list[Grid] = []
+        real = mod.grid_for_bounds
+
+        def spy(*args: object, **kwargs: object) -> Grid:
+            grid = real(*args, **kwargs)
+            captured.append(grid)
+            return grid
+
+        tiles = tmp_path / "tiles"
+        tiles.mkdir()
+        args = argparse.Namespace(
+            aoi=self._aoi(tmp_path, extent),
+            crs=None,
+            cell=0.5,
+            tiles=tiles,
+            smrf=tmp_path / "smrf-out",
+            suffix="-smrf",
+            out=tmp_path / "ref.npz",
+        )
+        mod.grid_for_bounds = spy
+        try:
+            rc = mod._cmd_reference(args)
+        finally:
+            mod.grid_for_bounds = real
+        assert rc == 2, "the fixture must refuse at the empty tile directory, after the grid"
+        assert len(captured) == 1, f"expected one grid, captured {len(captured)}"
+        return captured[0]
+
+    def test_the_reference_grid_is_snapped_to_whole_smrf_blocks(self, tmp_path: Path) -> None:
+        grid = self._run_reference(tmp_path, 150.5)
+        assert (grid.n_rows, grid.n_cols) == (302, 302), (
+            "301 cells is what the unsnapped grid gives; the reference must snap like the "
+            "pipeline or it builds arrays no later command can read"
+        )
+        assert grid.n_rows % 2 == 0 and grid.n_cols % 2 == 0
+
+    def test_the_fixture_would_be_odd_without_the_snap(self, tmp_path: Path) -> None:
+        """The discriminating half: if the unsnapped grid were already even, the test above
+        would pass with the snap deleted and prove nothing."""
+        from microrelief.grid import grid_for_bounds as real_grid
+
+        unsnapped = real_grid(0.0, 0.0, 150.5, 150.5, 0.5, 3763)
+        assert (unsnapped.n_rows, unsnapped.n_cols) == (301, 301)
+
+    def test_an_odd_grid_is_refused_by_the_filter_and_a_snapped_one_is_not(self) -> None:
+        """Why the snap is load-bearing, on the real refusal rather than on any ValueError."""
+        rng = np.random.default_rng(0)
+        with pytest.raises(SmrfError, match="divisible"):
+            classify_ground_smrf(rng.normal(100.0, 0.5, (301, 301)), 0.5, SmrfParams())
+        out = classify_ground_smrf(rng.normal(100.0, 0.5, (302, 302)), 0.5, SmrfParams())
+        assert out.shape == (302, 302)

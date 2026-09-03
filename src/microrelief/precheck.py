@@ -50,8 +50,20 @@ class TileEstimate:
 
 def expected_void_fraction(density_pts_m2: float, cell: float, ground_fraction: float) -> float:
     """Share of cells expected to hold zero ground returns."""
-    if density_pts_m2 <= 0 or cell <= 0:
-        raise ValueError("density and cell must be positive")
+    # Finiteness first, and not only for tidiness: `--cell` is a user flag on `precheck`, which
+    # never calls `block_factor`, so this is the one length check on that path. `nan` slipped
+    # through (`nan <= 0` is False), made `lam` NaN, and `nan > max_void_fraction` is False --
+    # so `check_tiles` skipped its refusal and the command printed `void(f=0.4)=nan%` at exit 0.
+    # `inf` was worse: `exp(-inf)` is 0.0, a confident "no voids expected" for an infinite cell.
+    if (
+        not math.isfinite(density_pts_m2)
+        or not math.isfinite(cell)
+        or density_pts_m2 <= 0
+        or cell <= 0
+    ):
+        raise ValueError(
+            f"density and cell must be positive, finite numbers, got {density_pts_m2} and {cell}"
+        )
     if not 0.0 < ground_fraction <= 1.0:
         raise ValueError("ground_fraction must be in (0, 1]")
     lam = density_pts_m2 * cell * cell * ground_fraction
@@ -87,6 +99,19 @@ def check_tiles(
     max_void_fraction: float = 0.35,
     allow_sparse: bool = False,
 ) -> list[TileEstimate]:
+    # The ceiling itself, not only the operands that reach `exp()`. `worst.void_at_f > nan` is
+    # False, so a NaN ceiling switched off the ONLY refusal this command makes: a tile with
+    # 99.99% expected void was accepted, silently. Same mechanism the comment in
+    # `expected_void_fraction` documents; that fix guarded one side of it and not this one.
+    # A RANGE, not just finiteness. `void_at_f` is in [0, 1] by construction, so every ceiling at
+    # or above 1.0 accepts every tile -- measured: 1.0 and 5.0 both passed a tile with 99%
+    # expected void. Guarding finiteness alone left the class the guard was added for, with the
+    # message still calling 5.0 "a finite fraction".
+    if not math.isfinite(max_void_fraction) or not 0.0 < max_void_fraction < 1.0:
+        raise ValueError(
+            f"max_void_fraction must be a fraction in (0, 1), got {max_void_fraction}; at 1.0 "
+            f"or above no tile can exceed it and the refusal never fires"
+        )
     estimates = estimate_tiles(tiles, cell, ground_fraction)
     worst = max(estimates, key=lambda e: e.void_at_f)
     if worst.void_at_f > max_void_fraction and not allow_sparse:

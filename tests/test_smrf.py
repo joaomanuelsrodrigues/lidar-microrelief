@@ -14,6 +14,7 @@ import pytest
 from microrelief.smrf import (
     SmrfError,
     SmrfParams,
+    block_factor,
     block_min,
     classify_cells,
     classify_ground_smrf,
@@ -313,3 +314,103 @@ def test_the_smrf_cell_must_be_a_whole_multiple_of_the_grid_cell() -> None:
 def test_the_grid_must_divide_into_whole_blocks() -> None:
     with pytest.raises(SmrfError, match="divis"):
         classify_ground_smrf(np.zeros((5, 4)), cell=0.5, params=SmrfParams(cell=1.0))
+
+
+# --- the block factor, single-sourced ------------------------------------------------------
+#
+# The CLI has to know the block size before it builds the grid (to snap the grid to whole
+# blocks) and the filter has to know it after (to take block minima). Computing it twice is
+# how the two drift, so it is computed once here and both callers read it.
+
+
+def test_the_block_factor_is_the_ratio_of_the_two_cell_sizes() -> None:
+    assert block_factor(0.5, SmrfParams(cell=1.0)) == 2
+    assert block_factor(1.0, SmrfParams(cell=1.0)) == 1
+    assert block_factor(0.25, SmrfParams(cell=1.0)) == 4
+
+
+def test_a_grid_cell_that_does_not_divide_the_smrf_cell_is_refused_by_name() -> None:
+    """The message has to say what IS admissible, or the caller cannot act on it."""
+    with pytest.raises(SmrfError, match="multiple") as exc:
+        block_factor(0.3, SmrfParams(cell=1.0))
+    assert "0.5" in str(exc.value), "a refusal that names no admissible value is a dead end"
+
+
+def test_a_grid_cell_coarser_than_the_smrf_cell_is_refused_rather_than_rounded_to_zero() -> None:
+    """`round(1.0 / 2.0)` is 0, and a factor of 0 is not an error anywhere downstream: it makes
+    a block size of zero, which divides no grid and reads as a filter that never ran. This is
+    the case the ratio check catches only because it is written as a whole-multiple test rather
+    than as a rounding."""
+    with pytest.raises(SmrfError, match="multiple"):
+        block_factor(2.0, SmrfParams(cell=1.0))
+    with pytest.raises(SmrfError, match="multiple"):
+        block_factor(0.75, SmrfParams(cell=1.0))
+
+
+def test_a_non_positive_grid_cell_is_refused_by_name_not_by_arithmetic() -> None:
+    """`block_factor` now runs BEFORE `grid_for_bounds` at the composition root, so it inherited
+    the duty of refusing a cell size that is not a positive length. Measured before the fix:
+    `--cell 0` produced a bare `ZeroDivisionError` and `--cell -0.5` blamed the whole-multiple
+    rule, which is not the first thing wrong with it."""
+    for bad in (0.0, -0.5, -1.0):
+        with pytest.raises(SmrfError, match="positive, finite"):
+            block_factor(bad, SmrfParams(cell=1.0))
+
+
+def test_a_non_finite_grid_cell_is_refused_too() -> None:
+    """`float("nan") <= 0` is False, so a NaN cell walked through a bare positivity test and
+    died in `int(round(1.0 / nan))` -- the bare-arithmetic failure the guard replaced, surviving
+    inside the guard. `inf` reached a named refusal but blamed the whole-multiple rule."""
+    for bad in (float("nan"), float("inf"), float("-inf")):
+        with pytest.raises(SmrfError, match="positive, finite"):
+            block_factor(bad, SmrfParams(cell=1.0))
+
+
+def test_a_surface_with_nothing_measured_says_so_instead_of_blaming_the_caller() -> None:
+    """An AOI that holds no returns is a real input, not a broken contract.
+
+    Without this the run reaches `_require_no_holes` -- `knn_fill` returns an all-void surface
+    untouched, by design -- and refuses with "a caller skipped the fill", which describes an
+    internal invariant rather than the user's situation. The retired filter raised
+    `GroundError("no measured cells: ...")` and the swap lost that.
+    """
+    empty = np.full((4, 4), np.nan)
+    with pytest.raises(SmrfError, match="no measured cells"):
+        classify_ground_smrf(empty, cell=0.5, params=SmrfParams(cell=1.0))
+
+
+def test_the_all_void_guard_does_not_fire_on_a_surface_that_holds_one_cell() -> None:
+    """The discriminating arm: 'every cell empty' must mean every cell, not almost every cell."""
+    almost = np.full((4, 4), np.nan)
+    almost[2, 2] = 100.0
+    out = classify_ground_smrf(almost, cell=0.5, params=SmrfParams(cell=1.0))
+    assert out.shape == (4, 4)
+    assert bool(out[2, 2]), "the one measured cell sits on the provisional DEM and is ground"
+
+
+def test_a_surface_where_every_cell_is_cut_publishes_nothing_found_rather_than_refusing() -> None:
+    """This function reports "no cell is ground"; it does not adjudicate it.
+
+    `density.compute_basis` already refuses the case one stage on, and has since d9eda03, so a
+    guard here would be a second refusal for one situation (operator ruling, 2026-09-03). What
+    the pipeline as a whole should do with an all-cut AOI -- refuse, or publish
+    `fraction_measured` 0.0 -- is open, and lives in `density.py` rather than here.
+
+    The refusal that DOES stay in this module is on the input: nothing measured anywhere is a
+    different case, because then there is no measurement to publish.
+    """
+    steep = np.repeat(
+        np.repeat(np.array([[91.96, 105.42], [119.56, 114.20]]), 2, axis=0), 2, axis=1
+    )
+    out = classify_ground_smrf(steep, cell=0.5, params=SmrfParams(cell=1.0))
+    assert out.shape == steep.shape
+    assert not out.any(), "every cell was cut, so no cell is ground -- and that is the answer"
+
+
+def test_an_ordinary_surface_is_still_mostly_ground() -> None:
+    """The discriminating arm: 'no cell is ground' has to mean something, so a normal surface
+    must not produce it."""
+    rng = np.random.default_rng(0)
+    gentle = rng.normal(100.0, 0.05, (8, 8))
+    out = classify_ground_smrf(gentle, cell=0.5, params=SmrfParams(cell=1.0))
+    assert out.any(), "a nearly flat surface is mostly ground"

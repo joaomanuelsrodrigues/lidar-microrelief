@@ -33,8 +33,12 @@ class Grid:
     def __post_init__(self) -> None:
         # On Grid rather than only on `grid_for_bounds`: this is the single object every
         # metric path in the package shares, and a caller that constructs one directly
-        # must not get a different answer from one that goes through the helper.
+        # must not get a different answer from one that goes through the helper. The cell is
+        # here for the same reason -- `grid_for_bounds` guards it, and a directly-constructed
+        # Grid was the one way past that guard into every metric path downstream.
         require_metric_crs(self.crs_epsg)
+        if not math.isfinite(self.cell) or self.cell <= 0:
+            raise GridError(f"cell must be a positive, finite length in metres, got {self.cell}")
 
     @property
     def shape(self) -> tuple[int, int]:
@@ -91,9 +95,31 @@ def grid_for_bounds(
     cell: float,
     crs_epsg: int,
     max_cells: int = 200_000_000,
+    block: int = 1,
 ) -> Grid:
-    if cell <= 0:
-        raise GridError(f"cell must be positive, got {cell}")
+    """The grid one AOI is worked on, snapped outward to whole cells and to whole blocks.
+
+    `block` is the analysis block size in cells, for a stage that works on a coarser grid built
+    by reducing blocks of these cells (the ground filter does). Left at 1 it changes nothing.
+    Above 1 the grid grows by at most `block - 1` cells per axis, because a stage that tiles the
+    grid in blocks cannot be handed a grid that is not whole blocks -- and the alternative,
+    refusing, would refuse a large share of real AOIs, since `n_cols` and `n_rows` are `ceil()`
+    of an arbitrary extent and their parity is unconstrained.
+
+    What the added cells publish is **not** a general guarantee. Membership is decided by
+    `cell_indices` against the *grid*, not against the requested AOI, so a fringe cell that
+    falls inside a source tile accumulates real returns and publishes what was measured there;
+    only a fringe cell outside every tile publishes as `undetermined`. The grid already extends
+    past the AOI by up to one cell for the same reason -- the snap widens an existing edge, it
+    does not create one.
+    """
+    # `math.isfinite` leads: `float("nan") <= 0` is False, so a NaN cell walked through a bare
+    # positivity test and died in `math.floor(minx / nan)` with "cannot convert float NaN to
+    # integer". Same hole, same shape, in all three places this package takes a length.
+    if not math.isfinite(cell) or cell <= 0:
+        raise GridError(f"cell must be a positive, finite length in metres, got {cell}")
+    if block < 1:
+        raise GridError(f"block must be at least one cell, got {block}")
     if maxx <= minx or maxy <= miny:
         raise GridError(f"empty extent: ({minx}, {miny}) to ({maxx}, {maxy})")
 
@@ -101,6 +127,10 @@ def grid_for_bounds(
     origin_y = math.ceil(maxy / cell) * cell
     n_cols = int(math.ceil((maxx - origin_x) / cell))
     n_rows = int(math.ceil((origin_y - miny) / cell))
+    # After the snap, never before: the snap can only grow the grid, so a ceiling checked
+    # first is a ceiling the run can cross.
+    n_cols = int(math.ceil(n_cols / block)) * block
+    n_rows = int(math.ceil(n_rows / block)) * block
     n_cells = n_cols * n_rows
     if n_cells > max_cells:
         raise GridError(

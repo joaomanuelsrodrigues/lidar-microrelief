@@ -46,7 +46,11 @@ from microrelief.density import BASIS_INTERPOLATED, BASIS_MEASURED, compute_basi
 from microrelief.grid import Grid, grid_for_bounds  # noqa: E402
 from microrelief.ground import GroundParams, classify_ground  # noqa: E402
 from microrelief.read import read_laz  # noqa: E402
-from microrelief.smrf import SmrfParams, classify_ground_smrf  # noqa: E402
+from microrelief.smrf import (  # noqa: E402
+    SmrfParams,
+    block_factor,
+    classify_ground_smrf,
+)
 
 # PDAL's `filters.smrf` ignores this class in the pipeline recorded in `docs/live-smoke.md`, and
 # passes those points through untouched. They are therefore not judged, and counting them as
@@ -350,7 +354,17 @@ def build_reference(
 
 def _cmd_reference(args: argparse.Namespace) -> int:
     minx, miny, maxx, maxy, epsg = aoi_bounds(args.aoi, args.crs)
-    grid = grid_for_bounds(minx, miny, maxx, maxy, args.cell, epsg)
+    # Snapped to whole SMRF blocks, like the pipeline's own composition root: the arrays this
+    # command dumps are fed to `classify_ground_smrf` by `compare` and `terraces`, so an AOI
+    # with an odd cell count would build a reference no later command could read (a 150.5 m AOI
+    # at 0.5 m gives 301 cells and refuses). The sibling the grid fix did not reach.
+    # `SmrfParams()`, not `args.smrf` -- that one is the reference-output DIRECTORY, and this
+    # subcommand takes no `--smrf-cell`. The block is sized for the analysis cell every
+    # downstream default uses (1.0 m, PDAL's), which is the configuration the whole comparison
+    # is validated at.
+    grid = grid_for_bounds(
+        minx, miny, maxx, maxy, args.cell, epsg, block=block_factor(args.cell, SmrfParams())
+    )
     tiles = sorted(args.tiles.glob("*.laz"))
     if not tiles:
         print(f"no .laz files in {args.tiles}", file=sys.stderr)

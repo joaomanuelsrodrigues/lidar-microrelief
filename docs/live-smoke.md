@@ -1863,3 +1863,268 @@ PDAL's 91.8% on the base population reproduces the 2026-08-31 figure to the prec
 and the both-ground control lands 22 cells from its 46,449. **Its 86.5% on the steep population
 does not reproduce** — 95.1% here — which places the whole disagreement inside the one phrase that
 record left undefined. Detail and consequence in `docs/p4-terrace-result.md`.
+
+---
+
+## 2026-09-03 — SMRF becomes the ground filter (0.5.0): both products re-run
+
+The filter built and measured in 0.4.4's aftermath is now the one the pipeline runs. The
+progressive morphological filter stays in the tree as the comparison arm and nothing else.
+
+**What the release is accepted on.** Not `compare_runs.py old new`: every band changes on
+purpose, so the band-identity spine has no verdict to give across this boundary. The acceptance
+is **self-replay** — each product run twice, required byte-identical — plus the declared
+limitation transformation checked across the version boundary, plus a table of what moved.
+
+### The sample, against a target fixed before the wiring existed
+
+`docs/smrf-default-preregistration.md` fixed the eleven figures the wired CLI had to produce,
+measured by a script that calls the library directly and never touches the CLI. The control
+that makes it worth anything: the same script reproduced the *current* filter's published
+record exactly, down to `fp = 14327`.
+
+```
+$ .venv/bin/microrelief run --aoi examples/sistelo-sample/aoi.geojson \
+    --laz examples/sistelo-sample --out <tmp>/sample-a --cell 0.5 \
+    --attribution "$(cat examples/sistelo-sample/attribution.txt)"
+grid 300 x 300 cells of 0.5 m (0.0225 km2), 1 tile(s), 1 return(s) outside the AOI
+measured 51.6% | interpolated 42.3% | undetermined 6.1%
+expected void at f=1: 1.312% (measured density 17.3 pts/m2)
+ground recall 0.977 | non-ground recall 0.788 | accuracy 0.866 | majority-class null 0.587
+flight dates (none declared) | mixed epochs False
+reproducibility_hash 096b82c54327ef0ba05506457bcae975ae21402360ca3e04c31cea9ad0807ada
+```
+
+Eleven of eleven matched, the four confusion counts exactly (`tp 35470 fp 10934 fn 844
+tn 40730`, `n_cells 87978`). The hash above is the pre-bump run — the version moved afterwards,
+which is what carries it to `2da06987808e983b611144b5ddce217be2eb7f513b9ab9e8268ff51dd98e32dd`.
+
+The filter itself was accepted earlier the same day: re-implemented from PDAL 2.10.2's
+`filters/SMRFilter.cpp`, it agrees with that build on **99.662%** of cells at κ 0.991 — **over the
+six-tile Valongo AOI, 23,058,525 measured cells**, not over the sample
+(`docs/smrf-build-result.md`, and the `P3 agreement: 99.662 >= 90.0 -> PASS` line in this file's
+2026-09-03 SMRF-build entry). What is wired here is that implementation, not PDAL's.
+
+The population matters and naming it wrong made two published sentences refute each other. On the
+90,000-cell sample, 0.338% disagreement is at most ~297 cells, which cannot open a 0.9-point
+accuracy gap — yet the README shows this build at 0.866 against PDAL's 0.857 in the 2026-08-27
+table. Those are different populations, and the figure above is Valongo's.
+
+### Self-replay, both products
+
+```
+$ .venv/bin/python scripts/compare_runs.py <tmp>/sample-b <tmp>/sample-c
+n_ground_asprs.tif: 90000 cells compared
+6 raster(s) compared
+provenance.created_utc: 2026-09-03T14:37:25.658887+00:00 -> 2026-09-03T14:37:26.202591+00:00
+provenance.package_version: 0.5.0 -> 0.5.0
+provenance.reproducibility_hash: 2da06987808e... -> 2da06987808e...
+provenance.known_limitations: 13 -> 13 entries
+
+identical in every band and every record field but the three permitted, and unchanged
+```
+
+```
+$ /usr/bin/time -f "%e s wall, %M kB peak RSS" .venv/bin/microrelief run \
+    --aoi aoi/aoi.geojson --laz ~/data/dgt-laz-sistelo --out outputs_0.5.0/ --cell 0.5 \
+    --selection outputs_0.2.0/selection.json --attribution "Source: Direção-Geral do Território (DGT), ..."
+grid 3960 x 3960 cells of 0.5 m (3.9204 km2), 4 tile(s), 3250766 return(s) outside the AOI
+measured 69.7% | interpolated 28.2% | undetermined 2.1%
+expected void at f=1: 0.117% (measured density 27.0 pts/m2)
+ground recall 0.993 | non-ground recall 0.588 | accuracy 0.792 | majority-class null 0.503
+flight dates 2026-03-30T00:00:00Z | mixed epochs False
+reproducibility_hash 09b79da9fff731caeebbb4b37b8c5508eb10ed0399940382212c48ba810518c2
+34.64 s wall, 4618688 kB peak RSS
+
+$ .venv/bin/python scripts/compare_runs.py outputs_0.5.0 outputs_0.5.0_replay
+identical in every band and every record field but the three permitted, and unchanged
+```
+
+**SMRF's cost, measured rather than assumed:** 34.64 s against 0.4.2's 30.62 s, and
+4,618,688 kB peak RSS against 4,612,952 kB — about four seconds and no extra memory, on a run
+holding two extra k-d tree fills over the full grid.
+
+**`--laz ~/data/dgt-laz` no longer reproduces the recorded command.** That directory has since
+gained the six Valongo tiles, and the selection guard refused, correctly and by name:
+`LO-160470-07-2025 is not in the selection (...); refusing to publish catalogue facts for some
+tiles and none for others`. The four Sistelo tiles were symlinked into
+`~/data/dgt-laz-sistelo`. The refusal is the mechanism working; the old command line is left in
+its own entry above, because that is a record of what ran.
+
+### What gated the release
+
+SMRF was accepted against the terraces before being wired, on bounds pre-registered before the
+run: it keeps **91.078%** of the cells the old filter called measured ground (bound 85.0) and
+**95.082%** of those standing on a step above 2.5 m (bound 80.0), with the must-fail control at
+58.601% / 60.197% returning FAIL at exit 1. Full record, including the ramp confound measured and
+declared, in `docs/p4-terrace-result.md`.
+
+### The declared limitation transformation, across the version boundary
+
+The `old` side has to be a real product, six bands and all: `--record-only` skips the pixel
+comparison and nothing else, so a directory holding no rasters is still refused. The shipped
+`expected/` directory carries digests rather than GeoTIFFs, so the 0.4.4 product was rebuilt from
+the code that made it — `git worktree add <tmp>/wt-0.4.4 9bb2e29`, then the run below through
+`PYTHONPATH=<tmp>/wt-0.4.4/src`. It reproduced the published 0.4.4 record exactly, hash
+`f67b2f033d23` and accuracy 0.837 against a 0.587 null, which is what makes it the right `old`.
+
+```
+$ .venv/bin/python scripts/compare_runs.py --record-only --expect-new-limitations <tmp>/sample-0.4.4 <tmp>/sample-d
+bands not compared (6 present): --record-only
+provenance.agreement: changed (not asserted under --record-only)
+provenance.honesty: changed (not asserted under --record-only)
+provenance.parameters: changed (not asserted under --record-only)
+provenance.uncalibrated_thresholds: changed (not asserted under --record-only)
+provenance.package_version: 0.4.4 -> 0.5.0
+provenance.known_limitations: 11 -> 13 entries
+
+the bands were not compared; every record field that moved is named above, and
+known_limitations is exactly the old list under 0.5.0's declared transformation (1 replaced, 2 added)
+```
+
+> *Annotation, same day:* the two lines above reading `bands not compared` and `the bands were
+> not compared` are what the instrument printed **then**. The pre-merge review found both false —
+> the band *set* was compared, only the contents were skipped — and the messages now say
+> `band CONTENTS not compared (… set checked)` and `the band contents were not compared (the band
+> SET was)`. The transcript is left as it ran, like the superseded command line above it; this
+> note is here so a reader replaying it today knows why the output differs.
+
+The same command against `outputs_0.4.2` **fails**, and the failure is the finding below: the
+last full-run record was never regenerated at 0.4.4, so the list it carries is 0.4.2's ten and
+the line 0.5.0 replaces is not in it.
+
+### Found by the new guard: the published viewer record was a release behind
+
+`docs/viewer/provenance.json` — the record a reader of the published piece actually opens — sat
+at **0.4.2 with ten limitations, the buildings line absent**. 0.4.4 declared that limitation,
+bumped the version and regenerated the *sample*; the full product was never re-run, so the most
+important disclosure of that release never reached the artefact a reader sees. The suite was
+green throughout: the sample had a test locking its record, and the viewer's record had only the
+hash partition guard, which asks whether every *document* quotes a current hash and never
+whether the *records* themselves are current.
+
+Two guards now close it (`tests/case_study/test_readme_claims.py`): every published record must
+declare the package's current version, and must carry the exact limitation list the code
+declares. Both were red on the tree before this release re-rendered the viewer.
+
+### What moved
+
+| the full product (3960 x 3960) | 0.4.2 (PMF) | 0.5.0 (SMRF) |
+|---|---|---|
+| measured | 74.6022% | 69.7423% |
+| interpolated | 25.2074% | 28.1972% |
+| undetermined | 0.1903% | 2.0605% |
+| ground recall | 0.9993 | 0.9932 |
+| non-ground recall | 0.4954 | 0.5881 |
+| accuracy | 0.7491 | 0.7921 |
+| majority-class null | 0.5035 | 0.5035 |
+| fp (ours ground, official none) | 3,889,074 | 3,174,486 |
+
+| the shipped sample (300 x 300) | 0.4.4 (PMF) | 0.5.0 (SMRF) |
+|---|---|---|
+| measured | 56.2189% | 51.5600% |
+| interpolated | 43.1067% | 42.3411% |
+| undetermined | 0.6744% | 6.0989% |
+| ground recall | 0.9988 | 0.9768 |
+| non-ground recall | 0.7227 | 0.7884 |
+| accuracy | 0.8367 | 0.8661 |
+| majority-class null | 0.5872 | 0.5872 |
+| fp | 14,327 | 10,934 |
+
+Read the two tables together and the shape is one trade: the filter answers over fewer cells and
+is right more often about the ones it answers over. `undetermined` rises because a cell it cannot
+call ground now publishes as nothing rather than as terrain — nine-fold on the sample, ten-fold on
+the full product. Against the delivery's own ground class, non-ground recall rises 9.3 points on
+the full product and `fp` falls by 714,588 cells: those are roofs and canopy the old filter called
+ground. Ground recall falls 0.6 points, which is the same trade read from the other side.
+
+### What the pre-merge review changed, 2026-09-03
+
+`/code-review high` on the branch, after the release commit was written. **Eight findings, 8/8
+reproduced before anything was changed.** Four were mine, and two of those are the kind that
+survive a green suite because they are about the instruments rather than the code:
+
+- **The 99.662% agreement figure was published "over the sample"; it was measured over the
+  six-tile Valongo AOI, 23,058,525 measured cells.** Introduced an hour earlier, in the sentence
+  added to satisfy the README percentage lock. It also made two published sentences refute each
+  other: on 87,978 shared cells, 0.338% disagreement is ~297 cells and cannot open the 0.9-point
+  accuracy gap the README shows between this build and PDAL's. Both sites now name Valongo.
+- **`--record-only` skipped the band-set comparison and the nothing-scanned guard**, not just the
+  pixel loop. Measured: two directories holding **zero** rasters returned exit 0 with the full
+  success verdict — and this was the only acceptance path across the version boundary. The file's
+  own comment ("silence-by-nothing-scanned and silence-by-clean-comparison must not look alike")
+  was the rule that got moved under the flag. Both checks are back outside it, with controls.
+- **The record-currency control asserted a dict it had written itself.** Its only live assertion
+  was `__version__ != "0.0.0"`; deleting the check it claimed to control left it green. It now
+  calls the same function the check calls, and the firing arm requires *every* record to be named.
+- **The new `known_limitations` line understated the snap by up to 9×.** It said "one cell per
+  axis", true only at `--cell 0.5`; measured, `0.25` adds 3, `0.2` adds 4 and `0.1` adds 9, and
+  `0.2` is a value the agent skill advertises. The record now states the rule
+  (`(1 m / --cell) - 1`) and the worked examples moved to the README and the skill, because the
+  evidence lock reads a decimal in a limitation as a measurement owing a dated source — which is
+  the right reading for a measurement and the wrong home for an arithmetic example.
+
+The other four: an AOI with no measured cells refused with `the surface still has holes ... a
+caller skipped the fill`, an internal contract message blaming the caller, where the retired
+filter said `no measured cells`; `--cell 0` raised a bare `ZeroDivisionError` because
+`block_factor` now runs before `grid_for_bounds`, which owned the positivity check;
+`compare_ground_filters.py`'s `reference` command was the one other driver of the filter over a
+`grid_for_bounds` grid and the snap did not reach it; and `CITATION.cff` had the new version
+against 0.4.4's release date.
+
+**The fix for the last of those contained the same class it was fixing:** the first version
+passed `block_factor(args.cell, args.smrf)`, and `args.smrf` is the reference-output *directory*,
+not `SmrfParams` — an `AttributeError` in the one command the suite never ran. Caught by reading
+the argument's declaration, not by a test, which is why that command now has one.
+
+Correcting the limitation text did **not** move `reproducibility_hash`: the hash payload is
+`{package_version, grid, parameters, inputs}` and a disclosure sits outside it by design. Verified
+rather than assumed — both products re-run, all six band arrays byte-identical, and only
+`created_utc` and `known_limitations` differing in either record.
+
+### What the merge-gate review changed, 2026-09-03
+
+A fourth round, run because the operator asked for a review before merging and because two
+commits had had no outside instrument on them. **Six findings, 6/6 reproduced.** One was HIGH and
+on the shipped path.
+
+- **`run --d-max-interp-m nan` published a false honesty band at exit 0.** Measured on the
+  shipped sample: `measured 51.6% | interpolated 0.0% | undetermined 48.4%` against the true
+  51.6/42.3/6.1, because `distances * cell <= nan` is False everywhere. `inf` inverted it —
+  every hole became `interpolated` and `undetermined` went to zero, which is the one class the
+  band exists to publish. The record then carried a bare `NaN` token: Python's reader accepts it,
+  a strict RFC 8259 parser rejects it, so the published record would not have parsed everywhere.
+- **`precheck --max-void-fraction nan` accepted a tile with 99.99% expected void**, because
+  `void_at_f > nan` is False. That is the only refusal `precheck` makes, switched off silently —
+  and the same mechanism a comment eleven lines above already documented, on the operand the
+  previous round had guarded.
+- **A non-positive SMRF window made the object stage flag nothing.** `max_radius_for` returned
+  zero or less, so `range(1, radius + 1)` in `progressive_filter` was empty and the filter called
+  far more of the surface ground, with no refusal. Reachable through `--smrf-window` on the
+  instrument that produced the published agreement figures. `inf` did the same by way of a radius
+  of 0; `0.0` raised a bare `ZeroDivisionError`, a failure mode rather than a refusal.
+
+  *Correction, same day:* this entry first quoted "7 of 400 cells ground against 259 of 400 at
+  `window=0`". Nothing in the tree reproduces those figures — no test, no script — and the
+  reviewer who looked could not rebuild them from the description either. They are withdrawn.
+  The mechanism is what the guard rests on, and it is checkable by reading; the counts were a
+  number with no artefact, published in three files.
+
+**The contract that was supposed to prevent exactly this had a hand-written membership rule.**
+`tests/test_lengths.py` claimed in its docstring to cover "every entry point that takes a length"
+and covered eight of them; three of the four defects above were parameters it did not list. Its
+population is derived now — the package is walked for float parameters whose name says they are a
+length, and a partition test requires each to be covered, delegating, or exempt with a reason.
+Turned on, it immediately found eleven more sites, of which five accepted `inf` or died bare on
+`0.0`. Guards went into the two shared helpers (`smrf.max_radius_for`, `ground._radii`) rather
+than into eleven call sites.
+
+**Third instance of a test that could not fail, and it was mine again.** The previous round's
+"discriminator" asserted `not (float("nan") <= 0)` and `not isfinite(nan)` — facts about Python,
+true with every guard in this package deleted. The count of these across the arc is now: a dict
+the test wrote itself, an assertion on `inspect.getsource`, and float semantics. All three were
+written while fixing a review finding, and all three were described in a commit body as covering
+the thing they did not reach.
+
+Neither the sample nor the full product moved: both re-run byte-identical in every band, same
+hashes, `known_limitations` unchanged.

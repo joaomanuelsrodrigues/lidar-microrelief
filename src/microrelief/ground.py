@@ -11,6 +11,7 @@ tautology.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 import numpy as np
@@ -26,10 +27,23 @@ class GroundError(RuntimeError):
 
 @dataclass(frozen=True)
 class GroundParams:
-    max_window_m: float
-    slope_threshold: float
-    elevation_threshold_m: float
-    max_elevation_m: float
+    """The configuration this filter shipped with, pinned here since it stopped being the default.
+
+    These four numbers were the CLI's defaults up to 0.4.4 and are the settings every recorded
+    measurement of this filter used -- the ground-filter diagnosis, the second-AOI gate, and the
+    terrace comparison SMRF was accepted against. They live here, with defaults, because the CLI
+    no longer declares them and the comparison instrument must still measure *the filter that
+    shipped* rather than one nobody ran (`tests/test_compare_ground_filters.py` locks the two
+    sets of literals to each other; that lock previously read them off the CLI).
+    """
+
+    max_window_m: float = 4.0
+    slope_threshold: float = 0.3
+    elevation_threshold_m: float = 0.3
+    # 3.5, not the original 3.0: the tallest verified terrace riser at the calibration site
+    # measures 2.98 m, and a cap 2 cm above a riser is not above it within the 0.2-0.3 m LiDAR
+    # error band (docs/riser-measurement.md, operator ruling 2026-08-08).
+    max_elevation_m: float = 3.5
 
 
 def _fill_nearest(z: NDArray[np.float32], invalid: NDArray[np.bool_]) -> NDArray[np.float64]:
@@ -44,6 +58,16 @@ def _fill_nearest(z: NDArray[np.float32], invalid: NDArray[np.bool_]) -> NDArray
 
 
 def _radii(max_window_m: float, cell: float) -> list[int]:
+    """The radius schedule, guarded at the one place both public callers pass through.
+
+    `max(1, ...)` clamps rather than refuses, so a zero or negative window silently became a
+    one-cell search and `inf` became a radius of 0 -- a filter that runs and flags nothing. The
+    retired arm still has to refuse a nonsense length: it is what reproduces the published
+    comparison figures, and a clamp there would answer with a schedule nobody asked for.
+    """
+    for name, value in (("max_window_m", max_window_m), ("cell", cell)):
+        if not math.isfinite(value) or value <= 0:
+            raise ValueError(f"{name} must be a positive, finite length in metres, got {value}")
     max_radius = max(1, int(round(max_window_m / cell / 2)))
     radii, radius = [], 1
     while radius <= max_radius:
@@ -77,6 +101,18 @@ def classify_ground(
     is excused exactly when the cap exceeds it, at any window (measured 2026-08-03 -- see
     `CALIBRATIONS.md` and `tests/test_ground.py`).
     """
+    # All three lengths this function consumes, not just the one `_radii` sees. `min(finite, nan)`
+    # returns the finite operand, so a NaN cap silently REMOVED the cap: on an 80x80 fixture with
+    # a 4.5 m plateau at max_window_m=24, ground went 5824/6400 -> 6400/6400, the whole plateau
+    # published as terrain at exit 0. A NaN elevation threshold did the same on the other term,
+    # 336/400 -> 400/400. Both are reachable as flags on the comparison instrument.
+    for name, value in (
+        ("elevation_threshold_m", params.elevation_threshold_m),
+        ("max_elevation_m", params.max_elevation_m),
+    ):
+        if not math.isfinite(value) or value <= 0:
+            raise ValueError(f"{name} must be a positive, finite length in metres, got {value}")
+
     invalid = np.isnan(min_z)
     if invalid.all():
         raise GroundError("no measured cells: every cell of the minimum surface is empty")

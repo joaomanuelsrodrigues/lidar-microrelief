@@ -4,10 +4,11 @@ Pingel, T.J., Clarke, K.C. and McBride, W.A. (2013), "An improved simple morphol
 the terrain classification of airborne LIDAR data", *ISPRS Journal of Photogrammetry and Remote
 Sensing* 77, 21-30, https://doi.org/10.1016/j.isprsjprs.2012.12.002.
 
-Why it is here at all: the filter this package shipped until now publishes buildings as terrain --
-it claims `BASIS_MEASURED`, the strongest thing it says about a cell, over 87.7% of the roof cells
-of a built AOI where SMRF claims 16.4%, at a cost of 0.6 points on plain ground
-(`docs/ground-filter-diagnosis.md`, re-derived in `docs/reference-instrument-result.md`).
+Why it is here at all: the filter this package shipped up to 0.4.4 published buildings as terrain
+-- it claimed `BASIS_MEASURED`, the strongest thing the band says about a cell, over 87.7% of the
+roof cells of a built AOI where SMRF claims 16.4%, at a cost of 0.6 points on plain ground
+(`docs/ground-filter-diagnosis.md`, re-derived in `docs/reference-instrument-result.md`). Since
+0.5.0 this module is the pipeline's ground filter and that one is the comparison arm.
 
 Why re-implemented rather than depended on: an install a reader can run without conda. That is a
 stated assumption, not a fact -- if it stops holding, a runtime dependency on PDAL is strictly
@@ -87,10 +88,68 @@ class SmrfParams:
         return 18.0 * self.cell if self.window is None else self.window
 
 
+def block_factor(cell: float, params: SmrfParams) -> int:
+    """How many grid cells make one SMRF cell along each axis.
+
+    Single-sourced because two callers need it on opposite sides of the grid: the composition
+    root has to know the block size *before* the grid exists (to size the grid in whole blocks)
+    and `classify_ground_smrf` needs it *after* (to take block minima). Computed twice, the two
+    drift, and the drift is silent.
+
+    Written as a whole-multiple test rather than a rounding on purpose. `round(1.0 / 2.0)` is
+    **0**, and a factor of zero is not an error anywhere downstream: it makes a block of no
+    cells, which tiles no grid and reads like a filter that never ran.
+    """
+    if not math.isfinite(cell) or cell <= 0:
+        # By name, and here: this used to be caught by `grid_for_bounds`, which the composition
+        # root now calls AFTER this function -- so `--cell 0` reached the division and came out
+        # as a bare ZeroDivisionError, and `--cell -0.5` came out blaming the whole-multiple rule
+        # for a value that fails a simpler test first. `math.isfinite` leads because
+        # `float("nan") <= 0` is False: a NaN cell slipped past the positivity test on its own
+        # and died in `int(round(1.0 / nan))` -- the bare-arithmetic failure this guard exists to
+        # replace, surviving inside the guard.
+        raise SmrfError(f"cell must be a positive, finite length in metres, got {cell}")
+    if not math.isfinite(params.cell) or params.cell <= 0:
+        # The OTHER operand of the same division. Guarding one and not the other left the exact
+        # bare-arithmetic failure this check exists to replace, one argument over: an
+        # `SmrfParams(cell=nan)` reached `int(round(nan))`. It is reachable -- the comparison
+        # script builds `SmrfParams(cell=args.smrf_cell)` straight from a flag. At 0 it also made
+        # the refusal advise "0, 0, 0, 0 m" as admissible grid cells.
+        raise SmrfError(
+            f"the SMRF cell must be a positive, finite length in metres, got {params.cell}"
+        )
+    ratio = params.cell / cell
+    factor = int(round(ratio))
+    if factor < 1 or abs(ratio - factor) > 1e-9:
+        admissible = ", ".join(f"{params.cell / k:g}" for k in (1, 2, 4, 8))
+        raise SmrfError(
+            f"the SMRF cell ({params.cell:g} m) must be a whole multiple of the grid cell "
+            f"({cell:g} m); block minima are exact only when the blocks tile the grid. "
+            f"Admissible grid cells here include {admissible} m"
+        )
+    return factor
+
+
 def max_radius_for(window: float, cell: float) -> int:
     """ "The maximum window radius is supplied as a distance metric [...] but is internally
     converted to a pixel equivalent by dividing it by the cell size and rounding the result
-    toward positive infinity" (Pingel et al. 2013, quoted in the PDAL source)."""
+    toward positive infinity" (Pingel et al. 2013, quoted in the PDAL source).
+
+    The window is a length, and a non-positive one did not fail: `max_radius_for` returned 0 or
+    less, `range(1, radius + 1)` in `progressive_filter` was empty, and the object stage flagged
+    nothing -- so the filter called far more of the surface ground, with no refusal and no
+    warning. `inf` did the same by way of a radius of 0; `0.0` raised a bare ZeroDivisionError,
+    which is a failure mode rather than a refusal. Reachable through `--smrf-window` on the
+    comparison instrument that produced the published agreement figures.
+    """
+    if not math.isfinite(window) or window <= 0:
+        raise SmrfError(f"window must be a positive, finite length in metres, got {window}")
+    if not math.isfinite(cell) or cell <= 0:
+        # Both operands. `18.0 / inf` is 0.0, so the radius is 0, `range(1, 1)` is empty and the
+        # object stage flags nothing -- the same silent no-op a non-positive window produced.
+        # `18.0 / 0.0` raised a bare ZeroDivisionError, which is the failure mode these guards
+        # replace, not a refusal.
+        raise SmrfError(f"cell must be a positive, finite length in metres, got {cell}")
     return int(math.ceil(window / cell))
 
 
@@ -233,6 +292,20 @@ def provisional_dem(z_min: FloatGrid, params: SmrfParams) -> tuple[FloatGrid, Fl
 
     cut_out = filled.copy()
     cut_out[objects | low] = np.nan
+    # No refusal here, deliberately. When the filter and the low-outlier mask together cut every
+    # cell, `knn_fill` returns the all-void surface untouched and every cell reads non-ground.
+    # This function reports that; it does not adjudicate it. One stage on, `density.compute_basis`
+    # already refuses the case by name ("no measured cells: nothing to interpolate from"), as it
+    # has since d9eda03, so a guard here would be a second refusal for one situation, raised
+    # earlier and from the module with less context about it (operator ruling, 2026-09-03).
+    #
+    # Whether an all-cut AOI should REFUSE or publish `fraction_measured` 0.0 is a real question
+    # and an open one -- answering "publish" means changing `density.py`, not this file. Note
+    # what it costs today: the run stops before `build_surfaces`, so the DSM is lost too, and the
+    # DSM is `max_z` and never touches the ground filter.
+    #
+    # The refusal that DOES live here is on the INPUT, in `classify_ground_smrf`: nothing
+    # measured anywhere is a different case, because then there is no measurement to publish.
     dem = knn_fill(cut_out)
 
     scaled = dem / params.cell
@@ -278,18 +351,21 @@ def classify_ground_smrf(min_z: FloatGrid, cell: float, params: SmrfParams) -> B
     neighbour interpolation the reference uses, evaluated per cell instead of per point.
     """
     z = np.asarray(min_z, dtype=np.float64)
-    ratio = params.cell / cell
-    factor = int(round(ratio))
-    if factor < 1 or abs(ratio - factor) > 1e-9:
-        raise SmrfError(
-            f"the SMRF cell ({params.cell} m) must be a whole multiple of the grid cell "
-            f"({cell} m); block minima are exact only when the blocks tile the grid"
-        )
+    factor = block_factor(cell, params)
     if z.shape[0] % factor or z.shape[1] % factor:
         raise SmrfError(
             f"a grid of {z.shape[0]}x{z.shape[1]} cells is not divisible into whole "
             f"{factor}x{factor} blocks"
         )
+
+    if bool(np.isnan(z).all()):
+        # An AOI where nothing was measured is a legitimate input with an obvious answer, and it
+        # deserves to be told what happened. Left to run, it reaches `_require_no_holes` through
+        # `knn_fill` -- which returns an all-void surface untouched, by design -- and refuses
+        # with "a caller skipped the fill", an internal contract message that blames the caller
+        # for the pipeline's own composition. The retired filter said this plainly and the swap
+        # lost it.
+        raise SmrfError("no measured cells: every cell of the minimum surface is empty")
 
     coarse = block_min(z, factor) if factor > 1 else z
     dem, thresh = provisional_dem(coarse, params)

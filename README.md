@@ -70,8 +70,8 @@ uv run microrelief run --aoi examples/sistelo-sample/aoi.geojson --laz examples/
 ```
 
 You get six GeoTIFFs (`mdt`, `mds`, `chm`, `basis`, `n_all`, `n_ground_asprs`) and
-`provenance.json`. On the author's machine the record's hash is `f67b2f033d23` and the basis is
-56.2% measured · 43.1% interpolated · 0.7% undetermined; `tests/test_sample.py` reproduces the
+`provenance.json`. On the author's machine the record's hash is `2da06987808e` and the basis is
+51.6% measured · 42.3% interpolated · 6.1% undetermined; `tests/test_sample.py` reproduces the
 record on every CI run. Open the rasters in QGIS with the styles in `styles/` (`docs/recipes.md`).
 
 ## Your own data
@@ -187,11 +187,11 @@ reaches the artefacts.
 | What | Value |
 |---|---|
 | Grid | 3960 × 3960 cells of 0.5 m (3.9204 km²), EPSG:3763, one common grid for everything |
-| Cell basis | measured 74.6% · interpolated 25.2% · undetermined 0.2% |
-| Closed-form void expectation | 0.117% of cells empty, given the measured 27.0 pts/m² and every return reaching the ground — read beside the cells with no measured basis (the 25.2% interpolated plus the 0.2% undetermined); the gap between the two is the combined effect of canopy interception and the ground filter's own rejections — a cell is measured only when the filter calls it ground (`density.py`) |
-| Agreement with the official classification | ground recall 0.999 · non-ground recall 0.495 · accuracy 0.749 · **majority-class null 0.503** |
-| Reproducibility hash | `257c8dac78264df2295d8afff6bb99a8705b9cb670bc7532cb8616a3a033b477` |
-| Cost | 30.6 s wall clock, 4.4 GiB peak resident |
+| Cell basis | measured 69.7% · interpolated 28.2% · undetermined 2.1% |
+| Closed-form void expectation | 0.117% of cells empty, given the measured 27.0 pts/m² and every return reaching the ground — read beside the cells with no measured basis (the 28.2% interpolated plus the 2.1% undetermined); the gap between the two is the combined effect of canopy interception and the ground filter's own rejections — a cell is measured only when the filter calls it ground (`density.py`) |
+| Agreement with the official classification | ground recall 0.993 · non-ground recall 0.588 · accuracy 0.792 · **majority-class null 0.503** |
+| Reproducibility hash | `09b79da9fff731caeebbb4b37b8c5508eb10ed0399940382212c48ba810518c2` |
+| Cost | 34.6 s wall clock, 4.4 GiB peak resident |
 
 ASPRS noise classes 7 and 18 (Low Point / High Noise) are excluded from every surface and counted
 per tile as `point_count_noise_excluded` — 0.228% of returns over this AOI (248,809 of
@@ -201,28 +201,36 @@ produced a 1524.55 m CHM and pushed the minimum surface below the terrain.
 
 ## Ground classification
 
-A progressive morphological filter (Zhang et al., 2003) over the per-cell minimum surface — our
-own implementation, so that every derived product is re-derived from the raw returns. The
-parameters, and what is actually known about them (`CALIBRATIONS.md`):
+The Simple Morphological Filter (Pingel et al., 2013) over the per-cell minimum surface — our own
+implementation, so that every derived product is re-derived from the raw returns rather than
+inheriting the delivery's classification. It is written from PDAL 2.10.2's `filters/SMRFilter.cpp`
+read line by line, because that build is what it is validated against cell for cell, and the
+places where the source and the paper disagree are named in `smrf.py`'s own header.
 
-- The window search doubles its radius, so under `max_window_m = 4.0` the filter runs windows of
-  1.5, 2.5 and 4.5 m at 0.5 m cells; the ceiling is a bound the search never reaches.
-- `slope_threshold = 0.3` and `elevation_threshold_m = 0.3` are starting values declared
-  **uncalibrated** rather than presented as tuned. The tolerance formula follows Zhang et al.
-  (2003) with one declared variant: its slope term uses the full window width where the paper's
-  eq. (7) uses the increment between consecutive windows, so the tolerance is systematically
-  larger — more permissive toward ground. The values themselves are not the paper's: Zhang's
-  experiments set them per site (s = 0.08 on flat urban terrain, 1.2 in mountains; dh0 = 0.25 m
-  and 0.2 m), which is the case for declaring rather than borrowing them.
-- `max_elevation_m = 3.5` is the parameter that decides whether terrace risers survive: it caps
-  every tolerance, so a riser is excused exactly when the cap exceeds it, at any window. Measured
-  on the synthetic hillside fixture: at 3.0 m all five terrace levels survive every window tried;
-  at 1.0 m a whole level is lost. **The cap is now site-calibrated:** the tallest verified
-  terrace riser at Sistelo measures **2.98 m** (16,596 candidates, top-12 verified one by one —
-  everything taller is built walls, a gully edge, or steps carried by one or two returns), and a
-  cap 2 cm above a riser is not above it within the 0.2–0.3 m LiDAR error band, so it moved from
-  3.0 to 3.5. Method, figures and the ruling: `docs/riser-measurement.md`. At the default
-  windows the cap is unreached (largest tolerance 1.65 m), so the change alters no output here.
+**Its parameters are pinned, not settable.** They are PDAL's defaults — `cell = 1.0 m`,
+`slope = 0.15`, `scalar = 1.25`, `threshold = 0.5 m`, `window = 18 × cell = 18.0 m` — because that
+is the one configuration the validation covers; any other value is a code path no reference run has
+exercised, which is the same reason the module refuses `cut > 0` rather than ignoring it. The record
+still declares all five, so a reader can see what ran, and `CALIBRATIONS.md` gives each one a
+calibration target. One consequence is a real restriction: the publishing grid cell must divide the
+1 m analysis cell, so `--cell` takes 1/k metres and refuses anything else, naming what would work.
+A second is that the grid grows outward to whole 1 m blocks. The grid already overhung the
+requested AOI by up to one cell on each side before this — `grid_for_bounds` floors the origin and
+ceils the count — and the snap **adds** up to `(1 m / --cell) - 1` cells per axis on top: one more
+at `--cell 0.5`, four at `0.2`, nine at `0.1`. Those cells are not free of consequence: membership
+is decided against the grid, not the AOI, so one falling inside a source tile publishes what was
+measured in it rather than `undetermined`. Both products shipped here are already whole blocks, so
+neither moved.
+
+**What it replaced, and what that cost.** Up to 0.4.4 this was a progressive morphological filter
+(Zhang et al., 2003) whose `max_elevation_m` capped every tolerance — the parameter that decided
+whether a terrace riser survived, set to 3.5 m from the tallest *verified* riser at Sistelo
+(**2.98 m**: 16,596 candidates, top-12 checked one by one, everything taller being built walls, a
+gully edge, or steps carried by one or two returns; `docs/riser-measurement.md`). SMRF has no such
+cap, so terrace survival stopped being a guarantee and became a measurement — which is why it was
+gated on one before being wired, and why the limitation list says so. That filter is still in the
+tree as the comparison arm, its settings pinned in `GroundParams` at the values 0.4.4 shipped, and
+`CALIBRATIONS.md` keeps its rows.
 
 **Is the filter any good? — measured against PDAL's own, 2026-08-27.** On the shipped 150 m sample,
 per cell, over cells holding at least one return, against the delivery's own ASPRS class 2. All three
@@ -234,17 +242,36 @@ run out of the box; none tuned.
 | PDAL `filters.pmf` (defaults) | 0.827 | 0.660 | **0.945** | 2,865 |
 | PDAL `filters.smrf` (defaults) | **0.857** | 0.955 | 0.789 | 10,923 |
 
-**SMRF beats this implementation by 2.0 accuracy points**, and 2026-08-31 gave the gap a name: on a built AOI, SMRF calls **16.4%** of the roof cells that hold no ground return at all ground, where this filter publishes **87.7%** of them as measured terrain — at a cost of 0.6 points on plain ground and about **one in twenty** of the steepest terrace cells. (The roof figures are ones an instrument re-derives exactly, 2026-09-02. The terrace cost is measured 2026-09-03 in `docs/p4-terrace-result.md`: this sentence said *one in eight* until then, on a 2026-08-31 figure whose script was never in this tree and which does not reproduce. The roof-*interior* pair it quoted before that is not reproducible from the erosion as it was described, and `docs/reference-instrument-result.md` says so.) SMRF is therefore the filter this tool is moving to (`docs/ground-filter-diagnosis.md`). Its profile is the more balanced one, and the field's
-default is better out of the box than this re-implementation; the table is here because saying so
-costs nothing and pretending otherwise costs everything. It also shows the operating point is a
-*choice* rather than a rounding difference: PDAL's PMF is the same algorithm and scores 0.660 ground
-recall against this one's 0.999 — the declared tolerance variant above is systematically more
-permissive toward ground, and pays for it in non-ground recall and false positives.
+The table is a **2026-08-27 measurement**, and its first row is the filter this tool used to run.
+**SMRF beat that implementation by 2.0 accuracy points**, and 2026-08-31 gave the gap a name: on a
+built AOI, SMRF calls **16.4%** of the roof cells that hold no ground return at all ground, where
+the old filter published **87.7%** of them as measured terrain — at a cost of 0.6 points on plain
+ground and about **one in twenty** of the steepest terrace cells. (The roof figures are ones an
+instrument re-derives exactly, 2026-09-02. The terrace cost is measured 2026-09-03 in
+`docs/p4-terrace-result.md`: this sentence said *one in eight* until then, on a 2026-08-31 figure
+whose script was never in this tree and which does not reproduce. The roof-*interior* pair it quoted
+before that is not reproducible from the erosion as it was described, and
+`docs/reference-instrument-result.md` says so.)
+
+**So the tool moved to SMRF, in 0.5.0** — re-implemented here from PDAL 2.10.2's source, agreeing
+with it on **99.662%** of cells at κ 0.991 over the six-tile Valongo AOI
+(`docs/smrf-build-result.md` — that is a different, far larger population than this sample, and
+the two accuracy figures below are not comparable to it), and accepted against
+terraces before being wired (`docs/p4-terrace-result.md`). On this sample it now scores
+**0.866** accuracy, ground recall 0.977, non-ground recall
+0.788, 10,934 false positives — today's figures, not the table's row for
+PDAL's build. The old filter stays in the tree as the comparison arm and nothing else.
+
+The table also shows the operating point was a *choice* rather than a rounding difference: PDAL's
+PMF is the same algorithm as the retired filter and scores 0.660 ground recall against its 0.999 —
+that declared tolerance variant was systematically more permissive toward ground, and paid for it
+in non-ground recall and false positives. Keeping the row here costs nothing and pretending
+otherwise costs everything.
 
 **The filter is deliberately not the product.** It is re-derived from the raw returns so that every
 published cell has a traceable origin; the claim is the `basis` band and the record, not the surface.
-If you want the best ground classification, use SMRF — this tool will still be the one that tells you
-which cells it had to invent.
+That is why the filter could be swapped without the product changing shape: what this tool offers is
+the cell-by-cell account of what it knows, and any classifier can sit underneath it.
 
 *Read the denominators:* the table above is the **shipped 150 m sample**, cells with ≥ 1 return,
 majority-class null 0.587. The paragraph below reports the **full AOI**, which is a different
@@ -257,30 +284,34 @@ the reference being quantified against, **not an input** to the filter. Two othe
 *are* inputs upstream of it: classes 7 and 18 are removed before the minimum surface the filter
 reads is formed, and a tile carrying no class 2 at all is read normally but recorded as carrying
 no official ground, which makes `agreement` absent for the whole product (`read.py`,
-`cli.py`). Ground recall 0.999,
-non-ground recall 0.495, accuracy 0.749, majority-class null 0.503; the number to read beside
-those is `fp = 3,889,074` — 0.2505 of compared cells are cells where this filter says ground and
+`cli.py`). Ground recall 0.993,
+non-ground recall 0.588, accuracy 0.792, majority-class null 0.503; the number to read beside
+those is `fp = 3,174,486` — 0.2045 of compared cells are cells where this filter says ground and
 the official classification has no ground return, which is the expected shape of a minimum-surface
 filter under canopy, declared rather than tuned away.
 
 ## What this does not support
 
-- **The ground filter does not remove buildings, and the record calls the result measured.** At a
-  built site near Valongo, **87.7%** of the cells holding official building returns and no ground
-  return publish as `basis = measured` (measured 2026-08-31, re-derived by instrument 2026-09-02),
-  and those cells are 18.5% of the ones holding any return there. At the site shipped here the
-  published figure is **77.2%**, but over a *narrower* population — 86,759 roof-**interior** cells,
-  whose erosion `docs/reference-instrument-result.md` records as not re-derivable — so the two
-  numbers are not the same measurement and should not be read as a pair. Either way the DTM says
-  the roof and the ground are the same thing, and says it with the strongest word the band has. It
-  is small at Sistelo because that is a terraced valley with a hamlet in it. This
-  is **not fixable by a parameter**: the best single height threshold separates a roof from the
+- **The ground filter does not remove every building, and the record calls what it keeps
+  measured.** At a built site near Valongo, **16.4%** of the cells holding official building
+  returns and no ground return publish as `basis = measured`. The filter this tool ran until
+  0.5.0 published **87.7%** of that same population (both re-derived by instrument, 2026-09-02,
+  `docs/reference-instrument-result.md`). Where it happens, the DTM says the roof and the ground
+  are the same thing, and says it with the strongest word the band has. It was **not fixable by a
+  parameter** of the old filter — the best single height threshold separates a roof from the
   terrain it stands on at **0.712** balanced accuracy and the best width threshold at **0.528**,
-  and a one-storey roof is the same height as the 2.98 m terrace riser the tolerance cap exists to
-  preserve. Measurement, controls and the chosen repair: `docs/ground-filter-diagnosis.md`. Found by
-  running the pipeline on a second AOI chosen for what it *contains* rather than for what it shows
-  (`docs/second-aoi-gate-result.md`) — 272 tests, a ten-round review and a security pass had all
-  gone over it, because every one of them asks about the code and none asks what the input holds.
+  and a one-storey roof is the same height as the 2.98 m terrace riser its tolerance cap existed
+  to preserve — which is why the repair was to change the filter rather than to tune it
+  (`docs/ground-filter-diagnosis.md`). Found by running the pipeline on a second AOI chosen for
+  what it *contains* rather than for what it shows (`docs/second-aoi-gate-result.md`) — 272 tests,
+  a ten-round review and a security pass had all gone over it, because every one of them asks
+  about the code and none asks what the input holds.
+- **Terrace preservation is measured, not enforced.** The old filter had a parameter that capped
+  how far it could cut, set from the tallest verified riser at the calibration site; SMRF has no
+  such cap. That risers survive it is an empirical result at **one** site: it keeps **91.078%** of
+  the cells the old filter called measured ground, and **95.082%** of those standing on a step
+  above 2.5 m, against bounds pre-registered before the run (`docs/p4-terrace-result.md`). At a
+  second site with different terraces, that is unmeasured.
 - **Byte-identical replay on real data is not established — now with a measured bound.** A run on
   2026-08-05 saw, in four reads of the 845 MB dataset, one single corrupted coordinate
   and one outright `IoError: failed to fill whole buffer` (source files intact, `sha256sum`
@@ -306,7 +337,7 @@ filter under canopy, declared rather than tuned away.
   blindness (multi-commit pushes, dirty-tree runs) and over-reach (comment-only edits flag too)
   are declared in its header.
 - **The reproducibility hash does not cover `--attribution` either.** Measured: two runs differing
-  only in that string share the hash `f67b2f033d23…`, so a product can be relabelled with a
+  only in that string share the hash `2da06987808e…`, so a product can be relabelled with a
   different source and keep its anchor. Defensible — the hash covers inputs and parameters, not
   what you wrote about them — but it is a thing to know before you treat the hash as a licence
   check.

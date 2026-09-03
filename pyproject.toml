@@ -1,6 +1,6 @@
 [project]
 name = "microrelief"
-version = "0.4.4"
+version = "0.5.0"
 description = "Microrelief from raw airborne LiDAR: DTM, DSM and CHM that declare what each cell is made of"
 requires-python = ">=3.12"
 dependencies = [

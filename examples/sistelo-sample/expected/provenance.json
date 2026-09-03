@@ -1,18 +1,18 @@
 {
   "agreement": {
-    "accuracy": 0.8366523449044079,
-    "fn": 44,
-    "fp": 14327,
+    "accuracy": 0.8661256223146696,
+    "fn": 844,
+    "fp": 10934,
     "ground_prevalence": 0.41276228147946076,
     "majority_class_null": 0.5872377185205393,
     "n_cells": 87978,
-    "recall_ground": 0.9987883460924162,
-    "recall_nonground": 0.7226889129761536,
-    "tn": 37337,
-    "tp": 36270
+    "recall_ground": 0.976758275045437,
+    "recall_nonground": 0.7883632703623413,
+    "tn": 40730,
+    "tp": 35470
   },
   "attribution": "Source: Direção-Geral do Território (DGT), Centro de Dados, LiDAR point clouds, licensed CC BY 4.0. Derived products (ground classification, DTM, DSM, CHM) produced by microrelief; not reviewed or endorsed by DGT.",
-  "created_utc": "2026-08-31T17:14:47.074788+00:00",
+  "created_utc": "2026-09-03T15:20:55.280693+00:00",
   "flight_dates": [],
   "grid": {
     "cell": 0.5,
@@ -24,9 +24,9 @@
   },
   "honesty": {
     "expected_void_fraction": 0.01311760575900303,
-    "fraction_interpolated": 0.43106666666666665,
-    "fraction_measured": 0.5621888888888888,
-    "fraction_undetermined": 0.006744444444444444,
+    "fraction_interpolated": 0.4234111111111111,
+    "fraction_measured": 0.5156,
+    "fraction_undetermined": 0.06098888888888889,
     "measured_density_pts_m2": 17.3352
   },
   "inputs": [
@@ -52,26 +52,31 @@
     "scripts/measure_risers.py takes no --crs, so it can only work an AOI that declares its own projected CRS.",
     "The reproducibility hash does not cover the attribution string: two runs differing only in --attribution share a hash, so a product can be relabelled and keep its anchor.",
     "The only resource ceiling is a cell count (200,000,000 cells, ~12 GB of per-cell arrays), not a memory bound: a grid inside it can still exhaust memory, and that failure is an OOM kill rather than a refusal with a reason.",
-    "The ground filter does not remove buildings, and the basis band calls the result measured: over cells holding official building returns and no ground return, 77.2% publish as measured ground at the site shipped here and 89.7% at a built site, both measured 2026-08-31. No parameter fixes it: the best single height threshold separates a roof from the terrain it stands on at 0.712 balanced accuracy and the best width threshold at 0.528 (docs/ground-filter-diagnosis.md)."
+    "The ground filter does not remove every building, and the basis band calls what it keeps measured: over cells holding official building returns and no ground return, 16.4% publish as measured ground at a built site near Valongo. The filter this release replaces published 87.7% of that same population (docs/reference-instrument-result.md).",
+    "Terrace preservation is measured, not enforced. This filter has no cap on how far it may cut, so that risers survive is an empirical result at one site: 91.078% of the cells the previous filter called measured ground are kept, and 95.082% of those standing on a step above 2.5 m (docs/p4-terrace-result.md). The filter it replaces guaranteed it by construction, through a parameter this one does not have.",
+    "The grid cell must divide the 1 m analysis cell, so --cell takes 1/k metres and refuses anything else. The grid is also grown outward to whole analysis blocks, which can add up to (1 m / --cell) - 1 cells per axis beyond the requested AOI; a cell added there publishes what was measured in it, not undetermined, whenever it falls inside a source tile."
   ],
   "mixed_epochs": false,
-  "package_version": "0.4.4",
+  "package_version": "0.5.0",
   "parameters": {
     "cell": 0.5,
     "d_max_interp_m": 2.0,
-    "elevation_threshold_m": 0.3,
     "k_min_returns": 1,
-    "max_elevation_m": 3.5,
-    "max_window_m": 4.0,
-    "slope_threshold": 0.3
+    "smrf_cell": 1.0,
+    "smrf_scalar": 1.25,
+    "smrf_slope": 0.15,
+    "smrf_threshold": 0.5,
+    "smrf_window_m": 18.0
   },
-  "reproducibility_hash": "f67b2f033d231ecad0a89753d786d6c40eee3df0d50bdf5fa6377ba6b7a11a08",
+  "reproducibility_hash": "2da06987808e983b611144b5ddce217be2eb7f513b9ab9e8268ff51dd98e32dd",
   "uncalibrated_thresholds": [
     "cell",
     "d_max_interp_m",
-    "elevation_threshold_m",
     "k_min_returns",
-    "max_window_m",
-    "slope_threshold"
+    "smrf_cell",
+    "smrf_scalar",
+    "smrf_slope",
+    "smrf_threshold",
+    "smrf_window_m"
   ]
 }

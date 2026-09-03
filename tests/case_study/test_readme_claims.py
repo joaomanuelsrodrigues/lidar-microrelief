@@ -163,3 +163,81 @@ def test_the_partition_check_fires_on_a_stale_hash_and_is_quiet_on_a_current_one
     assert [h for h in _PUBLISHED_HASH.findall(fresh) if h not in current] == [], (
         "the pattern flagged a current hash"
     )
+
+
+# --- the published records themselves, not just the documents quoting them ------------------
+#
+# The partition above asks whether every document carries a CURRENT hash, where "current" means
+# "one of the two published records". It never asks whether those records are themselves current,
+# and they were not: 0.4.4 declared the limitation that the ground filter publishes buildings as
+# terrain, bumped the version and regenerated the sample -- and left `docs/viewer/provenance.json`
+# at 0.4.2 with ten limitations, the buildings line absent. The record a reader of the published
+# piece actually opens was missing that release's headline disclosure, under a green suite,
+# because the sample had a test locking it and the viewer's record had only the hash partition.
+
+PUBLISHED_RECORDS = (
+    "docs/viewer/provenance.json",
+    "examples/sistelo-sample/expected/provenance.json",
+)
+
+
+def _records_not_at(version: str) -> dict[str, str]:
+    """The published records whose `package_version` is not `version`.
+
+    Exists so the check below and its control call the SAME function: the control's first
+    version built its own literal dict and asserted that the literal was truthy, which passes
+    with the real check deleted. A control that does not reach the code it controls is
+    decoration.
+    """
+    return {
+        name: doc["package_version"]
+        for name in PUBLISHED_RECORDS
+        if (doc := json.loads((ROOT / name).read_text()))["package_version"] != version
+    }
+
+
+def test_every_published_record_was_produced_by_the_current_code() -> None:
+    """A release regenerates every published record, or the ones it skipped say the wrong thing.
+
+    Not a style rule: `known_limitations` and `uncalibrated_thresholds` travel *inside* the
+    record, so a record from an older version is a published claim about what the tool cannot do
+    that the tool has since corrected or extended.
+    """
+    import microrelief
+
+    stale = _records_not_at(microrelief.__version__)
+    assert not stale, (
+        f"the package is at {microrelief.__version__} and these published records are not: "
+        f"{stale} -- re-run the product and regenerate them, do not edit the version in place"
+    )
+
+
+def test_every_published_record_declares_the_limitations_the_code_declares() -> None:
+    """The version agreeing is not enough: the record has to carry the list it was built with."""
+    from microrelief.cli import LIMITATIONS
+
+    for name in PUBLISHED_RECORDS:
+        doc = json.loads((ROOT / name).read_text())
+        assert tuple(doc["known_limitations"]) == LIMITATIONS, (
+            f"{name} declares {len(doc['known_limitations'])} limitations, the code declares "
+            f"{len(LIMITATIONS)}: re-run the product rather than editing the record"
+        )
+
+
+def test_the_record_currency_check_fires_on_a_stale_version() -> None:
+    """Both arms, through the same function the check above calls.
+
+    The quiet arm: at the real version, nothing is collected. The firing arm: asked about a
+    version no record was built at, EVERY record is collected, by name. Neither is reachable
+    without `_records_not_at` actually reading the records off disk, which is what the first
+    version of this control failed to do -- it asserted a dict it had written itself.
+    """
+    import microrelief
+
+    assert _records_not_at(microrelief.__version__) == {}, "the quiet arm must be quiet"
+
+    fired = _records_not_at("0.0.0")
+    assert set(fired) == set(PUBLISHED_RECORDS), (
+        f"asked about a version nothing was built at, every record must be named: {fired}"
+    )
+    assert all(v == microrelief.__version__ for v in fired.values()), fired

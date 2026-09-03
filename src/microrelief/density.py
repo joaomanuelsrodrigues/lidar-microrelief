@@ -7,6 +7,7 @@ shareable image this piece produces is the one showing what it refuses to claim.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 import numpy as np
@@ -67,6 +68,25 @@ def compute_basis(
     a hole, and a hole is interpolated only while a measured cell lies within `d_max_interp_m`.
     Beyond that the cell stays undetermined: NoData, counted, never a plausible-looking number.
     """
+    # Both are lengths in metres and both reach arithmetic that does not refuse them.
+    # Measured on the shipped sample: `--d-max-interp-m nan` published
+    # `measured 51.6% | interpolated 0.0% | undetermined 48.4%` at exit 0 against the true
+    # 51.6/42.3/6.1, because `distances * cell <= nan` is False everywhere; `inf` inverted it,
+    # turning every hole into `interpolated` and erasing `undetermined`, which is the one class
+    # this band exists to publish. The record then carried a bare `NaN` token -- accepted by
+    # Python's lenient reader, rejected by any RFC 8259 parser.
+    if not math.isfinite(cell) or cell <= 0:
+        raise ValueError(f"cell must be a positive, finite length in metres, got {cell}")
+    # Zero is ADMISSIBLE here and the guard's first version wrongly bundled it with nonsense.
+    # `d_max_interp_m = 0` means "borrow from nothing": `distances * cell <= 0` holds only where
+    # the distance is zero, i.e. at cells already measured, so the band comes out measured plus
+    # undetermined with no interpolated cell at all. That is the most conservative honest setting
+    # this flag can express, not an error.
+    if not math.isfinite(d_max_interp_m) or d_max_interp_m < 0:
+        raise ValueError(
+            f"d_max_interp_m must be a non-negative, finite length in metres, got {d_max_interp_m}"
+        )
+
     measured = is_ground & (stats.n_all >= k_min_returns)
     if not measured.any():
         raise ValueError("no measured cells: nothing to interpolate from")
