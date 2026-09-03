@@ -234,7 +234,7 @@ run out of the box; none tuned.
 | PDAL `filters.pmf` (defaults) | 0.827 | 0.660 | **0.945** | 2,865 |
 | PDAL `filters.smrf` (defaults) | **0.857** | 0.955 | 0.789 | 10,923 |
 
-**SMRF beats this implementation by 2.0 accuracy points**, and 2026-08-31 gave the gap a name: on a built AOI, SMRF calls **16.1%** of roof-interior cells ground where this filter publishes **89.7%** of them as measured terrain, at a cost of 0.6 points on plain ground and about one in eight of the steepest terrace cells. SMRF is therefore the filter this tool is moving to (`docs/ground-filter-diagnosis.md`). Its profile is the more balanced one, and the field's
+**SMRF beats this implementation by 2.0 accuracy points**, and 2026-08-31 gave the gap a name: on a built AOI, SMRF calls **16.4%** of the roof cells that hold no ground return at all ground, where this filter publishes **87.7%** of them as measured terrain — at a cost of 0.6 points on plain ground and about one in eight of the steepest terrace cells. (Those are the figures an instrument re-derives exactly, 2026-09-02; the roof-*interior* pair this sentence used to quote is not reproducible from the erosion as it was described, and `docs/reference-instrument-result.md` says so.) SMRF is therefore the filter this tool is moving to (`docs/ground-filter-diagnosis.md`). Its profile is the more balanced one, and the field's
 default is better out of the box than this re-implementation; the table is here because saying so
 costs nothing and pretending otherwise costs everything. It also shows the operating point is a
 *choice* rather than a rounding difference: PDAL's PMF is the same algorithm and scores 0.660 ground
@@ -267,10 +267,11 @@ filter under canopy, declared rather than tuned away.
 
 - **The ground filter does not remove buildings, and the record calls the result measured.** Over
   cells holding official building returns and no ground return, **77.2%** of them publish as
-  `basis = measured` in the run shipped here, and **89.7%** at a built site near Valongo measured
-  on 2026-08-31 — the DTM says the roof and the ground are the same thing, and says it with the
-  strongest word the band has. It is small here (86,759 such cells, 0.43% of this AOI) because
-  Sistelo is a terraced valley with a hamlet in it; at the built site it is 13.7% of the AOI. This
+  `basis = measured` in the run shipped here, and **87.7%** at a built site near Valongo (measured
+  2026-08-31, re-derived by instrument 2026-09-02) — the DTM says the roof and the ground are the
+  same thing, and says it with the strongest word the band has. It is small here (86,759 such
+  cells, 0.43% of this AOI) because Sistelo is a terraced valley with a hamlet in it; at the built
+  site those cells are 18.5% of the ones holding any return. This
   is **not fixable by a parameter**: the best single height threshold separates a roof from the
   terrain it stands on at **0.712** balanced accuracy and the best width threshold at **0.528**,
   and a one-storey roof is the same height as the 2.98 m terrace riser the tolerance cap exists to

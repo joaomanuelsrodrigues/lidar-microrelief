@@ -1647,3 +1647,135 @@ ground the surfaces agree to +0.000 m median over 46,449 cells.
 > rather than with a command a reader can run. That instrument is the acceptance check the SMRF
 > implementation will be measured against, so it lands in `scripts/` with that work rather than
 > being reconstructed later from prose.
+
+---
+
+## 2026-09-03 — the in-repo SMRF, measured cell by cell against PDAL's
+
+`src/microrelief/smrf.py` is SMRF (Pingel et al. 2013) re-implemented here; PDAL 2.10.2 is the
+reference it is validated against, not a runtime dependency. The acceptance predicates were fixed
+and committed in `4fdc82b` **before** any of this ran — `docs/smrf-build-preregistration.md`.
+Nothing below is wired into the pipeline: the CLI default is still the old filter.
+
+### The reference cache, rebuilt with three additions
+
+```
+$ python scripts/compare_ground_filters.py reference \
+    --tiles ~/data/dgt-laz-valongo --smrf <work> --aoi aoi/valongo.geojson \
+    --cell 0.5 --pipeline <work>/smrf-LO-162471.json --out <work>/valongo-reference-v2.npz
+"controls": {
+    "into_ground": 15892932,
+    "out_of_ground": 322530,
+    "passed_through_class2": 7345,
+    "judged": 100323464
+  }
+wrote <work>/valongo-reference-v2.npz (287.8 MB)
+```
+
+Byte-for-byte the same controls and the same six tile sha256s as the 2026-09-02 build, so the
+additions (`min_z_judged`, `min_z_reference_ground`, per-tile bounds) changed no measurement. The
+recorded pipeline hash `8055f03add32c1b0` was matched back to its file (`smrf-LO-162471.json`) by
+`sha256sum`, which is what says this is the same environment and not a similar one.
+
+### The old filter on the new cache — the 2026-09-02 table, re-derived
+
+reference filter: PDAL filters.smrf
+controls: {"into_ground": 15892932, "out_of_ground": 322530, "passed_through_class2": 7345, "judged": 100323464}
+
+population                                                           cells  ours meas.  ref ground ours interp
+--------------------------------------------------------------------------------------------------------------
+A: any class-6 return                                            4,738,087       88.9%       24.6%       10.9%
+B: class-6, no class-2                                           4,270,425       87.7%       16.4%       12.1%
+C': B eroded by roof-margin (OUR reading, not the recorded size)   2,223,855       95.7%       19.3%        4.2%
+control: canopy (class 5, no class 2, no class 6)                2,493,967       33.9%       19.5%       65.5%
+control: plain ground (class 2, no class 5, no class 6)         12,062,527      100.0%       99.4%        0.0%
+
+falsely-measured roof cells, ours:      2,127,452
+falsely-measured roof cells, reference: 429,336
+
+Every published figure of `docs/reference-instrument-result.md` reproduces exactly: rows A and B,
+both controls, and their shares. Row C is still absent, for the reason recorded there.
+
+### The in-repo SMRF, same cache, PDAL's own defaults
+
+```
+reference filter:  PDAL filters.smrf
+our surface:       min_z_all
+our SMRF params:   SmrfParams(cell=1.0, slope=0.15, scalar=1.25, threshold=0.5, window=None, cut=0.0)  (window_m = 18.0)
+controls:          {"into_ground": 15892932, "out_of_ground": 322530, "passed_through_class2": 7345, "judged": 100323464}
+
+population                                                           cells  ours ground  ref ground
+---------------------------------------------------------------------------------------------------
+A: any class-6 return                                            4,738,087        24.6%       24.6%
+B: class-6, no class-2                                           4,270,425        16.4%       16.4%
+C': B eroded by roof-margin (OUR reading, not the recorded size)   2,223,855        19.3%       19.3%
+control: canopy (class 5, no class 2, no class 6)                2,493,967        19.5%       19.5%
+control: plain ground (class 2, no class 5, no class 6)         12,062,527        99.4%       99.4%
+
+cells compared (measured):         23,058,525
+  both ground:                     16,720,892
+  ours only:                           42,055
+  reference only:                      35,900
+  neither:                          6,259,678
+  agreement:                            99.66%
+  Cohen's kappa:                        0.991
+
+excluding 20 m either side of a tile edge (reported, not a gate):
+  cells compared:                  21,607,897
+  agreement:                            99.73%
+  Cohen's kappa:                        0.993
+
+the reference's ground verdict came from a point above the cell minimum:
+  more than 0.05 m above:               0.02%
+  more than 0.25 m above:               0.01%
+  more than 1.00 m above:               0.00%
+
+pre-registered predicates (docs/smrf-build-preregistration.md):
+  P1 plain ground called ground: 99.410 >= 97.0 -> PASS
+  P2 row B called ground: 16.426 <= 30.0 -> PASS
+  P3 agreement: 99.662 >= 90.0 -> PASS
+  P3 kappa: 0.991 >= 0.6 -> PASS
+
+VERDICT: PASS
+```
+
+### Must-fire control: the same comparison, with the parameters wrong
+
+A table where our filter matches the reference on every population to the first decimal is a
+result or a tautology, and the difference is whether it can fail. Run with a one-metre window, a
+1.5 slope tolerance and a five-metre threshold:
+
+```
+--smrf-window 1.0      B: 88.0% ground (ref 16.4%)   agreement 83.30%   kappa 0.482   VERDICT: FAIL
+--smrf-slope 1.5       B: 86.3% ground (ref 16.4%)   agreement 82.54%   kappa 0.452   VERDICT: FAIL
+--smrf-threshold 5.0   B: 52.2% ground (ref 16.4%)   agreement 86.86%   kappa 0.611   VERDICT: FAIL
+```
+
+The comparison can fail, and a badly parameterised SMRF degrades into exactly the failure mode of
+the filter shipping today: it publishes roofs as ground.
+
+### Declared side-measurement: the input rule is not the residual
+
+```
+our surface:       min_z_judged
+  agreement:                            99.68%
+  Cohen's kappa:                        0.992
+  agreement:                            99.75%
+  Cohen's kappa:                        0.994
+  P1 plain ground called ground: 99.408 >= 97.0 -> PASS
+  P2 row B called ground: 16.411 <= 30.0 -> PASS
+  P3 agreement: 99.684 >= 90.0 -> PASS
+  P3 kappa: 0.992 >= 0.6 -> PASS
+VERDICT: PASS
+```
+
+Handing the filter the minimum over the returns the reference itself reads (last/only, class 7
+excluded) instead of the pipeline's minimum over all returns moves agreement from 99.66% to
+99.68%. So the 0.34% of cells the two filters disagree about are not an artefact of the input.
+
+### Derived, by command rather than by hand
+
+```
+$ python -c "b, measured = 4_270_425, 23_058_525; print(...)"
+row B is 4,270,425 of 23,058,525 measured cells = 18.5%
+```
