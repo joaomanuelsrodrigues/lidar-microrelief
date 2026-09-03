@@ -311,3 +311,121 @@ class TestPredicatesMatchTheirPreRegistration:
         assert loosened != text, "the P1 bound is not written in the form this control mutates"
         assert self._bound(loosened, r"\*\*P1\*\*", "≥") == 10.0
         assert self._bound(loosened, r"\*\*P1\*\*", "≥") != mod.P1_PLAIN_GROUND_MIN
+
+
+class TestStepMagnitude:
+    """The terrace population of `docs/p4-terrace-preregistration.md`.
+
+    "Cells sitting on a real vertical step in 3.5 m" is the phrase the record leaves undefined,
+    and P4b's whole denominator is built from it, so the operation is pinned here on surfaces
+    where the right answer can be counted by hand. Every case is paired: a surface the mask must
+    fire on, and one it must stay silent on. A population that cannot come back empty is not
+    measuring anything.
+    """
+
+    def test_a_flat_surface_holds_no_step(self) -> None:
+        """Must-not-fire. A constant surface has a range of zero everywhere."""
+        surface = np.full((7, 7), 10.0)
+
+        step, defined = mod.step_magnitude(surface, window_cells=3, min_finite=2)
+
+        assert defined[1:-1, 1:-1].all()
+        assert np.allclose(step[defined], 0.0)
+
+    def test_a_known_step_is_measured_at_its_height(self) -> None:
+        """Must-fire. A 3.0 m wall between two flats reads 3.0 m, and only near the wall."""
+        surface = np.zeros((9, 9))
+        surface[:, 5:] = 3.0
+
+        step, defined = mod.step_magnitude(surface, window_cells=3, min_finite=2)
+
+        # Columns 4 and 5 straddle the discontinuity; their 3-wide windows span both flats.
+        assert np.allclose(step[1:-1, 4], 3.0)
+        assert np.allclose(step[1:-1, 5], 3.0)
+        # Column 2 lies wholly on the lower flat, column 7 wholly on the upper one.
+        assert np.allclose(step[1:-1, 2], 0.0)
+        assert np.allclose(step[1:-1, 7], 0.0)
+
+    def test_a_window_holding_one_finite_cell_is_undefined(self) -> None:
+        """A range needs two points. One is not a small range, it is no range."""
+        surface = np.full((7, 7), np.nan)
+        surface[3, 3] = 10.0
+
+        step, defined = mod.step_magnitude(surface, window_cells=3, min_finite=2)
+
+        assert not defined.any()
+        assert np.isnan(step).all()
+
+    def test_two_finite_cells_in_the_window_are_enough(self) -> None:
+        """The control on the control: the same surface with one more point does define a step."""
+        surface = np.full((7, 7), np.nan)
+        surface[3, 3] = 10.0
+        surface[3, 4] = 12.5
+
+        step, defined = mod.step_magnitude(surface, window_cells=3, min_finite=2)
+
+        assert bool(defined[3, 3])
+        assert step[3, 3] == pytest.approx(2.5)
+
+    def test_nan_does_not_propagate_through_the_range(self) -> None:
+        """Accumulating min/max over NaN gives NaN unless the fill is seeded at -inf/+inf."""
+        surface = np.zeros((7, 7))
+        surface[0, 0] = np.nan
+        surface[3, 4] = 4.0
+
+        step, defined = mod.step_magnitude(surface, window_cells=3, min_finite=2)
+
+        assert defined[3, 3]
+        assert step[3, 3] == pytest.approx(4.0)
+        assert np.isfinite(step[defined]).all()
+
+    def test_cells_within_the_margin_of_the_border_are_excluded(self) -> None:
+        """A cell whose 3.5 m neighbourhood runs off the grid was never observed.
+
+        The same reasoning `interior()` applies with `border_value=0`: a truncated window would
+        report the range of the part that happened to be inside, which is not the cell's step.
+        """
+        surface = np.zeros((9, 9))
+
+        _step, defined = mod.step_magnitude(surface, window_cells=7, min_finite=2)
+
+        assert not defined[:3, :].any()
+        assert not defined[-3:, :].any()
+        assert not defined[:, :3].any()
+        assert not defined[:, -3:].any()
+        assert int(defined.sum()) == 3 * 3  # the 3x3 interior of a 9x9 grid at margin 3
+
+    def test_the_window_must_be_odd_so_it_has_a_centre(self) -> None:
+        with pytest.raises(ValueError):
+            mod.step_magnitude(np.zeros((9, 9)), window_cells=4, min_finite=2)
+
+    def test_the_window_is_three_and_a_half_metres_at_half_metre_cells(self) -> None:
+        """The reading of "in 3.5 m" the pre-registration declares, pinned to the constant."""
+        assert mod.STEP_WINDOW_CELLS * 0.5 == 3.5
+
+
+class TestP4BoundsMatchThePreRegistration:
+    """The P4 bounds are two sets of literals -- prose and code -- and they can drift apart."""
+
+    DOC = ROOT / "docs" / "p4-terrace-preregistration.md"
+    ROWS = (
+        ("P4A_TERRACE_MIN", r"\*\*P4a\*\*.*share of", "≥"),
+        ("P4B_STEEP_MIN", r"\*\*P4b\*\*.*share of", "≥"),
+    )
+
+    def test_every_bound_in_the_code_is_the_one_its_own_row_states(self) -> None:
+        text = self.DOC.read_text()
+        for name, row_pattern, comparison in self.ROWS:
+            assert TestPredicatesMatchTheirPreRegistration._bound(
+                text, row_pattern, comparison
+            ) == getattr(mod, name), name
+
+    def test_a_loosened_bound_fails_this_lock(self) -> None:
+        """Mutation on the lock itself: a bound moved in the document must be seen."""
+        text = self.DOC.read_text()
+        loosened = text.replace("**≥ 80.0%**", "**≥ 5.0%**", 1)
+        assert loosened != text, "the P4b bound is not written in the form this control mutates"
+        assert (
+            TestPredicatesMatchTheirPreRegistration._bound(loosened, r"\*\*P4b\*\*.*share of", "≥")
+            == 5.0
+        )

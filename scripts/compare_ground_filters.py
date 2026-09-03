@@ -32,11 +32,15 @@ from typing import Any
 import laspy
 import numpy as np
 from numpy.typing import NDArray
-from scipy.ndimage import binary_erosion
+from scipy.ndimage import binary_erosion, convolve, maximum_filter, minimum_filter
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from microrelief.accumulate import Accumulator, _grouped_extrema  # noqa: E402
+from microrelief.accumulate import (  # noqa: E402
+    Accumulator,
+    CellStats,
+    _grouped_extrema,
+)
 from microrelief.cli import aoi_bounds  # noqa: E402
 from microrelief.density import BASIS_INTERPOLATED, BASIS_MEASURED, compute_basis  # noqa: E402
 from microrelief.grid import Grid, grid_for_bounds  # noqa: E402
@@ -118,6 +122,69 @@ def interior(mask: NDArray[np.bool_], margin: int) -> NDArray[np.bool_]:
         mask, structure=np.ones((size, size), dtype=bool), border_value=0
     )
     return eroded
+
+
+# The terrace population of `docs/p4-terrace-preregistration.md`. 7 cells at 0.5 m is 3.5 m
+# across -- the horizontal extent the record's phrase "a real vertical step in 3.5 m" names, with
+# the alternative reading (3.5 m as the height cap) declined there before any number was seen.
+STEP_WINDOW_CELLS = 7
+STEP_MIN_FINITE = 2
+# Swept as the record swept it. Only the last one gates; the other two are reported.
+STEP_THRESHOLDS_M = (1.5, 2.0, 2.5)
+P4B_GATE_THRESHOLD_M = 2.5
+# Reported beside P4b, so a reader can see whether the result is carried by sparse
+# neighbourhoods, where two distant points on a slope give a large range with no step present.
+STEP_DENSE_MIN_FINITE = 10
+
+
+def step_magnitude(
+    surface: NDArray[np.float64],
+    window_cells: int = STEP_WINDOW_CELLS,
+    min_finite: int = STEP_MIN_FINITE,
+) -> tuple[NDArray[np.float64], NDArray[np.bool_]]:
+    """The vertical range of `surface` in a square window, and where that range is defined.
+
+    `surface` is the delivery's own class-2 minimum, never our DTM: `max_elevation_m` is the
+    parameter that decides whether a riser survives our filter, so a surface our filter shaped
+    would select the population by the very thing being audited. The same reason
+    `scripts/measure_risers.py` gives for refusing it.
+
+    Undefined, rather than zero, in two cases the caller must not conflate with a flat cell:
+
+    * fewer than `min_finite` observed cells in the window -- a range needs two points, and one
+      point is not a small range;
+    * within `window_cells // 2` of the grid border, where the neighbourhood was never observed.
+      A truncated window reports the range of whichever part happened to be inside, which is not
+      the cell's step. This is `interior()`'s `border_value=0` reasoning on a numeric surface.
+    """
+    if window_cells < 3 or window_cells % 2 == 0:
+        raise ValueError("window_cells must be an odd number of cells >= 3, so it has a centre")
+    if min_finite < 2:
+        raise ValueError("a range needs two points; min_finite below 2 would define one")
+
+    finite = np.isfinite(surface)
+    # Seeded at -inf/+inf rather than left as NaN. An accumulated max or min over NaN propagates
+    # NaN, which would erase every window holding a single unobserved cell -- most of them.
+    highs = maximum_filter(
+        np.where(finite, surface, -np.inf), size=window_cells, mode="constant", cval=-np.inf
+    )
+    lows = minimum_filter(
+        np.where(finite, surface, np.inf), size=window_cells, mode="constant", cval=np.inf
+    )
+    counts = convolve(
+        finite.astype(np.int32),
+        np.ones((window_cells, window_cells), dtype=np.int32),
+        mode="constant",
+        cval=0,
+    )
+
+    margin = window_cells // 2
+    observed = np.zeros(surface.shape, dtype=bool)
+    observed[margin : surface.shape[0] - margin, margin : surface.shape[1] - margin] = True
+
+    defined: NDArray[np.bool_] = (counts >= min_finite) & observed
+    step: NDArray[np.float64] = np.where(defined, highs - lows, np.nan)
+    return step, defined
 
 
 @dataclass(frozen=True)
@@ -465,8 +532,6 @@ def _cmd_compare(args: argparse.Namespace) -> int:
     )
     is_ground = classify_ground(arrays["min_z_all"], cell, params)
 
-    from microrelief.accumulate import CellStats
-
     stats = CellStats(
         min_z_all=arrays["min_z_all"],
         max_z_all=arrays["max_z_all"],
@@ -516,6 +581,11 @@ P1_PLAIN_GROUND_MIN = 97.0
 P2_ROOF_MAX = 30.0
 P3_AGREEMENT_MIN = 90.0
 P3_KAPPA_MIN = 0.60
+
+# P4, deferred out of that document because Valongo has terraces only incidentally, and fixed in
+# `docs/p4-terrace-preregistration.md` before the terrace population was computed once.
+P4A_TERRACE_MIN = 85.0
+P4B_STEEP_MIN = 80.0
 
 
 def _verdict(name: str, value: float, bound: float, direction: str) -> tuple[str, bool]:
@@ -620,6 +690,144 @@ def _cmd_smrf(args: argparse.Namespace) -> int:
     return 0 if passed else 1
 
 
+def _cmd_terraces(args: argparse.Namespace) -> int:
+    """P4: what the in-repo SMRF costs on the terraces, over the population fixed beforehand.
+
+    The symmetric risk to the build's P1-P3. Those said SMRF stops publishing roofs as terrain;
+    this asks what it removes from the thing the tool exists to publish. Population, surface and
+    step operation are `docs/p4-terrace-preregistration.md`, committed before this ran.
+    """
+    arrays, provenance = _load_reference(args.reference)
+    for needed in ("min_z_ground_asprs", "n_reference_ground"):
+        if needed not in arrays:
+            print(
+                f"{args.reference} has no array named {needed}; rebuild it with the `reference` "
+                "command rather than running over a substituted surface",
+                file=sys.stderr,
+            )
+            return 2
+    grid_info = provenance["grid"]
+    cell = float(grid_info["cell"])
+
+    # The current filter, at its shipped defaults -- the real one, not a reconstruction.
+    ground_params = GroundParams(
+        args.max_window_m, args.slope_threshold, args.elevation_threshold_m, args.max_elevation_m
+    )
+    ours_ground = classify_ground(arrays["min_z_all"], cell, ground_params)
+    stats = CellStats(
+        min_z_all=arrays["min_z_all"],
+        max_z_all=arrays["max_z_all"],
+        n_all=arrays["n_all"],
+        n_ground_asprs=arrays["n_ground_asprs"],
+        min_z_ground_asprs=arrays["min_z_ground_asprs"],
+        n_outside=0,
+    )
+    basis = compute_basis(ours_ground, stats, cell, args.k_min_returns, args.d_max_interp_m)
+    measured_ground = basis.basis == BASIS_MEASURED
+
+    smrf_params = SmrfParams(
+        cell=args.smrf_cell,
+        slope=args.smrf_slope,
+        scalar=args.smrf_scalar,
+        threshold=args.smrf_threshold,
+        window=args.smrf_window,
+    )
+    smrf_ground = classify_ground_smrf(arrays[args.surface].astype(np.float64), cell, smrf_params)
+    reference_ground = arrays["n_reference_ground"] > 0
+
+    step, defined = step_magnitude(
+        arrays["min_z_ground_asprs"].astype(np.float64),
+        args.step_window_cells,
+        args.step_min_finite,
+    )
+
+    print(f"reference filter:  {provenance.get('reference_filter', '?')}")
+    print(f"our surface:       {args.surface}")
+    print(
+        f"step surface:      min_z_ground_asprs (delivery class 2), "
+        f"{args.step_window_cells}x{args.step_window_cells} window = "
+        f"{args.step_window_cells * cell:g} m, >= {args.step_min_finite} finite"
+    )
+    print(f"our SMRF params:   {smrf_params}  (window_m = {smrf_params.window_m})")
+    print(f"our filter params: {ground_params}")
+    print(f"controls:          {json.dumps(provenance.get('controls', {}))}")
+    print()
+
+    header = f"{'population':<50}{'cells':>12}{'SMRF ground':>14}{'PDAL ground':>14}"
+    print(header)
+    print("-" * len(header))
+    print(
+        f"{'P4a: our measured ground':<50}{int(measured_ground.sum()):>12,d}"
+        f"{_share(smrf_ground, measured_ground):>13.1f}%"
+        f"{_share(reference_ground, measured_ground):>13.1f}%"
+    )
+    steep_at: dict[float, NDArray[np.bool_]] = {}
+    for bound in STEP_THRESHOLDS_M:
+        population = measured_ground & defined & (step > bound)
+        steep_at[bound] = population
+        gate = "  (GATE)" if bound == P4B_GATE_THRESHOLD_M else ""
+        label = f"P4b: ... on a step > {bound:g} m{gate}"
+        print(
+            f"{label:<50}{int(population.sum()):>12,d}"
+            f"{_share(smrf_ground, population):>13.1f}%"
+            f"{_share(reference_ground, population):>13.1f}%"
+        )
+
+    gate_population = steep_at[P4B_GATE_THRESHOLD_M]
+    if not gate_population.any():
+        # An empty population makes P4b's share `nan`, not 100%. Either way it is not a pass:
+        # it is an instrument that selected nothing, and the pre-registration says so.
+        print(
+            f"\nP4b's population is EMPTY at > {P4B_GATE_THRESHOLD_M:g} m. That is a broken "
+            "instrument, not a passing filter; no verdict is computed.",
+            file=sys.stderr,
+        )
+        return 2
+
+    print()
+    print("reported, with nothing riding on it:")
+    dense_step, dense_defined = step_magnitude(
+        arrays["min_z_ground_asprs"].astype(np.float64),
+        args.step_window_cells,
+        STEP_DENSE_MIN_FINITE,
+    )
+    dense = measured_ground & dense_defined & (dense_step > P4B_GATE_THRESHOLD_M)
+    print(
+        f"  P4b at > {P4B_GATE_THRESHOLD_M:g} m requiring >= {STEP_DENSE_MIN_FINITE} finite "
+        f"cells: {int(dense.sum()):,d} cells, SMRF {_share(smrf_ground, dense):.1f}%, "
+        f"PDAL {_share(reference_ground, dense):.1f}%"
+    )
+
+    # The consistency control on the construction of the SMRF surface: where both filters call a
+    # cell ground, do they agree about where the ground IS?
+    lifted = arrays["min_z_reference_ground"] - arrays["min_z_all"]
+    both = measured_ground & reference_ground & np.isfinite(lifted)
+    n_both = int(both.sum())
+    if n_both:
+        median = float(np.median(lifted[both]))
+        far = 100.0 * float((np.abs(lifted[both]) > 0.5).sum()) / n_both
+        print(
+            f"  where both our filter and PDAL call a cell ground: {n_both:,d} cells, "
+            f"median difference {median:+.3f} m, {far:.2f}% differ by more than 0.5 m"
+        )
+    else:
+        print("  where both our filter and PDAL call a cell ground: no such cells")
+
+    p4a = _share(smrf_ground, measured_ground)
+    p4b = _share(smrf_ground, gate_population)
+    print()
+    print("pre-registered predicates (docs/p4-terrace-preregistration.md):")
+    lines = [
+        _verdict("P4a our measured ground kept", p4a, P4A_TERRACE_MIN, ">="),
+        _verdict(f"P4b kept on a step > {P4B_GATE_THRESHOLD_M:g} m", p4b, P4B_STEEP_MIN, ">="),
+    ]
+    for text, _ok in lines:
+        print(f"  {text}")
+    passed = all(ok for _text, ok in lines)
+    print(f"\nVERDICT: {'PASS' if passed else 'FAIL'}")
+    return 0 if passed else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="compare_ground_filters")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -667,6 +875,29 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--roof-margin", type=int, default=2)
     s.add_argument("--seam-margin-m", type=float, default=20.0)
     s.set_defaults(func=_cmd_smrf)
+
+    t = sub.add_parser("terraces", help="P4: what our SMRF costs on the terraces")
+    t.add_argument("--reference", type=Path, required=True)
+    t.add_argument(
+        "--surface",
+        default="min_z_all",
+        choices=("min_z_all", "min_z_judged"),
+        help="the surface our SMRF reads, as in the `smrf` command",
+    )
+    t.add_argument("--step-window-cells", type=int, default=STEP_WINDOW_CELLS)
+    t.add_argument("--step-min-finite", type=int, default=STEP_MIN_FINITE)
+    t.add_argument("--max-window-m", type=float, default=4.0)
+    t.add_argument("--slope-threshold", type=float, default=0.3)
+    t.add_argument("--elevation-threshold-m", type=float, default=0.3)
+    t.add_argument("--max-elevation-m", type=float, default=3.5)
+    t.add_argument("--k-min-returns", type=int, default=1)
+    t.add_argument("--d-max-interp-m", type=float, default=2.0)
+    t.add_argument("--smrf-cell", type=float, default=1.0)
+    t.add_argument("--smrf-slope", type=float, default=0.15)
+    t.add_argument("--smrf-scalar", type=float, default=1.25)
+    t.add_argument("--smrf-threshold", type=float, default=0.5)
+    t.add_argument("--smrf-window", type=float, default=None)
+    t.set_defaults(func=_cmd_terraces)
 
     args = ap.parse_args(argv)
     result: int = args.func(args)
