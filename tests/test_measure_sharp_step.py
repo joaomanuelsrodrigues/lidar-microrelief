@@ -123,6 +123,29 @@ class TestG1:
         assert not found_with(3, 3), "2.12 m is outside the disc but inside the square"
         assert not found_with(0, 5), "beyond the search window entirely"
 
+    def test_a_location_outside_the_extent_is_not_reported_as_absent(self) -> None:
+        """The P4-window leg found this: four of the five steps lie outside a 150 m window, and
+        `found=False` for them is byte-identical to a step present in the extent and missing from
+        the population. One is a question the cache cannot answer; the other is a failure."""
+        minx, _, _, maxy = mod.ZONE
+        small = np.zeros((300, 300), dtype=bool)
+
+        hits = {h.name: h for h in mod.g1_hits(small, minx, maxy, 0.5)}
+
+        assert sum(h.inside for h in hits.values()) < len(hits), "the fixture must clip some"
+        for hit in hits.values():
+            if not hit.inside:
+                assert not hit.found, "an unanswerable location is never a hit"
+
+    def test_every_location_is_inside_the_full_zone(self) -> None:
+        """The complement: over Zone Z's own extent nothing is out of frame, so a FAIL there is
+        a real one."""
+        minx, _, _, maxy = mod.ZONE
+
+        hits = mod.g1_hits(np.zeros((1600, 1600), dtype=bool), minx, maxy, 0.5)
+
+        assert all(h.inside for h in hits)
+
 
 class TestG2:
     def test_g2_requires_both_halves(self) -> None:
@@ -156,6 +179,45 @@ class TestG2:
         production code shaped by a test. The guard reaches through instead."""
         with pytest.raises(ValueError, match="residual_min_m"):
             mod.g2_verdict(cell_m=0.5, residual_min_m=0.0)
+
+
+class TestReadCache:
+    """Two producers write two schemas, and neither names its fields like the other."""
+
+    def test_it_reads_the_build_cache(self, tmp_path: Path) -> None:
+        result = mod.read_cache(_cache(tmp_path / "b.npz", np.zeros((8, 8))))
+
+        assert result.shape_name == "measure_risers build"
+        assert result.pdal_ground is None
+        assert result.cell_m == 0.5
+        assert result.surface.shape == (8, 8)
+
+    def test_it_reads_the_reference_cache_and_finds_pdals_answer(self, tmp_path: Path) -> None:
+        path = tmp_path / "r.npz"
+        np.savez_compressed(
+            path,
+            min_z_ground_asprs=np.zeros((4, 4), dtype=np.float32),
+            min_z_all=np.zeros((4, 4), dtype=np.float32),
+            n_reference_ground=np.array([[0, 1, 0, 0]] * 4, dtype=np.int32),
+            provenance=json.dumps(
+                {"grid": {"origin_x": -20210.0, "origin_y": 256395.0, "cell": 0.5}}
+            ),
+        )
+
+        result = mod.read_cache(path)
+
+        assert result.shape_name == "compare_ground_filters reference"
+        assert result.pdal_ground is not None
+        assert result.pdal_ground.sum() == 4
+        assert (result.origin_x, result.origin_y) == (-20210.0, 256395.0)
+
+    def test_a_cache_of_neither_shape_is_refused_by_name(self, tmp_path: Path) -> None:
+        """A KeyError naming one field would read like a corrupt file, not the wrong cache."""
+        path = tmp_path / "x.npz"
+        np.savez_compressed(path, something_else=np.zeros(3))
+
+        with pytest.raises(ValueError, match="neither cache shape"):
+            mod.read_cache(path)
 
 
 class TestRetention:
