@@ -214,11 +214,15 @@ def main(argv: list[str] | None = None) -> int:
     mid = int(
         ((values[usable] >= NEAR_PLANAR_M) & (values[usable] < cgf.SHARP_STEP_RESIDUAL_MIN_M)).sum()
     )
-    print(f"\nwhat was removed, of {int(usable.sum()):,d} cells with a computable residual:")
+    # The three rows partition S1's removed cells, and the first two are the only ones drawn
+    # from the computable subset -- printing all three under one "of N computable" header would
+    # invite a reader to divide the third by a denominator it is not part of.
+    print(f"\nwhat was removed, of S1's {n1:,d} cells:")
     print(f"  near-planar   residual <  {NEAR_PLANAR_M:.2f} m   {near:>9,d}")
     band = f"{NEAR_PLANAR_M:.2f} <= r < {cgf.SHARP_STEP_RESIDUAL_MIN_M:.2f}"
     print(f"  intermediate  {band} m   {mid:>9,d}")
-    print(f"  no residual (window under 4 observed cells)  {int((~usable).sum()):>9,d}")
+    print(f"  no residual   under 4 observed cells   {int((~usable).sum()):>9,d}")
+    print(f"  (residual computable for {int(usable.sum()):,d} of {n1:,d})")
     print("\nresidual percentiles over S1:")
     for q in (10, 25, 50, 75, 90):
         print(f"  p{q:<3d} {np.nanpercentile(values[usable], q):.3f} m")
