@@ -28,8 +28,9 @@ Zone Z, 1600 × 1600 cells at 0.5 m, from the four Sistelo tiles named in
 
 The three partition the removed cells exactly. Only the first two are drawn from the 304,243
 whose residual could be computed; the third is the rest of `S1`, so it does not share that
-denominator — and the two are not the same claim: **42.4%** of `S1` departs from a plane by less
-than 0.30 m, while the other 1.1 points were removed as *unmeasurable*, not as planar.
+denominator — and the two are not the same claim: **42.442%** of `S1` departs from a plane by
+less than 0.30 m, while the other **1.021%** (3,138 cells) was removed as *unmeasurable*, not as
+planar. Both are divisions of counts, not one rounded percentage subtracted from another.
 
 Residual percentiles over `S1`:
 
@@ -142,23 +143,31 @@ terrace riser is in frame, and it passes both: in `S2` at (151, 154), residual 0
 - **It is a sharp-step population, not a riser population.** A riser spread across the 3.0 m
   `docs/riser-measurement.md` admits *can be* exactly planar in a 3.5 m window and is not in `S2`.
 
-  **Correction 4: the width curve in the pre-registration is computed at one sub-cell alignment**,
-  while the step floor printed beside it sweeps eleven — two curves in one table under different
-  assumptions, and the claims drawn from it inherited the difference. Swept over the same offsets:
+  **Correction 4: the width curve in the pre-registration is one position out of many**, while
+  the step floor printed beside it sweeps eleven — two curves in one table under different
+  assumptions, and the claims drawn from it inherited the difference. The curve is now swept over
+  **every position a riser can take inside the window**, counting only the positions where the
+  centre cell is a candidate at all, since a position whose window range falls under 2.5 m is
+  not in the population and its residual is evidence about nothing:
 
-        width    centred      min      max     at R = 0.30
-        0.5 m      0.455    0.455    0.620     in at every offset
-        1.0 m      0.455    0.389    0.484     in at every offset
-        1.5 m      0.270    0.270    0.341     depends on the offset
-        2.0 m      0.208    0.190    0.273     OUT at every offset
-        2.5 m      0.083    0.083    0.173     OUT at every offset
-        3.0 m      0.000    0.000    0.109     OUT at every offset
+        width    centred      min      max   positions   at R = 0.30
+        0.5 m      0.455    0.455    0.719       253     in at every position
+        1.0 m      0.455    0.388    0.587       207     in at every position
+        1.5 m      0.270    0.270    0.446       161     straddles R
+        2.0 m      0.208    0.190    0.295       115     OUT at every position
+        2.5 m      0.083    0.083    0.154        69     OUT at every position
+        3.0 m      0.000    0.000    0.026        23     OUT at every position
 
   So "a 3.0 m riser is **exactly** planar" and "the last width that survives is 1.0 m" are
-  properties of the centred alignment, not of the width. The defensible statement is the table:
-  **up to 1.0 m wide a riser is in at every alignment, 1.5 m straddles `R`, and 2.0 m and wider
-  are out at every alignment.** The naming argument survives — there is still no threshold that
-  keeps every permitted riser — and it survives on a wider, measured basis than the one written.
+  properties of the centred position, not of the width. The defensible statement is the table:
+  **up to 1.0 m a riser is in wherever it sits, 1.5 m straddles `R`, and 2.0 m and wider are out
+  wherever they sit** — the last of those **by 0.005 m**, which is worth saying rather than
+  leaving a reader to subtract. An intermediate version of this correction swept eleven offsets
+  over one cell of phase and reported a maximum of 0.273 for 2.0 m, making that margin look like
+  0.027: a narrower sweep is a narrower claim, and the number it produced was comfortable.
+
+  The naming argument survives — there is still no threshold that keeps every permitted riser —
+  and it survives on a wider, measured basis than the one written.
 
 - **Correction 5, small:** the pre-registration calls 0.4374 m "the infimum over candidate steps".
   Candidate steps include wide risers, which the table above shows reading 0.083 and 0.000. It is

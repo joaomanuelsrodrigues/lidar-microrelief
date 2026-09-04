@@ -2257,14 +2257,15 @@ instrument selects are the same thing. Threshold `R = 0.30 m`, derived on synthe
       n/a   gully/lane edge (rank 10)    outside this cache's extent
       n/a   built wall (rank 11)         outside this cache's extent
 
-    NOT EVALUABLE: G1 (4 of 5 outside the extent). Nothing was refuted.
+    NOT EVALUABLE: G1 (4 of 5 outside the extent). Nothing there was refuted.
 
 **What the two runs say**, outside the fences, because a summary is not output:
 
-**43.5% of `S1` is removed**, of which **42.4%** of `S1` (130,459 of 307,381) departs from a
-plane by less than `R`; the other 1.1 points are the 3,138 cells with no computable residual,
-removed as unmeasurable rather than as planar. The bulk is not the
-ramp-like tail — near-planar cells are 7,044, while the intermediate band holds 123,415.
+**43.5% of `S1` is removed**: **42.4%** (130,459 of 307,381) departs from a plane by less than
+`R`, and **1.0%** (3,138 of 307,381) has no computable residual and was removed as unmeasurable
+rather than as planar. Both from their own counts; subtracting one rounded percentage from
+another gives 1.1 and is the kind of arithmetic that puts a wrong digit in a record. The bulk is
+not the ramp-like tail — near-planar cells are 7,044, while the intermediate band holds 123,415.
 
 **The P4 leg returns six published figures**: 7,625 / 95.1% / 95.1% for P4's gate population and
 4,954 / 94.2% / 94.1% for its `residual >= 0.30 m` row. It also shows that the pre-registered
@@ -2276,3 +2277,7 @@ against 93.7%, the direction the pre-registration anticipated.
 it. An earlier version of the instrument printed those as `FAIL`, which is a refusal with a false
 reason, and folded them into the failure list; they are now their own state and the in-frame
 locations are checked regardless.
+
+**A regeneration of the two fences above dropped this section entirely**, and the README's
+percentage guard is what caught it — the second time in this branch that a claim in the README
+was held up by a record that no longer carried its number.

@@ -146,6 +146,24 @@ class TestG1:
             if not hit.inside:
                 assert not hit.found, "an unanswerable location is never a hit"
 
+    def test_a_location_whose_disc_is_truncated_is_not_answerable(self) -> None:
+        """The third face of the conflation, and the one the extent fix left open.
+
+        `inside` used to test the centre cell alone, so a location four cells from the crop edge
+        was searched over a silently truncated disc -- and a miss there was printed as a refusal
+        when the S2 cell that would satisfy it may simply be outside the frame.
+        """
+        cell_m = 0.5
+        minx, _, _, maxy = mod.ZONE
+        _, x, y = mod.VERIFIED_STEPS[0]
+        row, col = int((maxy - y) / cell_m), int((x - minx) / cell_m)
+        # An array ending two cells past the location: the centre is in, the 4-cell disc is not.
+        clipped = np.zeros((row + 3, col + 3), dtype=bool)
+
+        hits = {h.name: h for h in mod.g1_hits(clipped, minx, maxy, cell_m)}
+
+        assert not hits[mod.VERIFIED_STEPS[0][0]].inside
+
     def test_every_location_is_inside_the_full_zone(self) -> None:
         """The complement: over Zone Z's own extent nothing is out of frame, so a FAIL there is
         a real one."""
@@ -234,6 +252,54 @@ class TestG2:
         production code shaped by a test. The guard reaches through instead."""
         with pytest.raises(ValueError, match="residual_min_m"):
             mod.g2_verdict(cell_m=0.5, residual_min_m=0.0)
+
+
+class TestTheInstrumentMeasuresTheFilterThatShips:
+    """The lock `tests/test_compare_ground_filters.py` has, extended to this file.
+
+    The first version of `measured_basis` retyped all six -- under a comment warning against
+    exactly that. Nothing would have failed: if `--max-elevation-m` moves again (it has once,
+    3.0 -> 3.5), this script would keep computing a different basis and the record's 94.5% and
+    93.7% would quietly stop describing the shipped filter.
+    """
+
+    def test_the_four_retired_parameters_come_from_the_dataclass(self) -> None:
+        from microrelief.ground import GroundParams
+
+        source = SCRIPT.read_text()
+
+        assert "GroundParams()" in source
+        assert "GroundParams(4.0" not in source
+        assert (
+            GroundParams().max_window_m,
+            GroundParams().slope_threshold,
+            GroundParams().elevation_threshold_m,
+            GroundParams().max_elevation_m,
+        ) == (4.0, 0.3, 0.3, 3.5), "the shipped configuration moved; this record's basis moved"
+
+    def test_the_two_shared_parameters_match_the_shipped_cli(self) -> None:
+        """Declared on `compare_ground_filters`'s parsers and nowhere else, so they are compared
+        against every declaration there rather than against one."""
+        import re
+
+        sibling = (ROOT / "scripts" / "compare_ground_filters.py").read_text()
+        for flag, ours in (
+            ("--k-min-returns", mod.BASIS_K_MIN_RETURNS),
+            ("--d-max-interp-m", mod.BASIS_D_MAX_INTERP_M),
+        ):
+            declared = set(re.findall(rf'"{flag}".*?default=([0-9.]+)', sibling))
+            assert declared, flag
+            assert len(declared) == 1, f"{flag} is declared with {declared} -- the file disagrees"
+            assert float(declared.pop()) == float(ours), flag
+
+    def test_the_smrf_reference_is_the_dataclass_default(self) -> None:
+        """Constructed empty, not retyped: `SmrfParams` keeps PDAL's defaults verbatim."""
+        from microrelief.smrf import SmrfParams
+
+        shipped = SmrfParams()
+
+        assert shipped == mod.SMRF_REFERENCE
+        assert "SmrfParams(cell=" not in SCRIPT.read_text()
 
 
 class TestReadCache:
@@ -355,6 +421,22 @@ class TestExitCodes:
         assert "FAIL:" in out and "in frame and not in S2" in out
         assert "NOT EVALUABLE" not in out
 
+    def test_a_run_with_both_states_names_both_in_the_summary(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The summary line is what gets grepped into a record. An `elif` here dropped the
+        unanswerable half whenever anything was refuted, at the one place a reader looks."""
+        # 900 columns: the locations at columns 534 and 784 are in frame, the three past column
+        # 960 are not, and a wall at column 450 misses both of the in-frame ones.
+        surface = np.where(np.mgrid[0:1600, 0:900][1] >= 450, 2.6, 0.0).astype(np.float64)
+        cache = _cache(tmp_path / "both.npz", surface)
+
+        assert mod.main(["--reference", str(cache)]) == 1
+
+        out = capsys.readouterr().out
+        assert "FAIL:" in out, out[-400:]
+        assert "NOT EVALUABLE" in out, out[-400:]
+
     def test_a_partial_extent_is_reported_as_not_evaluable(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
@@ -367,7 +449,7 @@ class TestExitCodes:
 
         out = capsys.readouterr().out
         assert "NOT EVALUABLE" in out
-        assert "Nothing was refuted" in out
+        assert "Nothing there was refuted" in out
         assert "\nFAIL:" not in out, "an unanswerable question is not a refutation"
 
     def test_a_g3_failure_is_recorded_as_one(

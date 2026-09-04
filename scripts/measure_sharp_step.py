@@ -5,8 +5,13 @@ That document fixes, before this ran once on real data, a population (`S1` the P
 term over Zone Z, `S2` those of its cells whose window also departs from a plane) and three
 predicates over it. This script evaluates them and prints the reported block beside them.
 
-Exit codes are the verdict: 0 all three predicates pass, 1 one or more fails, **2** `S1` is empty
--- which is a broken instrument, not a clean must-not-fire, and must never read as a pass.
+Exit codes, and 1 carries two meanings that the last line of output tells apart:
+
+    0   all three predicates pass
+    1   at least one was refuted (FAIL), or at least one could not be evaluated against this
+        cache (NOT EVALUABLE) -- the second is not a refutation, and the summary says which
+    2   the instrument is broken, not the population: `S1` empty, or `S1` non-empty with not one
+        computable residual. Neither must ever read as a pass.
 
     python scripts/measure_sharp_step.py --reference <zone-z-cache>.npz
 
@@ -62,10 +67,16 @@ VERIFIED_STEPS: tuple[tuple[str, float, float], ...] = (
     ("built wall (rank 11)", -19905.25, 255974.25),
 )
 G1_TOLERANCE_M = 2.0
-# The reference configuration, taken from the sibling that owns the defaults rather than typed
-# again. A third unlocked copy is how the branch's headline retention silently stops being the
-# configuration everything else was measured under.
-SMRF_REFERENCE = SmrfParams(cell=1.0, slope=0.15, scalar=1.25, threshold=0.5, window=None)
+# `SmrfParams`'s own defaults are PDAL's, kept verbatim in that dataclass, so the reference
+# configuration is spelled by constructing it empty. The first version of this line retyped the
+# five values under a comment claiming they had been taken from the sibling that owns them --
+# a third unlocked copy of exactly the literals the comment warned about.
+SMRF_REFERENCE = SmrfParams()
+# The two basis parameters the pipeline still takes as flags. `GroundParams`'s four live in that
+# dataclass; these two are declared only on `compare_ground_filters`'s parsers, so they are named
+# here and locked against those declarations by this script's tests.
+BASIS_K_MIN_RETURNS = 1
+BASIS_D_MAX_INTERP_M = 2.0
 G2_DEGREES = (31.0, 35.0, 40.0, 45.0, 50.0, 60.0)
 NEAR_PLANAR_M = 0.10
 
@@ -141,7 +152,16 @@ def g1_hits(
         found = False
         value = float("nan")
         hit_row = hit_col = None
-        inside = 0 <= row < population.shape[0] and 0 <= col < population.shape[1]
+        # The whole disc, not just the centre. A location four cells from the crop edge is
+        # searched over a silently truncated neighbourhood, so the S2 cell that would satisfy it
+        # may be outside the frame -- and reporting that as a miss is the third face of the
+        # conflation this instrument has now fixed twice (extent, then residual referent).
+        inside = (
+            row - reach >= 0
+            and col - reach >= 0
+            and row + reach < population.shape[0]
+            and col + reach < population.shape[1]
+        )
         if inside:
             r0, r1 = max(row - reach, 0), min(row + reach + 1, population.shape[0])
             c0, c1 = max(col - reach, 0), min(col + reach + 1, population.shape[1])
@@ -295,7 +315,7 @@ def measured_basis(
     number whose artefact died with a scratchpad.
     """
     crop = lambda a: _crop(a, origin_x, origin_y, cell_m)  # noqa: E731
-    ground = classify_ground(crop(cache.min_z_all), cell_m, GroundParams(4.0, 0.3, 0.3, 3.5))
+    ground = classify_ground(crop(cache.min_z_all), cell_m, GroundParams())
     stats = CellStats(
         min_z_all=crop(cache.min_z_all),
         max_z_all=crop(cache.max_z_all),
@@ -304,7 +324,10 @@ def measured_basis(
         min_z_ground_asprs=crop(cache.surface),
         n_outside=0,
     )
-    basis: NDArray[np.bool_] = compute_basis(ground, stats, cell_m, 1, 2.0).basis == BASIS_MEASURED
+    basis: NDArray[np.bool_] = (
+        compute_basis(ground, stats, cell_m, BASIS_K_MIN_RETURNS, BASIS_D_MAX_INTERP_M).basis
+        == BASIS_MEASURED
+    )
     return basis
 
 
@@ -464,11 +487,13 @@ def main(argv: list[str] | None = None) -> int:
         if not ok:
             failures.append(f"G3 ({hit.name})")
 
+    # Both, never one or the other: the summary line is what gets grepped and quoted into a
+    # record, so a run that refuted one predicate and could not evaluate another has to say so.
     if failures:
         print(f"\nFAIL: {', '.join(failures)}")
-    elif incomplete:
-        print(f"\nNOT EVALUABLE: {', '.join(incomplete)}. Nothing was refuted.")
-    else:
+    if incomplete:
+        print(f"\nNOT EVALUABLE: {', '.join(incomplete)}. Nothing there was refuted.")
+    if not failures and not incomplete:
         print("\nPASS")
     return 1 if failures or incomplete else 0
 

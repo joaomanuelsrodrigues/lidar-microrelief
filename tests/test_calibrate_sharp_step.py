@@ -47,43 +47,72 @@ class TestStepFloor:
 
 
 class TestWidthCurve:
-    @staticmethod
-    def _curve() -> dict[float, tuple[float, float, float]]:
-        return {w: (c, lo, hi) for w, c, lo, hi in mod.width_curve(2.6, window_cells=7, cell_m=0.5)}
+    """Each row names a width, and the numbers are what a cell IN THE POPULATION can read."""
 
-    def test_a_riser_spread_across_the_window_can_be_exactly_planar(self) -> None:
-        """`can be`, not `is`. At one alignment it reads 0.000; the claim was written as a
-        property of the width, and it is a property of where the boundary falls."""
+    CENTRED = {0.5: 0.455, 1.0: 0.455, 1.5: 0.270, 2.0: 0.208, 2.5: 0.083, 3.0: 0.000}
+
+    @staticmethod
+    def _curve() -> dict[float, tuple[float, float, float, int]]:
+        return {
+            w: (c, lo, hi, n)
+            for w, c, lo, hi, n in mod.width_curve(2.6, window_cells=7, cell_m=0.5)
+        }
+
+    def test_the_centred_readings_are_the_ones_the_records_publish(self) -> None:
+        """Pinned by value, because the documents quote them. An earlier version of this class
+        asserted on the band's minimum while claiming to check the centred case."""
         curve = self._curve()
 
-        assert curve[0.5][1] > 0.4
-        assert curve[3.0][1] == pytest.approx(0.0, abs=1e-9)
-        assert curve[3.0][2] > 0.1, "and at other offsets it is not planar at all"
+        for width, expected in self.CENTRED.items():
+            assert curve[width][0] == pytest.approx(expected, abs=5e-4), width
 
-    def test_the_threshold_crossing_depends_on_the_sub_cell_offset(self) -> None:
-        """The declared limitation's operative number, and its width.
+    def test_a_riser_spread_across_the_window_can_be_exactly_planar(self) -> None:
+        """`can be`, not `is`: centred it reads 0.000, and elsewhere in the population it does
+        not. The claim was written as a property of the width; it is a property of position."""
+        curve = self._curve()
 
-        Centred, 1.0 m survives R and 1.5 m does not. Swept over offsets the two bands overlap
-        the threshold from either side, so "the last width that survives is 1.0 m" is true of the
-        centred alignment and of nothing else.
+        assert curve[3.0][0] == pytest.approx(0.0, abs=1e-9), "centred"
+        assert curve[3.0][2] > 0.0, "and at other candidate positions it is not exactly planar"
+
+    def test_where_the_threshold_falls_is_a_band_not_a_line(self) -> None:
+        """Up to 1.0 m a riser is in wherever it sits; 1.5 m straddles R; 2.0 m and wider are out
+        wherever they sit. "The last width that survives is 1.0 m" was true of the centred case
+        and of nothing else.
         """
         curve = self._curve()
         r = mod.cgf.SHARP_STEP_RESIDUAL_MIN_M
 
-        assert curve[1.0][0] >= r and curve[1.5][0] < r, "centred"
-        assert curve[1.0][1] >= r, "1.0 m survives at every offset"
-        assert curve[1.5][1] < r <= curve[1.5][2], "1.5 m straddles it"
+        assert curve[1.0][1] >= r, "1.0 m: in at every candidate position"
+        assert curve[1.5][1] < r <= curve[1.5][2], "1.5 m: straddles"
+        assert curve[2.0][2] < r, "2.0 m: out at every candidate position"
+
+    def test_the_two_metre_row_clears_the_threshold_by_five_thousandths(self) -> None:
+        """The margin the record has to state. It is 0.005 m, not the 0.027 an eleven-point
+        sweep over one cell of phase reported, and it is the reason the sweep was widened.
+        """
+        curve = self._curve()
+
+        assert 0.29 < curve[2.0][2] < mod.cgf.SHARP_STEP_RESIDUAL_MIN_M
 
     def test_the_centred_curve_falls_monotonically(self) -> None:
-        centred = [c for _, c, _, _ in mod.width_curve(2.6, window_cells=7, cell_m=0.5)]
+        centred = [c for _, c, _, _, _ in mod.width_curve(2.6, window_cells=7, cell_m=0.5)]
 
         assert centred == sorted(centred, reverse=True)
 
-    def test_every_band_contains_its_centred_value(self) -> None:
-        """A min/max that did not bracket the centred reading would mean the sweep and the
-        centred case are not computing the same thing."""
-        for _, centred, low, high in mod.width_curve(2.6, window_cells=7, cell_m=0.5):
-            assert low <= centred <= high
+    def test_only_candidate_positions_are_counted(self) -> None:
+        """The restriction that makes the band a statement about the population.
+
+        Off-centre positions read HIGHER residuals precisely where the window's range drops under
+        the threshold -- cells that are not in S1 at all. Counting them would overstate what the
+        population can hold, so the phase count must shrink as the riser widens and every
+        counted position must be a candidate.
+        """
+        rows = mod.width_curve(2.6, window_cells=7, cell_m=0.5)
+        phases = [n for _, _, _, _, n in rows]
+
+        assert phases == sorted(phases, reverse=True)
+        assert all(n > 0 for n in phases)
+        assert phases[-1] < phases[0] / 2, "a 3.0 m riser is a candidate far less often"
 
 
 class TestNoiseCurve:
