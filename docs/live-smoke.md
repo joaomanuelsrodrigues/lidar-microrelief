@@ -3,6 +3,17 @@
 Every entry is a real command and its real output. A test that mocks the source proves wiring,
 not behaviour; this file is where behaviour is claimed.
 
+Entries are records of a past moment, so they are annotated rather than rewritten. One later
+pass edited them in place, and is declared here rather than left to be discovered. It removed
+the author's private working identifiers, which numbered 29 occurrences on 25 lines and
+resolved to nothing a reader of this repository could look up: session numbers, task-ledger
+and failure-class references, a finding number and an experiment number. Three of those
+carried information worth keeping and became the date the entry already bore. Alongside them,
+one redaction inside a transcript is noted where it occurs, two citations of the contributor
+guide now carry both the name it had then and the name it has now, and one sentence that
+named a step of a written plan names the release instead. No measurement, no command and no
+command output has been changed.
+
 ---
 
 ## 2026-08-04 — first real DGT LAZ read end to end
@@ -470,8 +481,8 @@ tuple in 0.3.0's *own* post-judge fix, and `outputs_0.3.0_run1/` (17:46) predate
 shipped 0.3.0 record — `outputs/` at 17:56, hash `c69dd559…`, the one `viewer/provenance.json`
 tracks and the README quoted — carries the corrected six-entry list. Verified against git rather
 than chosen for passing: at `26e1323`, the commit this branch forks from, `UNCALIBRATED` already
-had six entries and no `max_elevation_m`. The acceptance question is whether the 0.4.0 changes
-changed behaviour relative to the code the branch forked from, and only one record on disk was produced
+had six entries and no `max_elevation_m`. The acceptance question is whether the 0.4.0
+changes altered behaviour relative to the code the branch forked from, and only one record on disk was produced
 by that code.
 
 ### 5. What the rename did not touch
@@ -1020,8 +1031,8 @@ judged** (the summary now says `e-mail-shaped bytes in 1 of them not judged`: th
 measured earlier, visible instead of silent); the self-test and the pytest scratch repositories
 run under `GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1` with every `GIT_*` variable unset;
 the working-tree `.env` check is gone (the tracked one stays: `.gitignore`'s `.env*` is where a
-local one is provisioned to live), and rule 5 of the contributor guide (`CONTRIBUTING.md`, then
-`AGENTS.md`) says "tracked". The CI-mirror test
+local one is provisioned to live), and rule 5 of the contributor guide (`AGENTS.md` then,
+`CONTRIBUTING.md` now) says "tracked". The CI-mirror test
 parses `ci.yml` with PyYAML (dev extra) after three hand-rolled line readers each missed a form
 the next review found. On this tree, 0.7 s:
 
@@ -1317,8 +1328,8 @@ Two of the six findings were the kind only a different instrument sees.
 **`uv.lock` was never regenerated for 0.4.1**, so `uv lock --check` reported drift and CI's
 **first** step — `uv sync --locked` — would have refused, making every later gate unreachable.
 Every gate above had been run locally *without* that step, so the whole set was green over a
-build CI cannot produce. The contributor guide (`CONTRIBUTING.md`, then `AGENTS.md`) states this
-exact failure mode, and
+build CI cannot produce. The contributor guide (`AGENTS.md` then, `CONTRIBUTING.md` now) states
+this exact failure mode, and
 `test_the_human_facing_version_copies_agree_with_the_package` enumerated the version's copies as
 `CITATION.cff` + `SKILL.md` — not the one CI actually gates on. `uv.lock` is now in that
 enumeration, and a mutation setting it back to 0.4.0 turns the test red.

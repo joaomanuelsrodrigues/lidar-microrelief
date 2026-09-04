@@ -132,19 +132,18 @@ def test_the_scan_stays_quiet_on_near_misses() -> None:
 
 
 def test_the_record_store_exemption_stays_narrow() -> None:
-    """The regression this file exists for. The exemption was once all of `docs/`, which left every
-    dated record unscanned while the suite stayed green; the test written to catch that only fired
-    if an exemption reached `src/`, so it did not cover its own motivating case. This does: the
-    records under `docs/` outside `docs/judge/` must be in the scanned population."""
-    scanned = set(_scanned())
-    records = [
-        n
-        for n in _tracked()
-        if n.startswith("docs/") and not n.startswith("docs/judge/") and n.endswith(".md")
-    ]
-    assert records, "no records found to check, so this would pass for the wrong reason"
-    missing = [n for n in records if n not in scanned]
-    assert not missing, missing
+    """The regression this file exists for, pinned to the literal rather than sampled.
+
+    The exemption was once all of `docs/`, which left every dated record unscanned while the suite
+    stayed green. Two earlier attempts to lock that did not: the first reduced to "an exemption
+    reached `src/`", the second sampled only `docs/**.md`, so widening the exemption to the
+    top-level documents left every test passing. This compares the scanned population against the
+    one documented prefix, spelled out here rather than read from `EXEMPT`, so any change to
+    `EXEMPT` fails until this literal and `docs/judge/README.md` are changed with it."""
+    documented = "docs/judge/"
+    tracked = _tracked()
+    assert tracked, "no tracked files, so this would pass for the wrong reason"
+    assert set(_scanned()) == {n for n in tracked if not n.startswith(documented)}
 
 
 def test_the_live_directories_are_scanned_in_full() -> None:
@@ -164,3 +163,41 @@ def test_the_exemption_holds_no_source_and_hides_no_text_file() -> None:
     skipped = [n for n in _scanned() if _staged_text(n) is None]
     unread_text = [n for n in skipped if Path(n).suffix in TEXT_SUFFIXES]
     assert not unread_text, f"text files the scan could not read: {unread_text}"
+
+
+def test_the_judge_legend_matches_the_verdicts_it_describes() -> None:
+    """The legend is hand-maintained prose about its neighbours, and it had drifted three ways at
+    once: a row for a shape occurring nowhere, and two examples occurring nowhere. A sweep without
+    a lock leaks again, so this is that lock, in both directions."""
+    legend = (ROOT / "docs" / "judge" / "README.md").read_text(encoding="utf-8")
+    verdicts = "\n".join(
+        (ROOT / n).read_text(encoding="utf-8")
+        for n in _tracked()
+        if n.startswith("docs/judge/verdict-")
+    )
+    assert verdicts, "no verdicts found, so this would pass for the wrong reason"
+
+    rows = [ln for ln in legend.splitlines() if ln.startswith("| `")]
+    assert rows, "no legend rows parsed"
+    for row in rows:
+        for example in re.findall(r"`([^`]+)`", row.rsplit("|", 2)[1]):
+            assert example in verdicts, f"legend example {example!r} occurs in no verdict"
+
+    # A shape is documented by its schematic form, which the legend writes in prose for two of
+    # them and in the table for the rest. The mapping is explicit so a new pattern cannot be added
+    # without deciding how the legend names it.
+    schematic = {
+        "working-session number": "`sNNN`",
+        "task-ledger ID": "`T-xxx`",
+        "failure-class reference": "`§A`",
+        "finding number": "`F-0`",
+        "experiment number": "`E-00`",
+        "plan-step reference": "`Task `",
+    }
+    assert set(schematic) == set(_PATTERNS), set(schematic) ^ set(_PATTERNS)
+    for label, pattern in _PATTERNS.items():
+        found = pattern.search(verdicts)
+        if found:
+            assert schematic[label] in legend, (
+                f"{label} occurs in a verdict ({found.group(0)!r}) and the legend does not name it"
+            )

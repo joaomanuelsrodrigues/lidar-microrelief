@@ -9,6 +9,19 @@ ROOT = Path(__file__).resolve().parents[1]
 SKILL = ROOT / "skills" / "microrelief" / "SKILL.md"
 CLI = ROOT / "src" / "microrelief" / "cli.py"
 
+# Public, widely known filenames, unlike the local tool directories the rule below catches without
+# naming any. This half is an enumeration and therefore NOT exhaustive; it is the dot-component
+# rule that covers what nobody has listed.
+ASSISTANT_CONFIG = re.compile(
+    r"^(CLAUDE|AGENTS|GEMINI|COPILOT)(\.local)?\.md$"
+    r"|^copilot-instructions\.md$"
+    r"|^\.(cursorrules|windsurfrules|clinerules|roomodes|continuerules)$"
+    r"|^\.aider\.conf\.ya?ml$"
+    r"|^\.mcp\.json$"
+)
+# Every dot-component this repository legitimately tracks, measured from the tree.
+DOT_ALLOWED = {".github", ".gitignore", ".nojekyll"}
+
 
 def _frontmatter() -> dict[str, str]:
     text = SKILL.read_text(encoding="utf-8")
@@ -50,20 +63,51 @@ def test_no_assistant_tooling_file_is_tracked() -> None:
         ).stdout.split("\0")
         if name
     ]
-    # Public, widely known filenames, unlike the local tool directories the rule below catches
-    # without naming. This half is an enumeration and therefore not exhaustive; the dot-directory
-    # rule below is the derived half, and it is what catches a tool nobody has listed yet.
-    assistant_config = re.compile(
-        r"^(CLAUDE|AGENTS|GEMINI|COPILOT)(\.local)?\.md$"
-        r"|^copilot-instructions\.md$"
-        r"|^\.(cursorrules|windsurfrules|clinerules)$"
-        r"|^\.aider\.conf\.ya?ml$"
-    )
-    found = sorted(name for name in tracked if assistant_config.match(Path(name).name))
+    found = sorted(name for name in tracked if ASSISTANT_CONFIG.match(Path(name).name))
     assert not found, found
-    # Derived rather than named. The first version of this guard listed the local tool directories
-    # so it could assert `.gitignore` no longer mentions them, which republished in a tracked test
-    # exactly what moving them out of `.gitignore` was meant to stop publishing. A dot-directory
-    # allowlist catches any of them, and any future one, while naming none.
-    dot_dirs = {name.split("/")[0] for name in tracked if name.startswith(".") and "/" in name}
-    assert dot_dirs <= {".github"}, sorted(dot_dirs - {".github"})
+    # Derived rather than named. The first version listed the local tool directories so it could
+    # assert `.gitignore` no longer mentions them, which republished in a tracked test exactly what
+    # moving them out of `.gitignore` was meant to stop publishing. This names none of them, and it
+    # reads EVERY path component rather than the first: the previous version required a name to
+    # both start with a dot and contain a slash, so `src/.cursor/rules/x`, `docs/.claude/settings`,
+    # `.mcp.json` and `.roomodes` all passed it while it claimed to catch anything unlisted.
+    dotted = {part for name in tracked for part in name.split("/") if part.startswith(".")}
+    assert dotted <= DOT_ALLOWED, sorted(dotted - DOT_ALLOWED)
+
+
+def test_the_assistant_config_pattern_speaks_and_stays_quiet() -> None:
+    """Silence is this guard's pass condition, so the pattern must be shown to fire. No tracked file
+    matches it, which means an empty alternation, a typo, or `^$` would leave the suite green."""
+    must_fire = [
+        "CLAUDE.md",
+        "CLAUDE.local.md",
+        "AGENTS.md",
+        "GEMINI.md",
+        "COPILOT.md",
+        "copilot-instructions.md",
+        ".cursorrules",
+        ".windsurfrules",
+        ".clinerules",
+        ".roomodes",
+        ".continuerules",
+        ".aider.conf.yml",
+        ".aider.conf.yaml",
+        ".mcp.json",
+    ]
+    for name in must_fire:
+        assert ASSISTANT_CONFIG.match(name), name
+    must_not_fire = [
+        "README.md",
+        "CONTRIBUTING.md",
+        "RUBRIC.md",
+        "SECURITY.md",
+        "ATTRIBUTION.md",
+        "recipes.md",
+        "AGENT.md",
+        "CLAUDES.md",
+        ".gitignore",
+        ".nojekyll",
+        "mcp.json",
+    ]
+    for name in must_not_fire:
+        assert not ASSISTANT_CONFIG.match(name), name

@@ -27,7 +27,8 @@ skip them rather than hunt for a definition:
 Everywhere else — the README, `SITE.md`, `CALIBRATIONS.md`, the records under `docs/`, the source
 and the tests — says the rule in plain words instead, so nothing a reader must act on depends on
 resolving one of these. That is enforced rather than asserted: `tests/test_no_private_ids.py`
-fails on any of these shapes in any tracked file outside `docs/judge/`. It was written because
+fails on any of these shapes, plus one this legend no longer lists because it occurs nowhere
+here (a finding number, `F-0` and two digits), in any tracked file outside `docs/judge/`. It was written because
 the sentence above had been false, with twenty-one occurrences on eighteen lines across seven
 files under `src/`, `tests/` and `scripts/`. This directory is the one exemption, and the reason
 is the one above: these are somebody else's words.
