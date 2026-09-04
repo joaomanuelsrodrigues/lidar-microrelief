@@ -9,14 +9,14 @@ Each round reads the whole tree as it stood. A "clean" round is a sample, not a 
 found three real contradictions in text round 3 had passed — so the stopping rule was consecutive
 frozen rounds with the union of findings verified against the code, never one clean verdict.
 
-**Legend.** `sNNN` in these files and in `docs/live-smoke.md` is the author's working-session
-number; the date beside it is the fact. `T-xxx` is the author's task-ledger ID for the change being
-judged. Neither points at anything in this repository; both are left as written because these are
-dated records, and a record is annotated, never rewritten.
+**Legend.** `sNNN` in these files is the author's working-session number; the date beside it is
+the fact. `T-xxx` is the author's task-ledger ID for the change being judged. Neither points at
+anything in this repository; both are left as written here because these files are the judge's
+own words at a fixed commit, and quoting a third party means quoting them unedited.
 
-Four more identifier shapes appear in the dated records here and in `docs/live-smoke.md`, and
-none of them resolves to anything in this repository either. They are the author's private
-working vocabulary, listed so a reader can skip them rather than hunt for a definition:
+Four more identifier shapes appear in these verdicts, and none of them resolves to anything in
+this repository either. They are the author's private working vocabulary, listed so a reader can
+skip them rather than hunt for a definition:
 
 | shape | what it was | example |
 |---|---|---|
@@ -25,10 +25,10 @@ working vocabulary, listed so a reader can skip them rather than hunt for a defi
 | `F-0`_nn_ | a numbered finding in the author's method notes | `F-047`, `F-050` |
 | `E-00`_n_ | a numbered experiment in the same notes | `E-006` |
 
-Live files — the README, `SITE.md`, `CALIBRATIONS.md`, the source and the tests — say the rule in
-plain words instead, so nothing a reader must act on depends on resolving one of these. That is now
-enforced rather than asserted: `tests/test_no_private_ids.py` fails on any of these shapes in a
-tracked file outside `docs/`. It was written because the sentence above had been false, with
-eighteen such identifiers in `src/`, `tests/` and `scripts/`. Where a dated record here or in
-`docs/live-smoke.md` still carries them, that is deliberate: the record is what was written at the
-time.
+Everywhere else — the README, `SITE.md`, `CALIBRATIONS.md`, the records under `docs/`, the source
+and the tests — says the rule in plain words instead, so nothing a reader must act on depends on
+resolving one of these. That is enforced rather than asserted: `tests/test_no_private_ids.py`
+fails on any of these shapes in any tracked file outside `docs/judge/`. It was written because
+the sentence above had been false, with twenty-one occurrences on eighteen lines across seven
+files under `src/`, `tests/` and `scripts/`. This directory is the one exemption, and the reason
+is the one above: these are somebody else's words.

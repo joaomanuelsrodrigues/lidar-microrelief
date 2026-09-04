@@ -5,7 +5,7 @@ not behaviour; this file is where behaviour is claimed.
 
 ---
 
-## 2026-08-04 — first real DGT LAZ read end to end (Task 9, the §A1 gate)
+## 2026-08-04 — first real DGT LAZ read end to end
 
 Four tiles of the chosen AOI, acquired manually (see `SITE.md`), 845,372,695 bytes total.
 
@@ -84,7 +84,7 @@ to it, and returned bounds matching the catalogue's `proj:bbox` on all four tile
 reports was independently recomputed with `sha256sum` before the read and agrees.
 
 **`pc:count` is a point count — exactly, not approximately.** Delta 0 on all four tiles. The
-whole pre-download triage instrument of Task 5 rests on that field meaning what it was assumed
+whole pre-download triage instrument rests on that field meaning what it was assumed
 to mean, and it does. This was the measurement most able to invalidate the work behind it.
 
 **Criterion 2 (canopy) is CONFIRMED, and the spatial form is what confirms it.** The aggregate —
@@ -98,7 +98,7 @@ piece's "see under the vegetation" argument holds here on measurement rather tha
 
 **The pre-download triage's ground-fraction assumption was optimistic by more than a factor of
 two.** `estimate_tiles` describes its `ground_fraction` as illustrative rather than measured, and
-the Task 6 triage table quoted the void fraction at `f=0.4`, giving 8.2% for this candidate. The
+the triage table quoted the void fraction at `f=0.4`, giving 8.2% for this candidate. The
 measured fraction is **0.2448**, so the honest expectation is **19.1%** of cells with no ground
 return at 0.5 m. That still clears the `max_void_fraction` bar of 0.35, so the site stands — but
 the number now in `CALIBRATIONS.md` is measured rather than illustrative, and any future triage
@@ -106,8 +106,8 @@ run should be read knowing the default understates the void.
 
 **The producer's classification palette is not uniform across one sortie.** The two western tiles
 carry no class 3 or 4 at all; the two eastern ones do, and between them contribute 11.6% of AOI
-returns as low and medium vegetation. Same survey, same day, adjacent tiles. Task 13 compares our
-filter against this classification per class, so a class that is present in half the AOI and
+returns as low and medium vegetation. Same survey, same day, adjacent tiles. The per-class comparison runs our
+filter against this classification, so a class that is present in half the AOI and
 absent in the other half is a property of the reference, not of the terrain — and the comparison
 has to say so rather than average over it.
 
@@ -120,12 +120,12 @@ site is bare, and would have reversed criterion 2 on an artefact. It was caught 
 script also printed the count of points that had a reference at all, and that count was zero.
 The array is seeded with `+inf` in the version above, and the count of points with a reference
 (0.9993) stays printed beside the result, because it is what distinguishes a measured zero from
-an instrument that measured nothing. Same shape as the §A1 lesson of s252 and s255: silence and
+an instrument that measured nothing. Same shape as two earlier lessons: silence and
 absence produce identical-looking output, so the check has to report what it actually saw.
 
 ---
 
-## 2026-08-05 — the CLI, and the first end-to-end run over the real AOI (Task 18)
+## 2026-08-05 — the CLI, and the first end-to-end run over the real AOI
 
 Three verbs over the four Sistelo tiles, 845,372,695 bytes. `select` and `precheck` reach the
 catalogue and need no credentials; `run` touches no network at all.
@@ -201,7 +201,7 @@ package version, grid, parameters and input digests; the only thing that makes a
 visible is `__version__`, and nothing enforces bumping it. The version moved to 0.2.0 (goldens
 regenerated in the same commit, since the version is written into every raster's tags) and the hash
 moved to `e5e8eb9b…`. The gap itself is not closed: a run whose code changed without a version bump
-would still reuse a hash. It survived s259's 30-mutation exercise because `__version__` is data,
+would still reuse a hash. It survived the 30-mutation exercise because `__version__` is data,
 not code.
 
 **3. Replay is not established on real data.** Of four reads of the dataset: two clean and
@@ -223,7 +223,7 @@ refuses any return outside it. A return cannot lie outside the box the catalogue
 returns, so that is a corrupted read, not terrain. **This does not make replay stable. It makes an
 unstable run fail loudly instead of publishing a density divided by an exploded bounding box.**
 
-> **Correction (2026-08-08, frozen-tree judge round 3 — E-006).** "Any return" above overstates
+> **Correction (2026-08-08, frozen-tree judge round 3).** "Any return" above overstates
 > the guard's scope: the footprint check runs on **retained** returns only — ASPRS noise classes
 > 7 and 18 are dropped before it, by design (`read.py`: refusing a tile over a return the
 > pipeline already refuses to use would turn the guard into an obstacle; what it exists to catch
@@ -239,7 +239,7 @@ unstable run fail loudly instead of publishing a density divided by an exploded 
 
 ---
 
-## 2026-08-08 — hunting the s260 read instability; the riser measurement; the 0.3.0 replay
+## 2026-08-08 — hunting the 2026-08-05 read instability; the riser measurement; the 0.3.0 replay
 
 Three measurements in one session, each pre-registered before its data was touched.
 
@@ -275,7 +275,7 @@ Durations: A min 5.6 / median 6.5 / max 7.3 s; B 15.7 / 17.8 / 18.2 (~2.7× slow
 **Two amendments, declared.** Config D was added after C completed, because C's own durations
 (median 6.4 s, indistinguishable from idle) showed the tiles stayed in the page cache — C
 measured reads *beside* an active working set, not reads whose pages come from disk, and both
-s260 signatures (`IoError` on the read path; one garbage record) point at the I/O path. D
+2026-08-05 signatures (`IoError` on the read path; one garbage record) point at the I/O path. D
 evicts the four files before every rep (`posix_fadvise DONTNEED`), verified by accounting
 rather than by the clock: `Cached` in `/proc/meminfo` drops by the tile's ~208 MiB on evict and
 returns on re-read (the virtual disk delivers 218 MB fast enough that cold and warm reads look
@@ -283,7 +283,7 @@ alike in duration). And the hog held 20 GiB rather than the planned ~24 so the r
 clear of the OOM killer, whose kills would have been events of the wrong kind.
 
 **Conclusion, per the pre-registered rule: NOT REPRODUCED.** 192 controlled reads, zero events,
-byte-agreement across backends and conditions. Had the s260 rate (2 events in 16 tile-reads)
+byte-agreement across backends and conditions. Had the 2026-08-05 rate (2 events in 16 tile-reads)
 been a stationary property of this machine reading these files, 192 clean reads had probability
 ≈ 0.875¹⁹² ≈ 10⁻¹¹ — whatever fired on 2026-08-05 was state-dependent, not the steady process.
 No code remedy is justified by this data: **no backend pin** (96 parallel reads produced
@@ -357,13 +357,13 @@ parameter now 3.5).
 
 ## 2026-08-10 — 0.4.0: the core decoupled from its one provider, and the re-run that had to prove nothing moved
 
-Seven tasks (T-E6e) closed five defects the piece's own published standard already condemned:
+Seven tasks closed five defects the piece's own published standard already condemned:
 attribution welded into the record, no check that the CRS is projected and metric, a missing
 official ground class as a crash rather than a declared absence, the offline core importing an
 HTTP client for one national catalogue, and `TILE_CRS_EPSG = 3763` — a Portugal fact in a general
 code path. All of it rides **one** version bump, because `export.py` writes `package_version` and
 `reproducibility_hash` into every raster's tags: bumping once, last, keeps the golden regeneration
-to a single event and keeps the twelve goldens green through Tasks 1-6 as a free positive control
+to a single event and keeps the twelve goldens green throughout as a free positive control
 that the changes preserved behaviour.
 
 ### 1. The instrument, before the run
@@ -390,7 +390,7 @@ flipped**, so between them they show the flag is what decides, not the data.
 
 ### 2. Hash-neutrality of the two new limitations, measured rather than argued
 
-The two gaps Task 5 owed were added to `LIMITATIONS` **before** the bump, and the goldens run
+The two gaps still owed were added to `LIMITATIONS` **before** the bump, and the goldens run
 in between:
 
 ```
@@ -470,13 +470,13 @@ tuple in 0.3.0's *own* post-judge fix, and `outputs_0.3.0_run1/` (17:46) predate
 shipped 0.3.0 record — `outputs/` at 17:56, hash `c69dd559…`, the one `viewer/provenance.json`
 tracks and the README quoted — carries the corrected six-entry list. Verified against git rather
 than chosen for passing: at `26e1323`, the commit this branch forks from, `UNCALIBRATED` already
-had six entries and no `max_elevation_m`. The acceptance question is whether Tasks 1-6 changed
-behaviour relative to the code the branch forked from, and only one record on disk was produced
+had six entries and no `max_elevation_m`. The acceptance question is whether this branch changed
+behaviour relative to the code it forked from, and only one record on disk was produced
 by that code.
 
 ### 5. What the rename did not touch
 
-`bounds_epsg3763` became the neutral pair `bounds` + `bounds_epsg` in Task 5. Two documents still
+`bounds_epsg3763` became the neutral pair `bounds` + `bounds_epsg`. Two documents still
 carry the old name and **keep it on purpose**: the 2026-08-05 entry above, and `docs/self-check.md`,
 whose own header says the from-memory answers are checked against the record with misses *logged
 rather than erased*. Both are dated records of what was true when they were written; editing them
@@ -494,7 +494,7 @@ on stdin, output captured to a file and read head-first.
 **Round 12 FAILED** on the rubric's second clause — five questions answered, two README
 contradictions reported. Verified against source before either was touched, and they did not
 survive equally. One was real: `README.md:124` still said a tile carrying no class 2 "is refused
-outright", the behaviour Task 3 changed to a declared absence. The same claim had *already been
+outright", the behaviour since changed to a declared absence. The same claim had *already been
 corrected* eighty lines above in this session; the two sites word it differently, so a
 phrase-level sweep could not see the second. The other was **re-graded rather than accepted**: the
 blanket "each band is transparent exactly where it has nothing it can honestly publish" is, read
@@ -513,7 +513,7 @@ stopping rule was **declared before round 14 ran**: close when two consecutive r
 of both over a tree that did not change between them. The tree was fingerprinted with
 `git write-tree` immediately before and after round 14 —
 `1e8b839dc8193efb1c2aedba6f6cd23b83df4d5f` both times — so "unchanged" is measured, not asserted.
-Two clean rounds buy coverage, not absence: E-006 puts per-round recall near 0.1 on a converged
+Two clean rounds buy coverage, not absence: the frozen-tree exercise puts per-round recall near 0.1 on a converged
 artefact.
 
 ## 2026-08-26 — the shipped sample: 150 m around the tallest riser
@@ -630,7 +630,7 @@ self-test: e-mail caught
 neutrality: scanned 106 tracked files, 0 hits
 version-bump guard over HEAD~1..HEAD: 1 file(s) changed under src/, __version__ lines touched: 0
 WARN: src/ changed without a __version__ bump. Two different codes would publish
-the same reproducibility_hash (F-050). Bump src/microrelief/__init__.py and
+the same reproducibility_hash. Bump src/microrelief/__init__.py and
 pyproject.toml in the same commit as the change.
 ```
 
@@ -716,7 +716,7 @@ basis 1,458,725 · mdt 2,536,793 · mds 4,418,810 · chm 4,960,664 = 13,374,992 
 ### 4. The page, in a browser
 
 `docs/` served on loopback (`python3 -m http.server 8765 --bind 127.0.0.1`): every asset answered
-HTTP 200 at its byte size. Then headless Chromium (gstack `browse`) on `/viewer/`:
+HTTP 200 at its byte size. Then headless Chromium on `/viewer/`:
 
 ```
 images: base mdt.png complete 3960x3960 | over mds.png complete 3960x3960
@@ -887,7 +887,7 @@ were reported as scanned and never read; the summary now says `scanned 108 text 
 tracked (13 binary or empty skipped)`. (3) The `.env*` check I had added in the morning read the
 working directory with a glob that also matched `.envrc` (direnv), and the version written to fix
 that — `ls .env .env.*` — exited non-zero whenever `.env` alone was absent, so a planted
-`.env.local` **passed**: the s271 `ls a b` shape, caught by the positive control before commit.
+`.env.local` **passed**: the `ls a b` shape, caught by the positive control before commit.
 Now: tracked `.env` / `.env.<x>` fail by pattern, a working-tree `.env` / `.env.<x>` fails by a
 loop, `.envrc` passes, and the self-test checks the pattern both ways.
 
@@ -1149,7 +1149,7 @@ neutrality: 122 tracked (122 regular, 0 symlink, 0 submodule not scanned); priva
 ```
 ## 2026-08-30 — 0.4.1: two declared limitations, one silent success closed, and the re-run that had to prove nothing moved
 
-Four pre-flip fixes from the s291 readiness audit (F3–F6), and the acceptance run that shows none
+Four pre-flip fixes from the readiness audit (F3–F6), and the acceptance run that shows none
 of them touched a measurement.
 
 ### 1. The silent success (F6)
@@ -1272,7 +1272,7 @@ agree with whatever the code says — and **which pair to expect is read from th
 `package_version`**, so `--expect-new-limitations` stays a bare `store_true` flag and both
 acceptance commands recorded above replay unchanged.
 
-> **Corrected s293, and the correction is the finding.** The first version of this change made
+> **Corrected afterwards, and the correction is the finding.** The first version of this change made
 > the flag take an optional value (`nargs="?"` with `choices=`). That is broken in exactly the
 > position both records use it — **before** the two positionals — because argparse offers the
 > next positional as the option's value: `compare_runs.py --expect-new-limitations
@@ -1284,7 +1284,7 @@ acceptance commands recorded above replay unchanged.
 > take the release from the record. `tests/test_compare_runs.py` now exercises the flag in the
 > recorded position, and a mutation restoring `nargs="?"` turns it red.
 
-> **Corrected 2026-08-31 (s295), and the correction is the same finding a third time.** The fix
+> **Corrected 2026-08-31, and the correction is the same finding a third time.** The fix
 > above reverted the flag to a bare `store_true` -- and the command block, the three-arm table
 > and the success line **directly above this note** were left in the pre-fix shape: a release
 > name written where the flag takes no value. Measured: that argv exits **2**,
@@ -1354,7 +1354,7 @@ The recorded acceptance command named a release on a flag that takes no value. M
 reason, the third had become impossible by construction, and the quoted success line was a
 wording the program does not print. The correction and its dated note live in §6, where the
 defect was; this section records the instrument change, because fixing three sites would have
-left the class open — it had already recurred once (s293 → s295).
+left the class open — it had already recurred once.
 
 `compare_runs.build_parser()` is now exposed, and `tests/test_compare_runs.py` judges the
 documents with it:
@@ -1576,7 +1576,7 @@ recall 0.262 → 0.540, undetermined 0.1% → 7.5%. Load-bearing, and not fixed 
 against the live catalogue: before it, this AOI's own delivery was refused with *"Supply an AOI in
 EPSG:9001"*, which is false and cannot be followed.
 
-## 2026-08-31 — T-E6r: what excuses a building, and what SMRF does instead
+## 2026-08-31 — what excuses a building, and what SMRF does instead
 
 Predicates pre-registered at `57a3c1c` before the run; analysis, controls and the ruling in
 `docs/ground-filter-diagnosis.md`. Recorded here because the README quotes these numbers and this

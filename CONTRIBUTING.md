@@ -35,10 +35,10 @@ These are the process rules this repository holds to. They are not the science: 
 8. **No private identifiers in the live files.** Working notes from wherever a change was drafted
    stay out of the files a reader acts on: no session numbers, no internal task, finding or
    experiment identifiers, no `Task <n>` or `Session <n>` plan references.
-   `tests/test_no_private_ids.py` enforces this over every tracked text file **outside `docs/`**.
-   `docs/` is exempt in full because it is the record store: the dated records there are annotated
-   rather than rewritten, some of them quote a reviewer verbatim, and `docs/judge/README.md` is the
-   legend that names these shapes on purpose.
+   `tests/test_no_private_ids.py` enforces this over every tracked text file outside
+   **`docs/judge/`**, which is exempt because those files are an outside reviewer's own words at a
+   fixed commit, quoted unedited, and `docs/judge/README.md` is the legend that names these shapes
+   on purpose.
 
 ## Where things live
 

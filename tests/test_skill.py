@@ -43,14 +43,19 @@ def test_no_assistant_tooling_file_is_tracked() -> None:
     the guard: a tracked file that configures a coding assistant belongs in a private checkout,
     and a `.gitignore` naming those tools announces exactly what removing them was meant to stop
     announcing, so the ignore rules live in `.git/info/exclude`."""
-    tracked = subprocess.run(
-        ["git", "ls-files", "-z"], cwd=ROOT, capture_output=True, text=True, check=True
-    ).stdout.split("\0")
-    forbidden = {"CLAUDE.md", "CLAUDE.local.md", "AGENTS.md", "GEMINI.md", ".cursorrules"}
-    found = sorted(name for name in tracked if name and Path(name).name in forbidden)
-    assert not found, found
-    ignore = (ROOT / ".gitignore").read_text(encoding="utf-8")
-    named = [
-        tool for tool in (".superpowers", ".gstack", ".impeccable", "CLAUDE") if tool in ignore
+    tracked = [
+        name
+        for name in subprocess.run(
+            ["git", "ls-files", "-z"], cwd=ROOT, capture_output=True, text=True, check=True
+        ).stdout.split("\0")
+        if name
     ]
-    assert not named, f".gitignore names local tooling: {named}"
+    forbidden = {"CLAUDE.md", "CLAUDE.local.md", "AGENTS.md", "GEMINI.md", ".cursorrules"}
+    found = sorted(name for name in tracked if Path(name).name in forbidden)
+    assert not found, found
+    # Derived rather than named. The first version of this guard listed the local tool directories
+    # so it could assert `.gitignore` no longer mentions them, which republished in a tracked test
+    # exactly what moving them out of `.gitignore` was meant to stop publishing. A dot-directory
+    # allowlist catches any of them, and any future one, while naming none.
+    dot_dirs = {name.split("/")[0] for name in tracked if name.startswith(".") and "/" in name}
+    assert dot_dirs <= {".github"}, sorted(dot_dirs - {".github"})

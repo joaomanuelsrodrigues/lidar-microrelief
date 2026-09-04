@@ -22,7 +22,7 @@ Two controls, in the same tile, say this is the filter and not the instrument:
 | 5 high vegetation | 353,419 | **5.87 m** | 19.97 m | 8.9% |
 | 6 **building** | 575,771 | **0.06 m** | 3.15 m | **79.8%** |
 
-> **Correction, 2026-08-31 (T-E6r): the counts in this table do not reproduce.** Re-measured on
+> **Correction, 2026-08-31: the counts in this table do not reproduce.** Re-measured on
 > the run's own grid, no tile gives 575,771 class-6 cells -- the closest is LO-162471 at 540,893
 > AOI-clipped and 558,442 unclipped, 6.1% and 3.1% below. Two populations were tried and neither
 > matches, so the row is not re-derivable from the method as described here. What *does* reproduce
@@ -64,7 +64,7 @@ tested value fixes it**. A morphological opening cannot see an object wider than
 this AOI has industrial buildings wider than 16.5 m. The repair is a calibration plus a declared
 limit, not a changed default.
 
-> **Corrected 2026-08-31 (T-E6r), and the mechanism above is wrong twice.** First the number:
+> **Corrected 2026-08-31, and the mechanism above is wrong twice.** First the number:
 > `windows_for(40.0, 0.5)` returns `(1.5, 2.5, 4.5, 8.5, 16.5, 32.5)` -- the radius doubles to 32
 > cells and a window is `2r+1` across, so the largest is **32.5 m**, not 16.5 m. Second, and worse,
 > the table's two shares are computed over populations that differ by more than a factor of two:
