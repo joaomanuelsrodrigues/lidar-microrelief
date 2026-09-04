@@ -72,14 +72,18 @@ BOUNDARY_OFFSETS = np.linspace(0.0, 1.0, 11, endpoint=False)
 #
 #   translation   where the riser sits across the window, not one cell of phase: a riser sitting
 #                 off-centre is a different geometry, not a different phase of the same one
-#   orientation   0-45 degrees. A square window is symmetric under 90-degree rotation and under
-#                 reflection, so 0-45 covers every distinct orientation. This is the axis the
-#                 second version still lacked, and it is the one that decides the 2.0 m row.
+#   orientation   0-45 degrees at 1-degree steps. A square window is symmetric under 90-degree
+#                 rotation and under reflection, so 0-45 covers every distinct orientation. This
+#                 is the axis the second version lacked, and it decides the 2.0 m row. The step
+#                 is 1 degree and not 15 because four samples put a sampling artefact in the
+#                 third decimal of a published band (0.340 against a true 0.339, and a 2.5 m
+#                 margin of 0.012 against 0.011) -- the same shape as the two narrowings this
+#                 sweep exists to correct, one decimal place down. Costs 20 s.
 #
 # Only positions where the centre cell is a CANDIDATE are counted: a position whose window range
 # falls under the threshold is not in the population, so its residual is evidence about nothing.
 WIDTH_PHASES = np.arange(-4.0, 4.0, 0.02)
-WIDTH_ORIENTATIONS = (0.0, 15.0, 30.0, 45.0)
+WIDTH_ORIENTATIONS = tuple(float(d) for d in range(0, 46))
 
 
 def width_curve(
@@ -200,8 +204,9 @@ def main() -> int:
     print("  the smallest residual a clean step of that height can give, over sub-cell offsets\n")
 
     print(
-        f"width curve, riser of {RISER_M:g} m, over every candidate position "
-        f"(translation x orientation {WIDTH_ORIENTATIONS[0]:g}-{WIDTH_ORIENTATIONS[-1]:g} deg):"
+        f"width curve, riser of {RISER_M:g} m, over every candidate position (translation x "
+        f"{len(WIDTH_ORIENTATIONS)} orientations, {WIDTH_ORIENTATIONS[0]:g}-"
+        f"{WIDTH_ORIENTATIONS[-1]:g} deg):"
     )
     header = f"    {'width':>7}{'centred':>10}{'min':>9}{'max':>9}{'positions':>12}"
     print(f"{header}   at R = {threshold:.2f}")

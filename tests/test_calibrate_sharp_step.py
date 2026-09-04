@@ -98,11 +98,11 @@ class TestWidthCurve:
         docstring named 0.005.
         """
         expected = {
-            0.5: (0.340, 0.719),
+            0.5: (0.339, 0.719),
             1.0: (0.388, 0.587),
             1.5: (0.270, 0.457),
             2.0: (0.190, 0.376),
-            2.5: (0.083, 0.288),
+            2.5: (0.083, 0.289),
             3.0: (0.000, 0.190),
         }
         curve = self._curve()
@@ -112,12 +112,17 @@ class TestWidthCurve:
             assert curve[width][2] == pytest.approx(high, abs=5e-4), width
 
     def test_the_widest_straddling_row_is_two_metres_and_the_margin_is_named(self) -> None:
-        """The number the record states, locked. 2.5 m clears R by 0.012 m -- the narrowest
-        true margin on the table, and the one a reader is entitled to see."""
+        """The number the record states, locked. 2.5 m clears R by 0.011 m -- the narrowest true
+        margin on the table, and the one a reader is entitled to see.
+
+        It read 0.012 under a four-sample orientation grid. One degree gives 0.011: the third
+        decimal of a published band was a property of the sampling, which is the same shape as
+        the two narrowings the sweep exists to correct.
+        """
         curve = self._curve()
         r = mod.cgf.SHARP_STEP_RESIDUAL_MIN_M
 
-        assert r - curve[2.5][2] == pytest.approx(0.012, abs=1e-3)
+        assert r - curve[2.5][2] == pytest.approx(0.011, abs=5e-4)
 
     def test_the_centred_curve_falls_monotonically(self) -> None:
         centred = [c for _, c, _, _, _ in mod.width_curve(2.6, window_cells=7, cell_m=0.5)]

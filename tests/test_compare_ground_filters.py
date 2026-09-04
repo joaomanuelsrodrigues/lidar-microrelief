@@ -674,8 +674,10 @@ class TestSharpStepPopulation:
         `scripts/calibrate_sharp_step.py` reports the bands; this test pins the centred readings,
         which is what the numbers below are. Saying "the last width that survives is 1.0 m"
         without that qualifier -- as the first version of this docstring did -- states a property
-        of a position as a property of the width. The second version of this paragraph carried
-        the axis-aligned band and was superseded three hours later by the orientation sweep.
+        of a position as a property of the width. The version before this one carried the
+        eleven-offset band (0.389-0.484 / 0.270-0.341); it was the orientation sweep that
+        superseded it. The interval and the label in the first draft of this sentence were both
+        wrong, asserted from memory about our own history in the docstring that records it.
 
         The riser is 2.6 m, not 2.5: the range of a 2.5 m riser is exactly 2.5 and the candidate
         rule is strict, so no width of it would be a candidate at all.

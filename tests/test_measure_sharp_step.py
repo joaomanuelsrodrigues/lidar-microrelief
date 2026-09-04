@@ -50,6 +50,19 @@ def _cache(path: Path, surface: np.ndarray) -> Path:
     return path
 
 
+def _summary(out: str) -> str:
+    """The last verdict line, which is what a reader greps and what a record quotes.
+
+    Asserting that a phrase appears SOMEWHERE in stdout is satisfied by the per-location table
+    two lines above it, so the summary line itself was unlocked: mutating it back to naming G1
+    alone left every test green.
+    """
+    for line in reversed(out.splitlines()):
+        if line.startswith(("PASS", "FAIL:", "NOT EVALUABLE:")):
+            return line
+    raise AssertionError(f"no verdict line in:\n{out[-600:]}")
+
+
 def _run_predicates(surface: np.ndarray) -> tuple[float, list[object]]:
     """The population, the S1 median residual, and the G1 hits -- what the predicates read."""
     result = mod.cgf.sharp_step_population(surface, cell_m=0.5)
@@ -160,9 +173,51 @@ class TestG1:
         # An array ending two cells past the location: the centre is in, the 4-cell disc is not.
         clipped = np.zeros((row + 3, col + 3), dtype=bool)
 
-        hits = {h.name: h for h in mod.g1_hits(clipped, minx, maxy, cell_m)}
+        hit = {h.name: h for h in mod.g1_hits(clipped, minx, maxy, cell_m)}[
+            mod.VERIFIED_STEPS[0][0]
+        ]
 
-        assert not hits[mod.VERIFIED_STEPS[0][0]].inside
+        assert not hit.inside, "the disc is truncated, so the location is not searchable"
+        assert hit.centre_inside, "but the centre IS in frame -- the two reasons are different"
+
+    def test_a_location_outside_the_frame_is_not_called_truncated(self) -> None:
+        """`int()` truncates toward zero, so a location up to one cell north or west of the frame
+        came back as row 0 and was printed as a truncated neighbourhood -- a false reason at the
+        exact boundary the field exists to draw. Measured at 0.3 m out, where it said so."""
+        _, x, y = mod.VERIFIED_STEPS[0]
+
+        for out_m in (0.3, 0.9, 2.0):
+            hit = mod.g1_hits(np.zeros((100, 100), dtype=bool), x + out_m, y - out_m, 0.5)[0]
+
+            assert not hit.inside, out_m
+            assert not hit.centre_inside, f"{out_m} m outside the frame is not 'truncated'"
+
+    def test_the_two_reasons_are_printed_apart(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The strings themselves, because a reader acts on them, and BOTH arms.
+
+        The first version asserted only that the truncated string was absent from a run where no
+        location has its centre in frame -- which deleting the branch satisfies. The second
+        fixture is 537 columns wide: the first verified step sits at column 534, so its centre is
+        in frame and its four-cell disc is not.
+        """
+        far = np.where(np.mgrid[0:200, 0:200][1] >= 100, 2.6, 0.0).astype(np.float64)
+        mod.main(["--reference", str(_cache(tmp_path / "small.npz", far))])
+        out = capsys.readouterr().out
+
+        assert "outside this cache's extent" in out
+        assert "neighbourhood truncated at the frame edge" not in out, (
+            "no location here has its centre in frame"
+        )
+
+        edge = np.where(np.mgrid[0:200, 0:538][1] >= 260, 2.6, 0.0).astype(np.float64)
+        mod.main(["--reference", str(_cache(tmp_path / "edge.npz", edge))])
+        out = capsys.readouterr().out
+
+        # Both blocks print it -- G1's table and G3's -- so counting is what catches a fix that
+        # reaches one of them. Asserting mere presence let a mutation of the G1 branch survive.
+        assert out.count("neighbourhood truncated at the frame edge") >= 2, out[-900:]
 
     def test_every_location_is_inside_the_full_zone(self) -> None:
         """The complement: over Zone Z's own extent nothing is out of frame, so a FAIL there is
@@ -314,7 +369,13 @@ class TestTheInstrumentMeasuresTheFilterThatShips:
             assert declared, flag
             assert len(declared) == 1, f"{flag} is declared with {declared} -- the file disagrees"
             assert float(declared.pop()) == float(ours), flag
-        assert mod.SMRF_REFERENCE.window is None, "the shipped CLI leaves the radius to PDAL's rule"
+        declared_window = set(re.findall(r'"--smrf-window".*?default=([^,)]+)', sibling))
+        assert declared_window == {"None"}, (
+            f"the shipped CLI declares --smrf-window {declared_window}; this script would run "
+            f"SMRF at 18*cell and republish retention for a filter nobody runs"
+        )
+        assert mod.SMRF_REFERENCE.window is None
+        assert mod.SMRF_REFERENCE.cut == 0.0, "the shipped CLI declares no cut and PDAL's is 0"
         assert "SmrfParams(cell=" not in SCRIPT.read_text()
 
 
@@ -434,7 +495,9 @@ class TestExitCodes:
         assert mod.main(["--reference", str(cache)]) == 1
 
         out = capsys.readouterr().out
-        assert "FAIL:" in out and "in frame and not in S2" in out
+
+        assert _summary(out).startswith("FAIL:"), _summary(out)
+        assert "in frame and not in S2" in _summary(out)
         assert "NOT EVALUABLE" not in out
 
     def test_a_run_with_both_states_names_both_in_the_summary(
@@ -450,8 +513,10 @@ class TestExitCodes:
         assert mod.main(["--reference", str(cache)]) == 1
 
         out = capsys.readouterr().out
-        assert "FAIL:" in out, out[-400:]
-        assert "NOT EVALUABLE" in out, out[-400:]
+        lines = [ln for ln in out.splitlines() if ln.startswith(("FAIL:", "NOT EVALUABLE:"))]
+
+        assert len(lines) == 2, lines
+        assert lines[0].startswith("FAIL:") and "G1 and G3" in lines[1], lines
 
     def test_a_partial_extent_is_reported_as_not_evaluable(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
@@ -463,10 +528,12 @@ class TestExitCodes:
 
         assert mod.main(["--reference", str(cache)]) == 1
 
-        out = capsys.readouterr().out
-        assert "NOT EVALUABLE" in out
-        assert "Nothing there was refuted" in out
-        assert "\nFAIL:" not in out, "an unanswerable question is not a refutation"
+        summary = _summary(capsys.readouterr().out)
+
+        assert summary.startswith("NOT EVALUABLE:"), summary
+        assert "G1 and G3" in summary, "G3 is unevaluated at the same locations and must be named"
+        assert "Nothing there was refuted" in summary
+        assert not summary.startswith("FAIL"), "an unanswerable question is not a refutation"
 
     def test_a_g3_failure_is_recorded_as_one(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
@@ -495,9 +562,10 @@ class TestExitCodes:
 
         assert mod.main(["--reference", str(_cache(tmp_path / "g3.npz", surface))]) == 1
 
-        out = capsys.readouterr().out
-        assert "FAIL:" in out
-        assert "G3 (" in out, "the G3 failure must reach the summary, not just the table"
+        summary = _summary(capsys.readouterr().out)
+
+        assert summary.startswith("FAIL:"), summary
+        assert "G3 (" in summary, "the G3 failure must reach the summary, not just the table"
 
     def test_an_s1_with_no_computable_residual_exits_2(self, tmp_path: Path) -> None:
         """S1 non-empty and not one residual computable is a broken instrument, like an empty S1

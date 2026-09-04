@@ -133,7 +133,7 @@ failure this repository has now recorded four times, and the reason `scripts/mea
 exists at all.
 
 **G1 and G3 are not evaluable on this window.** Four of the five verified steps lie outside a
-150 m frame. The instrument reports them as `n/a — outside this cache's extent` and declares G1
+150 m frame. The instrument reports them as `n/a — outside this cache's extent` and declares **G1 and G3**
 NOT EVALUABLE, because a question the cache cannot answer is not a failed predicate. Only the
 terrace riser is in frame, and it passes both: in `S2` at (151, 154), residual 0.783 m against an
 `S1` median of 0.356 m.
@@ -146,22 +146,27 @@ terrace riser is in frame, and it passes both: in `S2` at (151, 154), residual 0
   **Correction 4: the width curve in the pre-registration is one position out of many**, while
   the step floor printed beside it sweeps eleven — two curves in one table under different
   assumptions. The curve is now swept over **every position a riser can take relative to the
-  window — translation and orientation, 0–45° — counting only the positions where the centre
-  cell is a candidate**, since a position whose window range falls under 2.5 m is not in the
-  population and its residual is evidence about nothing:
+  window — translation and 46 orientations one degree apart over 0–45°, counting only the
+  positions where the centre cell is a candidate**, since a position whose window range falls
+  under 2.5 m is not in the population and its residual is evidence about nothing:
 
         width    centred      min      max   positions   at R = 0.30
-        0.5 m      0.455    0.340    0.719      1316     in at every position
-        1.0 m      0.455    0.388    0.587      1130     in at every position
-        1.5 m      0.270    0.270    0.457       946     straddles R
-        2.0 m      0.208    0.190    0.376       762     straddles R
-        2.5 m      0.083    0.083    0.288       578     OUT at every position
-        3.0 m      0.000    0.000    0.190       394     OUT at every position
+        0.5 m      0.455    0.339    0.719     15422     in at every position
+        1.0 m      0.455    0.388    0.587     13298     in at every position
+        1.5 m      0.270    0.270    0.457     11180     straddles R
+        2.0 m      0.208    0.190    0.376      9056     straddles R
+        2.5 m      0.083    0.083    0.289      6936     OUT at every position
+        3.0 m      0.000    0.000    0.190      4818     OUT at every position
 
   So "a 3.0 m riser is **exactly** planar" and "the last width that survives is 1.0 m" are
   properties of the centred position, not of the width. The defensible statement is the table:
   **up to 1.0 m a riser is in wherever it sits; 1.5 m and 2.0 m straddle `R`; 2.5 m and wider are
-  out wherever they sit** — the last of those by **0.012 m**.
+  out wherever they sit** — the last of those by **0.011 m**.
+
+  **The orientation grid is a sampling too**, and four samples fifteen degrees apart put an
+  artefact in the third decimal: they reported 0.340 where one-degree steps give 0.339, and a
+  2.5 m margin of 0.012 where it is 0.011. The grid is now 46 orientations, and the prose says
+  which — "every position" is a claim about an enumeration, and the enumeration is stated.
 
   **This claim was narrowed three times, and each narrower sweep was the more comfortable one.**
   Centred only said "the last width that survives is 1.0 m". Eleven offsets over one cell of

@@ -132,6 +132,17 @@ def ramp_can_reach(
     return bool(span * np.tan(np.radians(degrees)) > step_threshold_m)
 
 
+def _floor_div(numerator: float, cell_m: float) -> int:
+    """Floor, not truncation toward zero.
+
+    `int()` rounds -0.6 to 0, so a location up to one cell north or west of the frame reported
+    row 0 -- inside -- and printed "neighbourhood truncated at the frame edge" for a step that is
+    genuinely outside the extent. A refusal with a false reason, at the exact boundary the
+    distinction exists to draw.
+    """
+    return int(np.floor(numerator / cell_m))
+
+
 def g1_hits(
     population: NDArray[np.bool_],
     origin_x: float,
@@ -151,8 +162,8 @@ def g1_hits(
 
     out = []
     for name, x, y in VERIFIED_STEPS:
-        row = int((origin_y - y) / cell_m)
-        col = int((x - origin_x) / cell_m)
+        row = _floor_div(origin_y - y, cell_m)
+        col = _floor_div(x - origin_x, cell_m)
         found = False
         value = float("nan")
         hit_row = hit_col = None
@@ -466,8 +477,8 @@ def main(argv: list[str] | None = None) -> int:
     if outside:
         print(
             f"  G1 is NOT EVALUABLE as pre-registered: {len(outside)} of {len(hits)} locations "
-            f"are not searchable in this cache -- a question it cannot answer. The "
-            f"{len(hits) - len(outside)} that are were checked and are reported above."
+            f"are not searchable in this cache -- a question it cannot answer. Checked and "
+            f"reported above: {len(hits) - len(outside)} of {len(hits)}."
         )
         # G3 is unevaluated at exactly the same locations, so it is named too. Naming only G1
         # is the `elif` defect one predicate over: the summary line is what a reader greps.

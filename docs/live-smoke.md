@@ -2209,7 +2209,7 @@ instrument selects are the same thing. Threshold `R = 0.30 m`, derived on synthe
     PYTHONPATH=src .venv/bin/python scripts/measure_sharp_step.py \
         --reference ~/data/microrelief-cache/p4-reference.npz
 
-**Output, verbatim** (exit 1 — G1 not evaluable on a 150 m frame):
+**Output, verbatim** (exit 1 — G1 and G3 not evaluable on a 150 m frame):
 
     cache: compare_ground_filters reference
     zone (-20400.0, 255600.0, -19600.0, 256400.0), 300x300 cells at 0.5 m
@@ -2243,7 +2243,7 @@ instrument selects are the same thing. Threshold `R = 0.30 m`, derived on synthe
       n/a   churchyard wall (rank 8)     outside this cache's extent
       n/a   gully/lane edge (rank 10)    outside this cache's extent
       n/a   built wall (rank 11)         outside this cache's extent
-      G1 is NOT EVALUABLE as pre-registered: 4 of 5 locations are not searchable in this cache -- a question it cannot answer. The 1 that are were checked and are reported above.
+      G1 is NOT EVALUABLE as pre-registered: 4 of 5 locations are not searchable in this cache -- a question it cannot answer. Checked and reported above: 1 of 5.
 
     G2 must-not-fire: planar ramps at 31-60 deg, both directions
       reached S1  10 of 10 geometry permits (12 run; an axis-aligned ramp needs 39.8 deg to span the threshold)
