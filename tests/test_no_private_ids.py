@@ -29,7 +29,9 @@ _PATTERNS = {
     "failure-class reference": re.compile(r"§A[0-9]"),
     "finding number": re.compile(r"\bF-0[0-9][0-9]\b"),
     "experiment number": re.compile(r"\bE-00[0-9]\b"),
-    "plan-step reference": re.compile(r"\b(?:Task|Step|Session)s?\s+[0-9]"),
+    # `Step <n>` is deliberately absent: numbered steps are ordinary instructional English and
+    # a gate that refuses them would be refusing legitimate prose, not a working note.
+    "plan-step reference": re.compile(r"\b(?:Task|Session)s?\s+[0-9]"),
 }
 
 
@@ -109,6 +111,8 @@ def test_every_tracked_text_file_is_either_scanned_or_a_declared_record() -> Non
     scanned = set(_scanned())
     for name in _tracked():
         assert name in scanned or name.startswith(RECORD_STORE), name
-    live_dirs = ("src/", "tests/", "scripts/", "skills/", "examples/", "styles/", "aoi/")
-    swallowed = [n for n in _tracked() if n.startswith(RECORD_STORE) and n.startswith(live_dirs)]
+    # The first version of this check asked whether a name started with both the record store
+    # and a live directory, which no name can do: it could not fail. The invariant that can is
+    # that the exemption stays a document store, so source moving under it would be caught.
+    swallowed = [n for n in _tracked() if n.startswith(RECORD_STORE) and n.endswith((".py", ".sh"))]
     assert not swallowed, swallowed
