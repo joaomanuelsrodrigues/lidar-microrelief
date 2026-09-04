@@ -621,6 +621,90 @@ class TestPlaneResidual:
         assert np.isnan(residual[0])
 
 
+class TestSharpStepPopulation:
+    """The two terms together: a range over the threshold, in a window that is not a plane.
+
+    `step_magnitude` alone cannot say which of the two it found, so the population it defines is
+    not what its name claims -- the class above measures the consequence on real ground. Pairing
+    it with the plane residual is what makes the population a *step* population, and the controls
+    below are the ones the P4 pre-registration did not have: a ramp fires the range term while
+    holding no step at all, so it is the input that separates the two instruments.
+    """
+
+    @staticmethod
+    def _ramp(degrees: float, diagonal: bool) -> np.ndarray:
+        rows, cols = np.mgrid[0:40, 0:40]
+        along = (rows + cols) / np.sqrt(2) if diagonal else cols
+        return (along * 0.5 * np.tan(np.radians(degrees))).astype(np.float64)
+
+    def test_must_fire_a_wall_on_flat_ground_is_in_the_population(self) -> None:
+        surface = np.where(np.mgrid[0:40, 0:40][1] >= 20, 2.6, 0.0).astype(np.float64)
+
+        result = mod.sharp_step_population(surface, cell_m=0.5)
+
+        assert result.population.any()
+        assert result.population[20, 20]
+
+    def test_must_not_fire_no_planar_ramp_enters_it_at_any_slope_or_direction(self) -> None:
+        """The control P4 lacked. A flat surface was the easy case; the ramp is the input that
+        fires the range term while holding no step at all."""
+        for degrees in (31.0, 35.0, 40.0, 45.0, 50.0, 60.0):
+            for diagonal in (False, True):
+                result = mod.sharp_step_population(self._ramp(degrees, diagonal), cell_m=0.5)
+                assert not result.population.any(), f"{degrees} deg, diagonal={diagonal}"
+
+    def test_the_range_term_alone_would_have_admitted_those_ramps(self) -> None:
+        """Without this, the test above is passed by an instrument that selects nothing."""
+        fired = 0
+        for degrees in (31.0, 35.0, 40.0, 45.0, 50.0, 60.0):
+            for diagonal in (False, True):
+                result = mod.sharp_step_population(self._ramp(degrees, diagonal), cell_m=0.5)
+                fired += int(result.candidates.any())
+        assert fired >= 8, "the ramps must reach the range term for the residual to reject them"
+
+    def test_a_riser_spread_to_the_permitted_width_falls_out_and_that_is_declared(self) -> None:
+        """The instrument's declared limitation, pinned so it cannot change in silence.
+
+        `docs/riser-measurement.md` admits risers up to max_riser_width = 3.0 m. A riser spread
+        that far is exactly planar inside a 3.5 m window, so it is not in this population. The
+        last width that survives R = 0.30 m on a 0.5 m grid is 1.0 m; 1.5 m reads 0.270 and falls
+        out. The riser is 2.6 m, not 2.5: the range of a 2.5 m riser is exactly 2.5 and the
+        candidate rule is strict, so no width of it would be a candidate at all.
+        """
+        rows, cols = np.mgrid[0:40, 0:40]
+        for width_cells, expected in ((1, True), (2, True), (3, False), (6, False)):
+            profile = np.clip((cols - (20 - width_cells / 2)) / width_cells, 0, 1) * 2.6
+            result = mod.sharp_step_population(profile.astype(np.float64), cell_m=0.5)
+            assert result.candidates[20, 20], width_cells
+            assert bool(result.population[20, 20]) is expected, width_cells
+
+    def test_a_window_too_sparse_to_fit_a_plane_is_not_admitted(self) -> None:
+        """A window we could not measure is not evidence of a step.
+
+        `step_magnitude` needs two points for a range; a plane needs four. So a candidate can
+        carry an undefined residual, and this is the live branch that decides what happens then:
+        it stays out. The alternative -- reading an unmeasurable window as planar, or as maximally
+        non-planar -- would let sparsity, not ground, choose the population.
+        """
+        surface = np.full((40, 40), np.nan)
+        surface[20, 19] = 0.0
+        surface[20, 21] = 2.6
+
+        result = mod.sharp_step_population(surface, cell_m=0.5)
+
+        assert result.candidates.any(), "the range term must reach these cells"
+        assert np.isnan(result.residual[result.candidates]).all()
+        assert not result.population.any()
+
+    def test_the_residual_is_reported_only_where_it_was_computed(self) -> None:
+        surface = np.where(np.mgrid[0:40, 0:40][1] >= 20, 2.6, 0.0).astype(np.float64)
+
+        result = mod.sharp_step_population(surface, cell_m=0.5)
+
+        assert np.isfinite(result.residual[result.candidates]).all()
+        assert np.isnan(result.residual[~result.candidates]).all()
+
+
 class TestTheSmrfFlagsAgreeBetweenTheTwoParsers:
     """`smrf` and `terraces` both declare the SMRF flags, and nothing locked them to each other.
 
