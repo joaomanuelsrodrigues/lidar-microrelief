@@ -84,11 +84,43 @@ is a wrong anticipation, not a failed predicate.
 
 - `S1` and `S2` over Zone Z, the residual distribution, and the 43.5% removed are **new**. Zone Z
   is about 28 times the P4 window's area and has never been measured this way.
-- **The P4-window leg is not blind** and is not run here. Its answer is already bracketed by
-  `docs/p4-terrace-result.md`'s band table — 95.1% retention over the gate population and 94.2% at
-  `residual >= 0.30 m` — so it could only confirm that an implementation reproduces a published
-  number. It is dropped, and named as dropped: PDAL 2.10.2 is not installed on this machine and
-  the reference `.npz` it needs died with a scratchpad. The branch is complete without it.
+- **The P4-window leg is not blind**, and it was run. Its own section is below.
+
+## The P4-window leg — explicitly not blind
+
+Run on the 150 m window of `examples/sistelo-sample/aoi.geojson`, against PDAL **2.10.2
+(git-version: e8618b)** — the version `docs/p4-terrace-result.md` names. The plan expected this
+leg to be undoable; it was not, and it turned out to carry the most useful finding on the branch.
+
+**The implementation reproduces the published figure exactly.** Over P4's own gate population:
+
+    P4 gate population (measured basis)   7,625 cells    SMRF 95.1%    PDAL 95.1%
+
+`docs/p4-terrace-result.md` publishes 7,625, 95.1% and 95.1%. All three return.
+
+**And the pre-registered `S1` is not that population.** Over the same window:
+
+    pre-registered S1 (no basis term)     9,525 cells    SMRF 76.7%    PDAL 76.7%
+
+The 1,900-cell difference is entirely the **measured-basis restriction**: P4's gate is
+`measured & defined & step > 2.5 m`, and `S1` as pre-registered in this document is
+`defined & step > 2.5 m`. Measured by holding everything else fixed and adding only that term,
+which recovers 7,625 and 95.1% on the nose. The retention gap it accounts for is **18.4 points**.
+
+**So the pre-registration's phrase "the P4-shaped population" oversells the correspondence.** `S1`
+is P4-shaped in its *step* term and omits P4's basis term, and the consequence is large. Stated
+here rather than corrected there: that document is a record of what was fixed before the run, and
+this is exactly the sort of thing it exists to make visible afterwards.
+
+**The consequence for what this branch reports:** Zone Z's retention figures — `S1` 78.8%, `S2`
+83.7% — are **not** comparable with the band table's 95.1% and 94.2%. Different populations. The
+comparison the leg does support is the one above, on a fixed population, where the numbers return.
+
+**G1 and G3 are not evaluable on this window.** Four of the five verified steps lie outside a
+150 m frame. The instrument reports them as `n/a — outside this cache's extent` and declares G1
+NOT EVALUABLE, because a question the cache cannot answer is not a failed predicate. Only the
+terrace riser is in frame, and it passes both: in `S2` at (151, 154), residual 0.783 m against an
+`S1` median of 0.356 m.
 
 ## What this does not establish
 
@@ -101,6 +133,8 @@ is a wrong anticipation, not a failed predicate.
 - **`R = 0.30 m` is anchored to a borrowed constant.** The 0.2–0.3 m band is a convention traced
   to Zhang et al. 2003, not a measured property of the DGT delivery. At the top of that band the
   threshold clears the noise curve by 0.011 m.
+- **The Zone Z retention is not comparable to the published band table**, for the reason the P4
+  leg measures above. Nothing on this branch compares them.
 - Nothing here changes P4's verdict, and `R` has not moved.
 
 ## The commands
@@ -110,6 +144,22 @@ is a wrong anticipation, not a failed predicate.
         --cache ~/data/microrelief-cache/zone-z-surface.npz
     PYTHONPATH=src .venv/bin/python scripts/measure_sharp_step.py \
         --reference ~/data/microrelief-cache/zone-z-surface.npz
+
+and, for the non-blind leg:
+
+    ~/bin/micromamba create -y -p ~/micromamba/envs/pdal -c conda-forge pdal=2.10.2
+    ~/micromamba/envs/pdal/bin/pdal pipeline docs/p4-reference-pipeline.json \
+        --readers.las.filename=$HOME/data/dgt-laz-sistelo/LO-179557-07-2025.laz \
+        --writers.las.filename=$HOME/data/microrelief-cache/LO-179557-smrf.laz
+    PYTHONPATH=src .venv/bin/python scripts/compare_ground_filters.py reference \
+        --tiles ~/data/dgt-laz-p4 --smrf ~/data/microrelief-cache \
+        --aoi examples/sistelo-sample/aoi.geojson \
+        --out ~/data/microrelief-cache/p4-reference.npz --pipeline docs/p4-reference-pipeline.json
+    PYTHONPATH=src .venv/bin/python scripts/measure_sharp_step.py \
+        --reference ~/data/microrelief-cache/p4-reference.npz
+
+`--tiles` names a directory holding only `LO-179557`, the tile the 150 m window is cut from:
+`reference` requires an SMRF output for every tile it is given, and only that one was produced.
 
 The build added, in order, `LO-179556`, `LO-179557`, `LO-180556` and `LO-180557` of `07-2025`, and
 produced a 3960 × 3960 grid. `docs/riser-measurement.md`'s own run read `~/data/dgt-laz`, which
