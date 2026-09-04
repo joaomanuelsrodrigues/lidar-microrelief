@@ -637,8 +637,9 @@ pyproject.toml in the same commit as the change.
 (One redaction in the block above, declared rather than silent: after `reproducibility_hash`
 the guard printed a parenthetical carrying a private finding number, and that parenthetical
 was removed when this repository stopped carrying them. The number itself is not reproduced
-here, because this file is scanned for exactly that shape. Nothing else in the transcript is
-edited, and the linked run still shows the original wording.)
+here, because this file is scanned for exactly that shape;
+`git show efb5c2d:scripts/check_version_bump.sh` prints the wording the run emitted, and that
+commit is an ancestor of `main`. Nothing else in the transcript is edited.)
 
 (The WARN is the one declared for the viewer commit below — a rendering helper changed, no band
 did; the step is `continue-on-error`, so its tick is a mask and the log is what was read.)

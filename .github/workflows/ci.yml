@@ -22,10 +22,8 @@ jobs:
       - run: uv run ruff format --check src tests scripts
       - run: uv run mypy
       - run: uv run pytest -q
-      # Warn-class (continue-on-error): visible, not blocking. A new enforcement gate starts as
-      # a warning over a history that has no zero-violation baseline, and becomes blocking only
-      # once that baseline is clean. Scope and blindness are declared in the script's own
-      # header.
+      # Warn-class (continue-on-error): visible, not blocking. The script's own header says why
+      # it warns rather than blocks, and declares its scope, blindness and over-reach.
       - name: version-bump guard (warn only)
         continue-on-error: true
         run: bash scripts/check_version_bump.sh
