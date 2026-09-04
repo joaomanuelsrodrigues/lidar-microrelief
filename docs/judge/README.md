@@ -26,6 +26,9 @@ working vocabulary, listed so a reader can skip them rather than hunt for a defi
 | `E-00`_n_ | a numbered experiment in the same notes | `E-006` |
 
 Live files — the README, `SITE.md`, `CALIBRATIONS.md`, the source and the tests — say the rule in
-plain words instead, so nothing a reader must act on depends on resolving one of these. Where a
-dated record above still carries them, that is deliberate: the record is what was written at the
+plain words instead, so nothing a reader must act on depends on resolving one of these. That is now
+enforced rather than asserted: `tests/test_no_private_ids.py` fails on any of these shapes in a
+tracked file outside `docs/`. It was written because the sentence above had been false, with
+eighteen such identifiers in `src/`, `tests/` and `scripts/`. Where a dated record here or in
+`docs/live-smoke.md` still carries them, that is deliberate: the record is what was written at the
 time.

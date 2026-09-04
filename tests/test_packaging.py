@@ -45,7 +45,7 @@ def test_the_human_facing_version_copies_agree_with_the_package() -> None:
     # `uv.lock` records this package as a workspace member with its own version, and CI's
     # FIRST step is `uv sync --locked`, which refuses a lock that has drifted from
     # pyproject.toml. A bump that forgets `uv lock` therefore makes every later gate
-    # unreachable while every local gate stays green -- measured in s293, where exactly that
+    # unreachable while every local gate stays green -- measured, and exactly that
     # shipped. This is the one version copy a CI failure, not a reader, notices.
     lock = (ROOT / "uv.lock").read_text(encoding="utf-8")
     member = lock.split('name = "microrelief"', 1)

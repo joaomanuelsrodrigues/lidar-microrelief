@@ -474,5 +474,5 @@ if __name__ == "__main__":  # `python -m microrelief.cli ...`
     # exit-code check can tell from a real run. Asserted by an artefact, not a return code
     # (tests/test_packaging.py). The form a reader without the console script on PATH
     # actually reaches for is `python -m microrelief`, which needs `__main__.py` beside this
-    # file -- adding only this guard would have left that one failing (review, s293).
+    # file -- adding only this guard would have left that one failing (found in review).
     raise SystemExit(main())

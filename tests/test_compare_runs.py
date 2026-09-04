@@ -5,7 +5,7 @@
 and that sentence ("the recorded acceptance command replays unchanged") was published once
 without ever being run: an optional-value flag in that position makes argparse swallow the
 `old` positional, so both recorded commands died at exit 2 while the module comment, the help
-text and the live-smoke record all asserted they worked (s293).
+text and the live-smoke record all asserted they worked.
 
 So this file exercises the flag IN THE RECORDED POSITION, end to end, on real files.
 """
@@ -30,7 +30,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "compare_runs.py"
 
 # Assembled, never written out whole: this file is itself in the population the sweep below
-# scans, and a planted literal would make the guard fire on its own source (s283).
+# scans, and a planted literal would make the guard fire on its own source.
 FLAG = "--expect-" + "new-limitations"
 
 
@@ -145,7 +145,7 @@ def test_the_bare_command_still_requires_the_list_to_be_unchanged(tmp_path: Path
 def test_a_release_with_no_recorded_additions_is_named_not_crashed(tmp_path: Path) -> None:
     """The release is read from the NEW run's record, so an unknown one must say so.
 
-    Before s293 this key came from the command line and reached a dict unguarded: a library
+    Earlier this key came from the command line and reached a dict unguarded: a library
     caller passing an unknown release got a KeyError instead of a verdict.
     """
     old = _a_run(tmp_path / "old", "0.4.0", LIMS_0_4_0)
@@ -193,9 +193,9 @@ def test_the_parametrisation_covers_every_release_the_instrument_knows() -> None
 # --- The class this file exists for, one level up -------------------------------------------
 #
 # Twice now a command line was WRITTEN into a document as a record of what ran, and never run:
-# once with an optional-value flag that argparse could not parse in that position (s293), and
+# once with an optional-value flag that argparse could not parse in that position, and
 # once when the fix reverted the flag to `store_true` and the transcript above it kept the
-# pre-fix argv (s295, found by review, one line above the note explaining that exact failure).
+# pre-fix argv (found by review, one line above the note explaining that exact failure).
 # Fixing the two sites would leave the class open, so the parser itself is now the judge of
 # every command any document claims to record.
 
@@ -205,7 +205,7 @@ _VERSION_SHAPED = re.compile(r"\d+\.\d+(?:\.\d+)?\Z")
 
 def _tracked_documents() -> list[Path]:
     """The population is what git tracks, not a glob: a convention-shaped selector has let a
-    member escape this repo's guards three times (s271, s276, s279)."""
+    member escape this repo's guards three times."""
     out = subprocess.run(
         ["git", "ls-files", "-z"], cwd=ROOT, capture_output=True, text=True, check=True
     )
@@ -220,8 +220,8 @@ def _recorded_argvs(text: str) -> list[list[str]]:
         if not line.startswith("$ ") or "compare_runs.py" not in line:
             continue
         # `comments=True`: a recorded command may carry a trailing shell comment, and reading
-        # it as arguments would make this sweep reject a command that runs (measured, s295 --
-        # the instrument over-fired on its first run before it had ever judged a real defect).
+        # it as arguments would make this sweep reject a command that runs (measured: the
+        # instrument over-fired on its first run before it had ever judged a real defect).
         toks = shlex.split(line[2:], comments=True)
         i = max(k for k, t in enumerate(toks) if t.endswith("compare_runs.py"))
         argvs.append(toks[i + 1 :])
@@ -271,7 +271,7 @@ def test_the_two_sweeps_fire_on_a_planted_defect_and_stay_quiet_on_the_fixed_for
     """Both arms, because a guard that never fires and a clean tree are the same green.
 
     Every planted string is assembled here rather than written out: this file is inside the
-    population the sweeps scan, so a literal would make them fire on their own source (s283).
+    population the sweeps scan, so a literal would make them fire on their own source.
     """
     planted = f"$ .venv/bin/python scripts/compare_runs.py {FLAG} 0.4.1 outputs outputs_b"
     fixed = f"$ .venv/bin/python scripts/compare_runs.py {FLAG} outputs outputs_b"

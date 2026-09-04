@@ -2,6 +2,7 @@
 frontmatter must satisfy the Agent Skills spec so a host can load it."""
 
 import re
+import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -32,6 +33,24 @@ def test_every_flag_the_skill_names_is_a_flag_the_cli_accepts() -> None:
     assert named <= accepted, named - accepted
 
 
-def test_agents_md_is_the_one_source_and_claude_md_imports_it() -> None:
-    assert (ROOT / "AGENTS.md").exists()
-    assert "@AGENTS.md" in (ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+def test_the_contributor_guide_is_the_one_source() -> None:
+    assert (ROOT / "CONTRIBUTING.md").exists()
+
+
+def test_no_assistant_tooling_file_is_tracked() -> None:
+    """The predecessor of this test asserted that CLAUDE.md existed and imported AGENTS.md. That
+    arrangement was removed on purpose, so this asserts the removal instead of quietly dropping
+    the guard: a tracked file that configures a coding assistant belongs in a private checkout,
+    and a `.gitignore` naming those tools announces exactly what removing them was meant to stop
+    announcing, so the ignore rules live in `.git/info/exclude`."""
+    tracked = subprocess.run(
+        ["git", "ls-files", "-z"], cwd=ROOT, capture_output=True, text=True, check=True
+    ).stdout.split("\0")
+    forbidden = {"CLAUDE.md", "CLAUDE.local.md", "AGENTS.md", "GEMINI.md", ".cursorrules"}
+    found = sorted(name for name in tracked if name and Path(name).name in forbidden)
+    assert not found, found
+    ignore = (ROOT / ".gitignore").read_text(encoding="utf-8")
+    named = [
+        tool for tool in (".superpowers", ".gstack", ".impeccable", "CLAUDE") if tool in ignore
+    ]
+    assert not named, f".gitignore names local tooling: {named}"

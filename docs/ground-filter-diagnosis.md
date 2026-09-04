@@ -1,6 +1,6 @@
 # Why the ground filter publishes buildings as terrain
 
-T-E6r, step 1. The second-AOI gate (`docs/second-aoi-gate-result.md`) established **that** the DTM
+The second-AOI gate (`docs/second-aoi-gate-result.md`) established **that** the DTM
 publishes buildings as terrain. This establishes **what excuses them**, because the repair depends
 on it: a wrong mechanism buys a changed default, and a changed default was already measured not to
 work.
@@ -141,7 +141,7 @@ balanced accuracy of **0.712** — below the 0.75 bar. For contrast the best sin
 (16.0 m) reaches **0.528**, which is barely above the coin.
 
 So neither property this filter could key on separates a roof from the terrain it stands on. The
-part of the T-E6r hypothesis that survives is the part that mattered: a one-storey roof and the
+part of the hypothesis that survives is the part that mattered: a one-storey roof and the
 2.98 m terrace riser the cap exists to preserve are the same height, and the filter has nothing
 else to look at.
 
