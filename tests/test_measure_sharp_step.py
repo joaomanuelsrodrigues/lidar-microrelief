@@ -292,13 +292,29 @@ class TestTheInstrumentMeasuresTheFilterThatShips:
             assert len(declared) == 1, f"{flag} is declared with {declared} -- the file disagrees"
             assert float(declared.pop()) == float(ours), flag
 
-    def test_the_smrf_reference_is_the_dataclass_default(self) -> None:
-        """Constructed empty, not retyped: `SmrfParams` keeps PDAL's defaults verbatim."""
-        from microrelief.smrf import SmrfParams
+    def test_the_smrf_reference_matches_the_shipped_cli(self) -> None:
+        """Against the CLI's declarations, because the dataclass cannot be its own control.
 
-        shipped = SmrfParams()
+        The first version asserted `SmrfParams() == mod.SMRF_REFERENCE`, and `SMRF_REFERENCE`
+        *is* `SmrfParams()` -- both sides move together. Measured: changing `slope` to 0.25 in
+        `src/microrelief/smrf.py` left all 91 tests in this file and its sibling green while this
+        script would compute a different SMRF and republish different retention. Written in the
+        round whose headline finding was a test that could not fail.
+        """
+        import re
 
-        assert shipped == mod.SMRF_REFERENCE
+        sibling = (ROOT / "scripts" / "compare_ground_filters.py").read_text()
+        for flag, ours in (
+            ("--smrf-cell", mod.SMRF_REFERENCE.cell),
+            ("--smrf-slope", mod.SMRF_REFERENCE.slope),
+            ("--smrf-scalar", mod.SMRF_REFERENCE.scalar),
+            ("--smrf-threshold", mod.SMRF_REFERENCE.threshold),
+        ):
+            declared = set(re.findall(rf'"{flag}".*?default=([0-9.]+)', sibling))
+            assert declared, flag
+            assert len(declared) == 1, f"{flag} is declared with {declared} -- the file disagrees"
+            assert float(declared.pop()) == float(ours), flag
+        assert mod.SMRF_REFERENCE.window is None, "the shipped CLI leaves the radius to PDAL's rule"
         assert "SmrfParams(cell=" not in SCRIPT.read_text()
 
 

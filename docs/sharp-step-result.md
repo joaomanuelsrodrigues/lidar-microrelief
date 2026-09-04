@@ -145,29 +145,35 @@ terrace riser is in frame, and it passes both: in `S2` at (151, 154), residual 0
 
   **Correction 4: the width curve in the pre-registration is one position out of many**, while
   the step floor printed beside it sweeps eleven — two curves in one table under different
-  assumptions, and the claims drawn from it inherited the difference. The curve is now swept over
-  **every position a riser can take inside the window**, counting only the positions where the
-  centre cell is a candidate at all, since a position whose window range falls under 2.5 m is
-  not in the population and its residual is evidence about nothing:
+  assumptions. The curve is now swept over **every position a riser can take relative to the
+  window — translation and orientation, 0–45° — counting only the positions where the centre
+  cell is a candidate**, since a position whose window range falls under 2.5 m is not in the
+  population and its residual is evidence about nothing:
 
         width    centred      min      max   positions   at R = 0.30
-        0.5 m      0.455    0.455    0.719       253     in at every position
-        1.0 m      0.455    0.388    0.587       207     in at every position
-        1.5 m      0.270    0.270    0.446       161     straddles R
-        2.0 m      0.208    0.190    0.295       115     OUT at every position
-        2.5 m      0.083    0.083    0.154        69     OUT at every position
-        3.0 m      0.000    0.000    0.026        23     OUT at every position
+        0.5 m      0.455    0.340    0.719      1316     in at every position
+        1.0 m      0.455    0.388    0.587      1130     in at every position
+        1.5 m      0.270    0.270    0.457       946     straddles R
+        2.0 m      0.208    0.190    0.376       762     straddles R
+        2.5 m      0.083    0.083    0.288       578     OUT at every position
+        3.0 m      0.000    0.000    0.190       394     OUT at every position
 
   So "a 3.0 m riser is **exactly** planar" and "the last width that survives is 1.0 m" are
   properties of the centred position, not of the width. The defensible statement is the table:
-  **up to 1.0 m a riser is in wherever it sits, 1.5 m straddles `R`, and 2.0 m and wider are out
-  wherever they sit** — the last of those **by 0.005 m**, which is worth saying rather than
-  leaving a reader to subtract. An intermediate version of this correction swept eleven offsets
-  over one cell of phase and reported a maximum of 0.273 for 2.0 m, making that margin look like
-  0.027: a narrower sweep is a narrower claim, and the number it produced was comfortable.
+  **up to 1.0 m a riser is in wherever it sits; 1.5 m and 2.0 m straddle `R`; 2.5 m and wider are
+  out wherever they sit** — the last of those by **0.012 m**.
 
-  The naming argument survives — there is still no threshold that keeps every permitted riser —
-  and it survives on a wider, measured basis than the one written.
+  **This claim was narrowed three times, and each narrower sweep was the more comfortable one.**
+  Centred only said "the last width that survives is 1.0 m". Eleven offsets over one cell of
+  phase said 2.0 m tops out at 0.273 — out, with 0.027 to spare. Every translation but only the
+  axis-aligned orientation said 0.295 — still out, now with 0.005. Adding orientation says
+  **0.376**, and a 2.0 m riser at 45° is in `S2`. The band a sweep reports is bounded by the
+  sweep, and "at every position" is a claim about an enumeration that has to be made explicit
+  before it can be checked.
+
+  The naming argument survives all three narrowings — there is still no threshold that keeps
+  every permitted riser and rejects every ramp — and it now rests on a wider measured basis than
+  the one written, with the instrument admitting more wide risers than the record first said.
 
 - **Correction 5, small:** the pre-registration calls 0.4374 m "the infimum over candidate steps".
   Candidate steps include wide risers, which the table above shows reading 0.083 and 0.000. It is

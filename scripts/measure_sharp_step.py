@@ -91,6 +91,10 @@ class Hit:
     row: int
     col: int
     inside: bool
+    # `inside` means the whole 2 m disc is searchable. When the centre is in frame but the disc
+    # is not, the honest reason is a truncated neighbourhood, not "outside the extent" -- a
+    # refusal with a false reason masks the true one.
+    centre_inside: bool
     found: bool
     residual: float
     hit_row: int | None = None
@@ -156,6 +160,7 @@ def g1_hits(
         # searched over a silently truncated neighbourhood, so the S2 cell that would satisfy it
         # may be outside the frame -- and reporting that as a miss is the third face of the
         # conflation this instrument has now fixed twice (extent, then residual referent).
+        centre_inside = 0 <= row < population.shape[0] and 0 <= col < population.shape[1]
         inside = (
             row - reach >= 0
             and col - reach >= 0
@@ -186,6 +191,7 @@ def g1_hits(
                 row=row,
                 col=col,
                 inside=inside,
+                centre_inside=centre_inside,
                 found=found,
                 residual=value,
                 hit_row=hit_row,
@@ -446,7 +452,12 @@ def main(argv: list[str] | None = None) -> int:
     missed = [hit for hit in hits if hit.inside and not hit.found]
     for hit in hits:
         verdict = "n/a " if not hit.inside else ("PASS" if hit.found else "FAIL")
-        where = "outside this cache's extent" if not hit.inside else f"at ({hit.row}, {hit.col})"
+        if hit.inside:
+            where = f"at ({hit.row}, {hit.col})"
+        elif hit.centre_inside:
+            where = f"neighbourhood truncated at the frame edge, near ({hit.row}, {hit.col})"
+        else:
+            where = "outside this cache's extent"
         print(f"  {verdict}  {hit.name:<28} {where}")
     # The two are separate states and both are reported. Folding them together would let a real
     # miss inside the frame be announced only as "not evaluable".
@@ -455,10 +466,12 @@ def main(argv: list[str] | None = None) -> int:
     if outside:
         print(
             f"  G1 is NOT EVALUABLE as pre-registered: {len(outside)} of {len(hits)} locations "
-            f"lie outside this cache's extent -- a question it cannot answer. The "
-            f"{len(hits) - len(outside)} in frame were checked and are reported above."
+            f"are not searchable in this cache -- a question it cannot answer. The "
+            f"{len(hits) - len(outside)} that are were checked and are reported above."
         )
-        incomplete.append(f"G1 ({len(outside)} of {len(hits)} outside the extent)")
+        # G3 is unevaluated at exactly the same locations, so it is named too. Naming only G1
+        # is the `elif` defect one predicate over: the summary line is what a reader greps.
+        incomplete.append(f"G1 and G3 ({len(outside)} of {len(hits)} not searchable)")
 
     verdict = g2_verdict(cell_m)
     span = f"{G2_DEGREES[0]:g}-{G2_DEGREES[-1]:g} deg"
@@ -476,7 +489,12 @@ def main(argv: list[str] | None = None) -> int:
     print(f"\nG3 separation: each location's residual above the S1 median ({median:.3f} m)")
     for hit in hits:
         if not hit.inside:
-            print(f"  n/a   {hit.name:<28} outside this cache's extent")
+            reason = (
+                "neighbourhood truncated at the frame edge"
+                if hit.centre_inside
+                else "outside this cache's extent"
+            )
+            print(f"  n/a   {hit.name:<28} {reason}")
             continue
         if not hit.found:
             print(f"  n/a   {hit.name:<28} no S2 cell within {G1_TOLERANCE_M:g} m (see G1)")

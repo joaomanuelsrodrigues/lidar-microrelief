@@ -75,24 +75,49 @@ class TestWidthCurve:
         assert curve[3.0][2] > 0.0, "and at other candidate positions it is not exactly planar"
 
     def test_where_the_threshold_falls_is_a_band_not_a_line(self) -> None:
-        """Up to 1.0 m a riser is in wherever it sits; 1.5 m straddles R; 2.0 m and wider are out
-        wherever they sit. "The last width that survives is 1.0 m" was true of the centred case
-        and of nothing else.
+        """Up to 1.0 m a riser is in wherever it sits; 1.5 m and 2.0 m straddle R; 2.5 m and
+        wider are out wherever they sit.
+
+        Two earlier versions of this assertion were narrower and each was more comfortable:
+        "the last width that survives is 1.0 m" (centred only), then "2.0 m and wider are out at
+        every position" (axis-aligned only, where 2.0 m tops out at 0.295). At 45 degrees a
+        2.0 m riser reads 0.376 and is in S2.
         """
         curve = self._curve()
         r = mod.cgf.SHARP_STEP_RESIDUAL_MIN_M
 
         assert curve[1.0][1] >= r, "1.0 m: in at every candidate position"
         assert curve[1.5][1] < r <= curve[1.5][2], "1.5 m: straddles"
-        assert curve[2.0][2] < r, "2.0 m: out at every candidate position"
+        assert curve[2.0][1] < r <= curve[2.0][2], "2.0 m: straddles, once orientation is swept"
+        assert curve[2.5][2] < r, "2.5 m: out at every candidate position"
 
-    def test_the_two_metre_row_clears_the_threshold_by_five_thousandths(self) -> None:
-        """The margin the record has to state. It is 0.005 m, not the 0.027 an eleven-point
-        sweep over one cell of phase reported, and it is the reason the sweep was widened.
+    def test_the_published_band_edges_are_pinned_to_three_decimals(self) -> None:
+        """By value, because the records quote them, and because an interval assertion cannot
+        tell the published margin from one twenty times smaller. The first version of this test
+        asserted `0.29 < max < 0.30`, which admits any margin between 0 and 0.01 while its own
+        docstring named 0.005.
         """
+        expected = {
+            0.5: (0.340, 0.719),
+            1.0: (0.388, 0.587),
+            1.5: (0.270, 0.457),
+            2.0: (0.190, 0.376),
+            2.5: (0.083, 0.288),
+            3.0: (0.000, 0.190),
+        }
         curve = self._curve()
 
-        assert 0.29 < curve[2.0][2] < mod.cgf.SHARP_STEP_RESIDUAL_MIN_M
+        for width, (low, high) in expected.items():
+            assert curve[width][1] == pytest.approx(low, abs=5e-4), width
+            assert curve[width][2] == pytest.approx(high, abs=5e-4), width
+
+    def test_the_widest_straddling_row_is_two_metres_and_the_margin_is_named(self) -> None:
+        """The number the record states, locked. 2.5 m clears R by 0.012 m -- the narrowest
+        true margin on the table, and the one a reader is entitled to see."""
+        curve = self._curve()
+        r = mod.cgf.SHARP_STEP_RESIDUAL_MIN_M
+
+        assert r - curve[2.5][2] == pytest.approx(0.012, abs=1e-3)
 
     def test_the_centred_curve_falls_monotonically(self) -> None:
         centred = [c for _, c, _, _, _ in mod.width_curve(2.6, window_cells=7, cell_m=0.5)]

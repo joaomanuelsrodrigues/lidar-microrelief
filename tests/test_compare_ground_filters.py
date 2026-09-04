@@ -668,12 +668,14 @@ class TestSharpStepPopulation:
         `docs/riser-measurement.md` admits risers up to max_riser_width = 3.0 m. A riser spread
         that far can be exactly planar inside a 3.5 m window, so it is not in this population.
 
-        These fixtures are **centred**, which is one sub-cell alignment out of many: swept over
-        offsets, 1.0 m is in at every one (0.389-0.484) and 1.5 m straddles R (0.270-0.341).
+        These fixtures are **centred**, which is one position out of many. Swept over every
+        candidate position -- translation and orientation -- 1.0 m is in at every one
+        (0.388-0.587) while 1.5 m (0.270-0.457) and 2.0 m (0.190-0.376) straddle R.
         `scripts/calibrate_sharp_step.py` reports the bands; this test pins the centred readings,
         which is what the numbers below are. Saying "the last width that survives is 1.0 m"
         without that qualifier -- as the first version of this docstring did -- states a property
-        of an alignment as a property of the width.
+        of a position as a property of the width. The second version of this paragraph carried
+        the axis-aligned band and was superseded three hours later by the orientation sweep.
 
         The riser is 2.6 m, not 2.5: the range of a 2.5 m riser is exactly 2.5 and the candidate
         rule is strict, so no width of it would be a candidate at all.

@@ -65,13 +65,21 @@ def step_floor(step_m: float, window_cells: int, cell_m: float) -> float:
 # edge, and where it lands moves the residual; the floor takes the minimum, so a coarse sample
 # over one cell of phase is the conservative side of its own claim.
 BOUNDARY_OFFSETS = np.linspace(0.0, 1.0, 11, endpoint=False)
-# The width curve needs more than that, and the first version did not have it. Its claim is
-# about a POPULATION -- can a riser of this width be in S2 -- so the sweep has to cover every
-# position the riser can take inside the window, not one cell of phase, and count only the
-# positions where the centre cell is a candidate at all. A phase where the window's range falls
-# under the threshold is not an alignment the population contains, and its residual (which can
-# be much higher) is not evidence about anything.
+# The width curve needs more than that, and it took three tries to make the sweep wide enough --
+# each narrower version produced the more comfortable number. Its claim is about a POPULATION --
+# can a riser of this width be in S2 -- so the sweep covers both degrees of freedom a riser has
+# relative to a square window:
+#
+#   translation   where the riser sits across the window, not one cell of phase: a riser sitting
+#                 off-centre is a different geometry, not a different phase of the same one
+#   orientation   0-45 degrees. A square window is symmetric under 90-degree rotation and under
+#                 reflection, so 0-45 covers every distinct orientation. This is the axis the
+#                 second version still lacked, and it is the one that decides the 2.0 m row.
+#
+# Only positions where the centre cell is a CANDIDATE are counted: a position whose window range
+# falls under the threshold is not in the population, so its residual is evidence about nothing.
 WIDTH_PHASES = np.arange(-4.0, 4.0, 0.02)
+WIDTH_ORIENTATIONS = (0.0, 15.0, 30.0, 45.0)
 
 
 def width_curve(
@@ -82,40 +90,51 @@ def width_curve(
 ) -> list[tuple[float, float, float, float, int]]:
     """What a riser of `step_m`, `width` metres wide, can read where it is in the population.
 
-    Returns `(width_m, centred, minimum, maximum, n_phases)`, swept over every position the
-    riser can take relative to the window and **restricted to the positions where the centre
-    cell is a candidate** -- range over `step_threshold_m`. Two earlier versions of this were
-    narrower and each said something the geometry does not:
+    Returns `(width_m, centred, minimum, maximum, n_positions)`, swept over translation **and
+    orientation**, restricted to positions where the centre cell is a candidate. Three earlier
+    versions were narrower, and each published something the geometry does not support:
 
-    * one sub-cell alignment only, beside a `step_floor` that swept eleven, which made "a 3.0 m
-      riser is exactly planar" a property of the centred case rather than of the width;
-    * eleven offsets over one cell of phase, which under-reports the maximum and, worse, has no
-      reason to be the right window: a riser sitting off-centre is a different geometry, not a
-      different phase of the same one.
+    * one sub-cell alignment, beside a `step_floor` that swept eleven, which made "a 3.0 m riser
+      is exactly planar" a property of the centred case rather than of the width;
+    * eleven offsets over one cell of phase, which under-reports the maximum and has no reason
+      to be the right window;
+    * every translation but the axis-aligned orientation only, which reported 2.0 m as out at
+      every position when a 2.0 m riser at 45 degrees reads 0.376 and is in `S2`.
 
-    Restricting to candidate positions is what makes the band mean something. Off-centre
-    positions where the range falls under the threshold read *higher* residuals, and reporting
-    those would overstate what the population can hold -- those cells are not in it.
+    Each narrowing produced the more comfortable number, which is the pattern worth naming: the
+    band a sweep reports is bounded by the sweep, and "at every position" has to enumerate what
+    position means before it can be true.
+
+    Restricting to candidate positions is what makes the band a statement about the population
+    rather than about geometry at large. It is **not** a claim that non-candidate positions read
+    higher -- measured, they read higher for wide risers and lower for narrow ones. It is that a
+    cell whose window range is under the threshold is not in `S1`, so what it would read says
+    nothing about what `S2` can hold.
     """
     size = 8 * window_cells
     _, cols = np.mgrid[0:size, 0:size]
     centre = size // 2
     cell = np.array([[centre, centre]], dtype=np.int64)
     out = []
+    rows, _ = np.mgrid[0:size, 0:size]
     for width_cells in range(1, window_cells):
         values, centred = [], float("nan")
-        for shift in WIDTH_PHASES:
-            profile = (
-                np.clip((cols - (centre - width_cells / 2 + shift)) / width_cells, 0.0, 1.0)
-                * step_m
-            ).astype(np.float64)
-            step, _ = cgf.step_magnitude(profile, window_cells, cgf.STEP_MIN_FINITE)
-            if float(step[centre, centre]) <= step_threshold_m:
-                continue
-            residual = float(cgf.plane_residual(profile, cell, window_cells, cell_m)[0])
-            values.append(residual)
-            if abs(shift) < 1e-9:
-                centred = residual
+        for degrees in WIDTH_ORIENTATIONS:
+            cos, sin = np.cos(np.radians(degrees)), np.sin(np.radians(degrees))
+            along = cols * cos + rows * sin
+            origin = centre * (cos + sin)
+            for shift in WIDTH_PHASES:
+                profile = (
+                    np.clip((along - (origin - width_cells / 2 + shift)) / width_cells, 0.0, 1.0)
+                    * step_m
+                ).astype(np.float64)
+                step, _ = cgf.step_magnitude(profile, window_cells, cgf.STEP_MIN_FINITE)
+                if float(step[centre, centre]) <= step_threshold_m:
+                    continue
+                residual = float(cgf.plane_residual(profile, cell, window_cells, cell_m)[0])
+                values.append(residual)
+                if degrees == 0.0 and abs(shift) < 1e-9:
+                    centred = residual
         out.append((width_cells * cell_m, centred, min(values), max(values), len(values)))
     return out
 
@@ -180,18 +199,20 @@ def main() -> int:
     print(f"step floor at the gate height ({cgf.P4B_GATE_THRESHOLD_M:g} m): {floor:.4f} m")
     print("  the smallest residual a clean step of that height can give, over sub-cell offsets\n")
 
-    print(f"width curve, riser of {RISER_M:g} m, over every candidate position in the window:")
     print(
-        f"    {'width':>7}{'centred':>10}{'min':>9}{'max':>9}{'phases':>9}   at R = {threshold:.2f}"
+        f"width curve, riser of {RISER_M:g} m, over every candidate position "
+        f"(translation x orientation {WIDTH_ORIENTATIONS[0]:g}-{WIDTH_ORIENTATIONS[-1]:g} deg):"
     )
+    header = f"    {'width':>7}{'centred':>10}{'min':>9}{'max':>9}{'positions':>12}"
+    print(f"{header}   at R = {threshold:.2f}")
     for width_m, centred, low, high, n in width_curve(RISER_M, window_cells, cell_m):
         if low >= threshold:
             side = "in at every position"
         elif high < threshold:
             side = "OUT at every position"
         else:
-            side = "straddles R"
-        print(f"  {width_m:>6.1f} m{centred:>10.3f}{low:>9.3f}{high:>9.3f}{n:>9d}   {side}")
+            side = f"straddles R (max is {high - threshold:+.4f} m from it)"
+        print(f"  {width_m:>6.1f} m{centred:>10.3f}{low:>9.3f}{high:>9.3f}{n:>12d}   {side}")
     print("  a riser spread across the window can be a plane; that is the declared limitation\n")
 
     print(f"noise curve, planar ramp at {NOISE_RAMP_DEGREES:g} deg holding no step:")

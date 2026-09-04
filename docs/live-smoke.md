@@ -2243,7 +2243,7 @@ instrument selects are the same thing. Threshold `R = 0.30 m`, derived on synthe
       n/a   churchyard wall (rank 8)     outside this cache's extent
       n/a   gully/lane edge (rank 10)    outside this cache's extent
       n/a   built wall (rank 11)         outside this cache's extent
-      G1 is NOT EVALUABLE as pre-registered: 4 of 5 locations lie outside this cache's extent -- a question it cannot answer. The 1 in frame were checked and are reported above.
+      G1 is NOT EVALUABLE as pre-registered: 4 of 5 locations are not searchable in this cache -- a question it cannot answer. The 1 that are were checked and are reported above.
 
     G2 must-not-fire: planar ramps at 31-60 deg, both directions
       reached S1  10 of 10 geometry permits (12 run; an axis-aligned ramp needs 39.8 deg to span the threshold)
@@ -2257,7 +2257,7 @@ instrument selects are the same thing. Threshold `R = 0.30 m`, derived on synthe
       n/a   gully/lane edge (rank 10)    outside this cache's extent
       n/a   built wall (rank 11)         outside this cache's extent
 
-    NOT EVALUABLE: G1 (4 of 5 outside the extent). Nothing there was refuted.
+    NOT EVALUABLE: G1 and G3 (4 of 5 not searchable). Nothing there was refuted.
 
 **What the two runs say**, outside the fences, because a summary is not output:
 
@@ -2273,10 +2273,10 @@ not the ramp-like tail — near-planar cells are 7,044, while the intermediate b
 that Zone Z's `S2`-above-`S1` retention was an artefact of omitting that term: with it, 94.5%
 against 93.7%, the direction the pre-registration anticipated.
 
-**G1 and G3 are not evaluable on a 150 m frame** — four of the five verified steps are outside
-it. An earlier version of the instrument printed those as `FAIL`, which is a refusal with a false
-reason, and folded them into the failure list; they are now their own state and the in-frame
-locations are checked regardless.
+**G1 and G3 are not evaluable on a 150 m frame** — four of the five verified steps are not
+searchable in it. Two earlier versions of the instrument got this wrong in the same shape: the
+first printed those as `FAIL`, a refusal with a false reason; the second named only G1 in the
+summary while G3 was equally unevaluated, which is the same defect one predicate over.
 
 **A regeneration of the two fences above dropped this section entirely**, and the README's
 percentage guard is what caught it — the second time in this branch that a claim in the README
