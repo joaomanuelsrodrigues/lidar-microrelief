@@ -50,8 +50,16 @@ def test_no_assistant_tooling_file_is_tracked() -> None:
         ).stdout.split("\0")
         if name
     ]
-    forbidden = {"CLAUDE.md", "CLAUDE.local.md", "AGENTS.md", "GEMINI.md", ".cursorrules"}
-    found = sorted(name for name in tracked if Path(name).name in forbidden)
+    # Public, widely known filenames, unlike the local tool directories the rule below catches
+    # without naming. This half is an enumeration and therefore not exhaustive; the dot-directory
+    # rule below is the derived half, and it is what catches a tool nobody has listed yet.
+    assistant_config = re.compile(
+        r"^(CLAUDE|AGENTS|GEMINI|COPILOT)(\.local)?\.md$"
+        r"|^copilot-instructions\.md$"
+        r"|^\.(cursorrules|windsurfrules|clinerules)$"
+        r"|^\.aider\.conf\.ya?ml$"
+    )
+    found = sorted(name for name in tracked if assistant_config.match(Path(name).name))
     assert not found, found
     # Derived rather than named. The first version of this guard listed the local tool directories
     # so it could assert `.gitignore` no longer mentions them, which republished in a tracked test

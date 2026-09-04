@@ -131,6 +131,22 @@ def test_the_scan_stays_quiet_on_near_misses() -> None:
         assert not fired, f"{line!r} fired {fired}"
 
 
+def test_the_record_store_exemption_stays_narrow() -> None:
+    """The regression this file exists for. The exemption was once all of `docs/`, which left every
+    dated record unscanned while the suite stayed green; the test written to catch that only fired
+    if an exemption reached `src/`, so it did not cover its own motivating case. This does: the
+    records under `docs/` outside `docs/judge/` must be in the scanned population."""
+    scanned = set(_scanned())
+    records = [
+        n
+        for n in _tracked()
+        if n.startswith("docs/") and not n.startswith("docs/judge/") and n.endswith(".md")
+    ]
+    assert records, "no records found to check, so this would pass for the wrong reason"
+    missing = [n for n in records if n not in scanned]
+    assert not missing, missing
+
+
 def test_the_live_directories_are_scanned_in_full() -> None:
     """The invariant an exemption could break. Its predecessor asked whether a name started with
     both the exempt prefix and a live one, which no name can do, so it could not fail. This one

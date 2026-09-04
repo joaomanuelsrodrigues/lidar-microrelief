@@ -470,8 +470,8 @@ tuple in 0.3.0's *own* post-judge fix, and `outputs_0.3.0_run1/` (17:46) predate
 shipped 0.3.0 record — `outputs/` at 17:56, hash `c69dd559…`, the one `viewer/provenance.json`
 tracks and the README quoted — carries the corrected six-entry list. Verified against git rather
 than chosen for passing: at `26e1323`, the commit this branch forks from, `UNCALIBRATED` already
-had six entries and no `max_elevation_m`. The acceptance question is whether this branch changed
-behaviour relative to the code it forked from, and only one record on disk was produced
+had six entries and no `max_elevation_m`. The acceptance question is whether the 0.4.0 changes
+changed behaviour relative to the code the branch forked from, and only one record on disk was produced
 by that code.
 
 ### 5. What the rename did not touch
@@ -633,6 +633,12 @@ WARN: src/ changed without a __version__ bump. Two different codes would publish
 the same reproducibility_hash. Bump src/microrelief/__init__.py and
 pyproject.toml in the same commit as the change.
 ```
+
+(One redaction in the block above, declared rather than silent: after `reproducibility_hash`
+the guard printed a parenthetical carrying a private finding number, and that parenthetical
+was removed when this repository stopped carrying them. The number itself is not reproduced
+here, because this file is scanned for exactly that shape. Nothing else in the transcript is
+edited, and the linked run still shows the original wording.)
 
 (The WARN is the one declared for the viewer commit below — a rendering helper changed, no band
 did; the step is `continue-on-error`, so its tick is a mask and the log is what was read.)
@@ -1273,7 +1279,7 @@ agree with whatever the code says — and **which pair to expect is read from th
 `package_version`**, so `--expect-new-limitations` stays a bare `store_true` flag and both
 acceptance commands recorded above replay unchanged.
 
-> **Corrected afterwards, and the correction is the finding.** The first version of this change made
+> **Corrected 2026-08-30, and the correction is the finding.** The first version of this change made
 > the flag take an optional value (`nargs="?"` with `choices=`). That is broken in exactly the
 > position both records use it — **before** the two positionals — because argparse offers the
 > next positional as the option's value: `compare_runs.py --expect-new-limitations
