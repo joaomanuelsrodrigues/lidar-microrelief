@@ -313,10 +313,11 @@ filter under canopy, declared rather than tuned away.
   above 2.5 m, against bounds pre-registered before the run (`docs/p4-terrace-result.md`). At a
   second site with different terraces, that is unmeasured. **"Standing on a step" is a range in a
   3.5 m window, and a range cannot tell a riser from a slope steep enough to span it** — over the
-  800 m zone, 43.5% of that population departs from a plane by less than 0.30 m
-  (`docs/sharp-step-result.md`, against a threshold fixed beforehand in
-  `docs/sharp-step-preregistration.md`). Adding the planarity term does not move the 95.082%,
-  which is measured on its own pre-registered population; it says what that population contains.
+  800 m zone, **42.4%** of the cells that pass that range test depart from a plane by less than
+  0.30 m (`docs/sharp-step-result.md`, against a threshold fixed beforehand in
+  `docs/sharp-step-preregistration.md`). That share is measured on a population *without* the
+  measured-basis term the 95.082% carries, so it describes the range test, not this row's
+  denominator; adding the planarity term to the 95.082%'s own population leaves it at 94.2%.
 - **Byte-identical replay on real data is not established — now with a measured bound.** A run on
   2026-08-05 saw, in four reads of the 845 MB dataset, one single corrupted coordinate
   and one outright `IoError: failed to fill whole buffer` (source files intact, `sha256sum`

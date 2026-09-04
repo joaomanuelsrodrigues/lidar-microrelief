@@ -4,8 +4,12 @@
 document was committed before this ran once on real data, and nothing in it has been edited since.
 
     G1  must-fire, 5 of 5 supported real steps in S2
-    G2  must-not-fire, 10 of 12 planar ramps reached S1 and 0 entered S2
+    G2  must-not-fire, 10 of the 10 ramps geometry permits reached S1, 0 entered S2
     G3  separation, 5 of 5 residuals above the S1 median
+
+**Five corrections to the pre-registration are recorded below**, all found by an adversarial
+review of the code after the run. That document is dated and is not edited; this is where its
+errors are named. None of them moves `R`, and none changes the verdict.
 
 ## What was measured
 
@@ -16,8 +20,7 @@ Zone Z, 1600 × 1600 cells at 0.5 m, from the four Sistelo tiles named in
     S2   and residual >= 0.30 m              173,784
     removed                                  133,597   (43.5%)
 
-**Forty-three per cent of the P4-shaped population is not a sharp step.** What was removed, of
-`S1`'s 307,381 cells:
+**Forty-three per cent of `S1` is not a sharp step.** What was removed, of `S1`'s 307,381 cells:
 
     near-planar    residual <  0.10 m          7,044
     intermediate   0.10 <= r < 0.30 m        123,415
@@ -25,7 +28,8 @@ Zone Z, 1600 × 1600 cells at 0.5 m, from the four Sistelo tiles named in
 
 The three partition the removed cells exactly. Only the first two are drawn from the 304,243
 whose residual could be computed; the third is the rest of `S1`, so it does not share that
-denominator.
+denominator — and the two are not the same claim: **42.4%** of `S1` departs from a plane by less
+than 0.30 m, while the other 1.1 points were removed as *unmeasurable*, not as planar.
 
 Residual percentiles over `S1`:
 
@@ -57,9 +61,19 @@ at its own cell or within 2.0 m.
 instrument and it cannot confirm it. The pre-registration says so, before the result was known.
 
 **G2 — must-not-fire, synthetic. PASS.** Of twelve planar ramps holding no step — 31°, 35°, 40°,
-45°, 50° and 60°, axis-aligned and diagonal — **10 reached `S1`** and **0 entered `S2`**. Both
-halves are required, and the first is the one that matters: an instrument that selected nothing
-would satisfy the second perfectly.
+45°, 50° and 60°, axis-aligned and diagonal — **10 of the 10 that geometry permits reached `S1`**
+and **0 entered `S2`**. Both halves are required, and the first is the one that matters: an
+instrument that selected nothing would satisfy the second perfectly.
+
+**Correction 1, and it is the serious one.** The pre-registration says `S1` "must be **non-empty**"
+for those ramps. Read per ramp, that is **unsatisfiable by geometry**: a 7-cell window separates
+cells by 3.0 m along an axis, so an axis-aligned ramp needs 39.8° to span 2.5 m, and 31° and 35°
+axis-aligned cannot — a number `scripts/measure_ramp_confound.py` already printed before this
+branch began. The first implementation hid that behind `reached_s1 >= 8`, a constant that appears
+in no document and was written *after* the pre-registration was committed. The rule is now derived
+from geometry — every permitted ramp must fire, and `permitted == 0` fails — so a regression that
+kills one of the ten is caught, which `>= 8` silently accepted. The measured outcome is the same
+under either reading.
 
 **G3 — separation, blind. PASS, 5 of 5.** The `S1` median residual is **0.349 m**. Every one of
 the five locations reads well above it, the lowest being the terrace riser at 0.783 m — 2.2× the
@@ -68,17 +82,22 @@ whether the known steps are more step-like than the typical cell the range term 
 
 ## Reported, gating nothing
 
-SMRF's retention: **`S1` 78.8%**, **`S2` 83.7%**.
+SMRF's retention, over four populations:
 
-**This is not the direction the pre-registration anticipated.** That document's building caveat
-exists to stop a *lower* retention on `S2` being read as SMRF failing — Zone Z holds the village
-core and the church, `S2` is enriched in sharp built edges, and SMRF exists to cut buildings.
-The measurement went the other way: `S2` is retained **more**, by 4.9 points.
+    S1                       307,381    SMRF 78.8%
+    S2                       173,784    SMRF 83.7%
+    S1 & measured basis      251,030    SMRF 94.5%
+    S2 & measured basis      152,049    SMRF 93.7%
 
-No mechanism for that was measured, and none is offered here. What can be said is that the caveat
-did its job in the only way that matters — it made the number un-gateable in advance, so the
-result is reported whichever way it landed. A wrong anticipation about a figure nothing rides on
-is a wrong anticipation, not a failed predicate.
+**Correction 2: the surprise in the first two lines was an artefact of the population.** Without
+the basis term, `S2` is retained 4.9 points *more* than `S1` — the opposite of what the
+pre-registration's building caveat anticipates, since `S2` is enriched in the sharp built edges
+SMRF exists to cut. Adding P4's measured-basis term reverses it: 94.5% against 93.7%, `S2`
+**lower**, which is the anticipated direction. The first reading was the omission of the basis
+term speaking, not SMRF.
+
+The caveat did its job in the only way that matters: it made the number un-gateable in advance, so
+whichever way it landed it is reported rather than explained away.
 
 ## Which figures were foreseeable, and which were not
 
@@ -92,29 +111,25 @@ Run on the 150 m window of `examples/sistelo-sample/aoi.geojson`, against PDAL *
 (git-version: e8618b)** — the version `docs/p4-terrace-result.md` names. The plan expected this
 leg to be undoable; it was not, and it turned out to carry the most useful finding on the branch.
 
-**The implementation reproduces the published figure exactly.** Over P4's own gate population:
+**The implementation reproduces both published rows exactly**, printed by the instrument itself:
 
-    P4 gate population (measured basis)   7,625 cells    SMRF 95.1%    PDAL 95.1%
+    S1                         9,525    SMRF 76.7%    PDAL 76.7%
+    S2                         5,652    SMRF 83.1%    PDAL 83.0%
+    S1 & measured basis        7,625    SMRF 95.1%    PDAL 95.1%
+    S2 & measured basis        4,954    SMRF 94.2%    PDAL 94.1%
 
-`docs/p4-terrace-result.md` publishes 7,625, 95.1% and 95.1%. All three return.
+`docs/p4-terrace-result.md` publishes 7,625 / 95.1% / 95.1% for the gate population and
+4,954 / 94.2% / 94.1% for its `residual >= 0.30 m` row. Six figures, all returned.
 
-**And the pre-registered `S1` is not that population.** Over the same window:
+**Correction 3: the pre-registered `S1` is not P4's population**, and calling it "the P4-shaped
+population" in that document oversells the correspondence. P4's gate is
+`measured & defined & step > 2.5 m`; `S1` is `defined & step > 2.5 m`. The 1,900-cell difference
+is that term alone, and it is worth **18.4 points** of retention on this window.
 
-    pre-registered S1 (no basis term)     9,525 cells    SMRF 76.7%    PDAL 76.7%
-
-The 1,900-cell difference is entirely the **measured-basis restriction**: P4's gate is
-`measured & defined & step > 2.5 m`, and `S1` as pre-registered in this document is
-`defined & step > 2.5 m`. Measured by holding everything else fixed and adding only that term,
-which recovers 7,625 and 95.1% on the nose. The retention gap it accounts for is **18.4 points**.
-
-**So the pre-registration's phrase "the P4-shaped population" oversells the correspondence.** `S1`
-is P4-shaped in its *step* term and omits P4's basis term, and the consequence is large. Stated
-here rather than corrected there: that document is a record of what was fixed before the run, and
-this is exactly the sort of thing it exists to make visible afterwards.
-
-**The consequence for what this branch reports:** Zone Z's retention figures — `S1` 78.8%, `S2`
-83.7% — are **not** comparable with the band table's 95.1% and 94.2%. Different populations. The
-comparison the leg does support is the one above, on a fixed population, where the numbers return.
+The decomposition is computed by `scripts/measure_sharp_step.py` and not by a probe. An earlier
+version of this section carried figures from an ad-hoc run with no artefact on the branch — the
+failure this repository has now recorded four times, and the reason `scripts/measure_ramp_confound.py`
+exists at all.
 
 **G1 and G3 are not evaluable on this window.** Four of the five verified steps lie outside a
 150 m frame. The instrument reports them as `n/a — outside this cache's extent` and declares G1
@@ -125,8 +140,30 @@ terrace riser is in frame, and it passes both: in `S2` at (151, 154), residual 0
 ## What this does not establish
 
 - **It is a sharp-step population, not a riser population.** A riser spread across the 3.0 m
-  `docs/riser-measurement.md` admits is exactly planar in a 3.5 m window and is not in `S2`. The
-  width curve in the pre-registration gives the whole of it.
+  `docs/riser-measurement.md` admits *can be* exactly planar in a 3.5 m window and is not in `S2`.
+
+  **Correction 4: the width curve in the pre-registration is computed at one sub-cell alignment**,
+  while the step floor printed beside it sweeps eleven — two curves in one table under different
+  assumptions, and the claims drawn from it inherited the difference. Swept over the same offsets:
+
+        width    centred      min      max     at R = 0.30
+        0.5 m      0.455    0.455    0.620     in at every offset
+        1.0 m      0.455    0.389    0.484     in at every offset
+        1.5 m      0.270    0.270    0.341     depends on the offset
+        2.0 m      0.208    0.190    0.273     OUT at every offset
+        2.5 m      0.083    0.083    0.173     OUT at every offset
+        3.0 m      0.000    0.000    0.109     OUT at every offset
+
+  So "a 3.0 m riser is **exactly** planar" and "the last width that survives is 1.0 m" are
+  properties of the centred alignment, not of the width. The defensible statement is the table:
+  **up to 1.0 m wide a riser is in at every alignment, 1.5 m straddles `R`, and 2.0 m and wider
+  are out at every alignment.** The naming argument survives — there is still no threshold that
+  keeps every permitted riser — and it survives on a wider, measured basis than the one written.
+
+- **Correction 5, small:** the pre-registration calls 0.4374 m "the infimum over candidate steps".
+  Candidate steps include wide risers, which the table above shows reading 0.083 and 0.000. It is
+  the infimum over *sharp* steps at the gate height, which is the distinction that section exists
+  to draw.
 - **G1 cannot confirm.** Four of its five members are a churchyard wall, two stretches of
   retaining-wall line and a gully edge. They are real steps, which is why they belong; they are
   not terraces, and this instrument does not claim to tell the two apart.

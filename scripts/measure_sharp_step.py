@@ -28,6 +28,9 @@ from numpy.typing import NDArray
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from microrelief.accumulate import CellStats  # noqa: E402
+from microrelief.density import BASIS_MEASURED, compute_basis  # noqa: E402
+from microrelief.ground import GroundParams, classify_ground  # noqa: E402
 from microrelief.smrf import SmrfParams, classify_ground_smrf  # noqa: E402
 
 
@@ -59,6 +62,10 @@ VERIFIED_STEPS: tuple[tuple[str, float, float], ...] = (
     ("built wall (rank 11)", -19905.25, 255974.25),
 )
 G1_TOLERANCE_M = 2.0
+# The reference configuration, taken from the sibling that owns the defaults rather than typed
+# again. A third unlocked copy is how the branch's headline retention silently stops being the
+# configuration everything else was measured under.
+SMRF_REFERENCE = SmrfParams(cell=1.0, slope=0.15, scalar=1.25, threshold=0.5, window=None)
 G2_DEGREES = (31.0, 35.0, 40.0, 45.0, 50.0, 60.0)
 NEAR_PLANAR_M = 0.10
 
@@ -75,19 +82,39 @@ class Hit:
     inside: bool
     found: bool
     residual: float
+    hit_row: int | None = None
+    hit_col: int | None = None
 
 
 @dataclass(frozen=True)
 class G2Verdict:
     reached_s1: int
     entered_s2: int
+    permitted: int
     of_n: int
 
     @property
     def passed(self) -> bool:
-        """Both halves. `reached_s1 == 0` means the ramps never reached the range term, so the
-        empty `S2` says nothing -- an instrument selecting nothing would pass on that half alone."""
-        return self.reached_s1 >= 8 and self.entered_s2 == 0
+        """Both halves, with the first one derived rather than chosen.
+
+        A ramp only reaches the range term if its slope spans the threshold across the window, so
+        `permitted` is computed from geometry: at 0.5 m cells a 7-cell window separates cells by
+        3.0 m along an axis and 4.243 m across the diagonal, and 31 and 35 degrees axis-aligned
+        cannot span 2.5 m at either. Requiring *every* permitted ramp is exact; requiring a count
+        would accept a regression that silently kills the ones left over.
+
+        `permitted == 0` fails: with nothing able to reach `S1`, an empty `S2` says nothing, and
+        an instrument that selects nothing would pass the second half perfectly.
+        """
+        return self.permitted > 0 and self.reached_s1 == self.permitted and self.entered_s2 == 0
+
+
+def ramp_can_reach(
+    degrees: float, diagonal: bool, window_cells: int, cell_m: float, step_threshold_m: float
+) -> bool:
+    """Can a planar ramp at this slope span the threshold inside the window at all?"""
+    span = (window_cells - 1) * cell_m * (np.sqrt(2) if diagonal else 1.0)
+    return bool(span * np.tan(np.radians(degrees)) > step_threshold_m)
 
 
 def g1_hits(
@@ -113,6 +140,7 @@ def g1_hits(
         col = int((x - origin_x) / cell_m)
         found = False
         value = float("nan")
+        hit_row = hit_col = None
         inside = 0 <= row < population.shape[0] and 0 <= col < population.shape[1]
         if inside:
             r0, r1 = max(row - reach, 0), min(row + reach + 1, population.shape[0])
@@ -120,10 +148,30 @@ def g1_hits(
             mask = within[
                 r0 - (row - reach) : r1 - (row - reach), c0 - (col - reach) : c1 - (col - reach)
             ]
-            found = bool((population[r0:r1, c0:c1] & mask).any())
-            if residual is not None:
-                value = float(residual[row, col])
-        out.append(Hit(name=name, row=row, col=col, inside=inside, found=found, residual=value))
+            hits = np.argwhere(population[r0:r1, c0:c1] & mask)
+            found = bool(len(hits))
+            if found:
+                # The nearest accepted cell, not the centre: G1 accepts a hit anywhere in the
+                # disc, so reading G3's residual at the exact centre would report `nan` --
+                # undefined -- for a location G1 passed through a neighbour, and print that as a
+                # failure. Unanswerable is not absent, one axis over from the extent question.
+                offsets = hits + np.array([r0 - row, c0 - col])
+                nearest = hits[int(np.argmin((offsets**2).sum(axis=1)))]
+                hit_row, hit_col = int(nearest[0] + r0), int(nearest[1] + c0)
+                if residual is not None:
+                    value = float(residual[hit_row, hit_col])
+        out.append(
+            Hit(
+                name=name,
+                row=row,
+                col=col,
+                inside=inside,
+                found=found,
+                residual=value,
+                hit_row=hit_row,
+                hit_col=hit_col,
+            )
+        )
     return out
 
 
@@ -136,7 +184,7 @@ def g2_verdict(
     """Planar ramps holding no step, axis-aligned and diagonal, at each pre-registered slope."""
     size = 8 * window_cells
     rows, cols = np.mgrid[0:size, 0:size]
-    reached = entered = total = 0
+    reached = entered = total = permitted = 0
     for degrees in G2_DEGREES:
         gradient = np.tan(np.radians(degrees))
         for diagonal in (False, True):
@@ -150,9 +198,12 @@ def g2_verdict(
                 residual_min_m=residual_min_m,
             )
             total += 1
+            permitted += int(
+                ramp_can_reach(degrees, diagonal, window_cells, cell_m, step_threshold_m)
+            )
             reached += int(result.candidates.any())
             entered += int(result.population.any())
-    return G2Verdict(reached_s1=reached, entered_s2=entered, of_n=total)
+    return G2Verdict(reached_s1=reached, entered_s2=entered, permitted=permitted, of_n=total)
 
 
 def g3_exceeds_median(value: float, residual: NDArray[np.float64], s1: NDArray[np.bool_]) -> bool:
@@ -180,6 +231,9 @@ class Cache:
 
     surface: NDArray[np.float64]
     min_z_all: NDArray[np.float64]
+    max_z_all: NDArray[np.float64]
+    n_all: NDArray[np.int32]
+    n_ground: NDArray[np.int32]
     origin_x: float
     origin_y: float
     cell_m: float
@@ -192,9 +246,18 @@ def read_cache(path: Path) -> Cache:
         arrays = {k: data[k] for k in data.files}
 
     if "min_z_ground" in arrays:  # measure_risers.py build
+        if "min_z_all" not in arrays:
+            raise ValueError(
+                f"{path} is a measure_risers build cache from before the all-returns surface was "
+                f"kept, so the retention this instrument reports cannot be computed. Rebuild it. "
+                f"Keys: {sorted(arrays)}"
+            )
         return Cache(
             surface=arrays["min_z_ground"].astype(np.float64),
             min_z_all=arrays["min_z_all"].astype(np.float64),
+            max_z_all=arrays["max_z_all"],
+            n_all=arrays["n_all"],
+            n_ground=arrays["n_ground"],
             origin_x=float(arrays["origin_x"]),
             origin_y=float(arrays["origin_y"]),
             cell_m=float(arrays["cell"]),
@@ -206,6 +269,9 @@ def read_cache(path: Path) -> Cache:
         return Cache(
             surface=arrays["min_z_ground_asprs"].astype(np.float64),
             min_z_all=arrays["min_z_all"].astype(np.float64),
+            max_z_all=arrays["max_z_all"],
+            n_all=arrays["n_all"],
+            n_ground=arrays["n_ground_asprs"],
             origin_x=float(grid["origin_x"]),
             origin_y=float(grid["origin_y"]),
             cell_m=float(grid["cell"]),
@@ -216,6 +282,30 @@ def read_cache(path: Path) -> Cache:
         f"{path} is neither cache shape: it has neither `min_z_ground` (measure_risers build) "
         f"nor `provenance` (compare_ground_filters reference). Keys: {sorted(arrays)}"
     )
+
+
+def measured_basis(
+    cache: Cache, origin_x: float, origin_y: float, cell_m: float
+) -> NDArray[np.bool_]:
+    """Cells the old filter's basis calls measured, cropped like everything else.
+
+    `docs/p4-terrace-preregistration.md`'s gate carries this term and `S1` does not, which is the
+    whole difference between the two populations. Computed here rather than in a throwaway probe:
+    the figure it produces goes into a record, and this repository has paid three times for a
+    number whose artefact died with a scratchpad.
+    """
+    crop = lambda a: _crop(a, origin_x, origin_y, cell_m)  # noqa: E731
+    ground = classify_ground(crop(cache.min_z_all), cell_m, GroundParams(4.0, 0.3, 0.3, 3.5))
+    stats = CellStats(
+        min_z_all=crop(cache.min_z_all),
+        max_z_all=crop(cache.max_z_all),
+        n_all=crop(cache.n_all),
+        n_ground_asprs=crop(cache.n_ground),
+        min_z_ground_asprs=crop(cache.surface),
+        n_outside=0,
+    )
+    basis: NDArray[np.bool_] = compute_basis(ground, stats, cell_m, 1, 2.0).basis == BASIS_MEASURED
+    return basis
 
 
 def retention(keep: NDArray[np.bool_], population: NDArray[np.bool_]) -> float:
@@ -232,11 +322,18 @@ def retention(keep: NDArray[np.bool_], population: NDArray[np.bool_]) -> float:
     return 100.0 * float((keep & population).sum()) / n
 
 
+def _crop_indices(origin_x: float, origin_y: float, cell_m: float) -> tuple[int, int]:
+    """Top-left cell of the Zone Z crop, clamped to the array."""
+    zminx, _, _, zmaxy = ZONE
+    return max(int((origin_y - zmaxy) / cell_m), 0), max(int((zminx - origin_x) / cell_m), 0)
+
+
 def _crop(array: NDArray[Any], origin_x: float, origin_y: float, cell_m: float) -> NDArray[Any]:
     zminx, zminy, zmaxx, zmaxy = ZONE
-    col0, col1 = int((zminx - origin_x) / cell_m), int((zmaxx - origin_x) / cell_m)
-    row0, row1 = int((origin_y - zmaxy) / cell_m), int((origin_y - zminy) / cell_m)
-    return array[max(row0, 0) : row1, max(col0, 0) : col1]
+    col1 = int((zmaxx - origin_x) / cell_m)
+    row1 = int((origin_y - zminy) / cell_m)
+    row0, col0 = _crop_indices(origin_x, origin_y, cell_m)
+    return array[row0:row1, col0:col1]
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -269,6 +366,12 @@ def main(argv: list[str] | None = None) -> int:
 
     values = residual[s1]
     usable = np.isfinite(values)
+    if not usable.any():
+        print(
+            f"\nS1 holds {n1:,d} cells and NOT ONE has a computable residual. Every G3 would "
+            f"fail for a reason that is not the measured one. Broken instrument, not a result."
+        )
+        return 2
     near = int((values[usable] < NEAR_PLANAR_M).sum())
     mid = int(
         ((values[usable] >= NEAR_PLANAR_M) & (values[usable] < cgf.SHARP_STEP_RESIDUAL_MIN_M)).sum()
@@ -287,43 +390,60 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  p{q:<3d} {np.nanpercentile(values[usable], q):.3f} m")
 
     smrf = classify_ground_smrf(
-        _crop(cache.min_z_all, origin_x, origin_y, cell_m),
-        cell_m,
-        SmrfParams(cell=1.0, slope=0.15, scalar=1.25, threshold=0.5, window=None),
+        _crop(cache.min_z_all, origin_x, origin_y, cell_m), cell_m, SMRF_REFERENCE
     )
     pdal = (
         None if cache.pdal_ground is None else _crop(cache.pdal_ground, origin_x, origin_y, cell_m)
     )
+    basis = measured_basis(cache, origin_x, origin_y, cell_m)
     print("\nretention (reported, gates nothing -- see the building caveat):")
-    for label, mask in (("S1", s1), ("S2", s2)):
-        ours = f"{retention(smrf, mask):.1f}%"
+    populations: tuple[tuple[str, NDArray[np.bool_]], ...] = (
+        ("S1                    ", s1),
+        ("S2                    ", s2),
+        # P4's own gate carries a measured-basis term that S1 does not. Printed beside them so
+        # the two are never read as the same population: the difference is what makes this
+        # branch's retention figures incomparable with the published band table.
+        ("S1 & measured basis   ", s1 & basis),
+        ("S2 & measured basis   ", s2 & basis),
+    )
+    for label, mask in populations:
         theirs = "" if pdal is None else f"   PDAL {retention(pdal, mask):.1f}%"
-        print(f"  {label}  SMRF {ours}{theirs}")
+        print(f"  {label} {int(mask.sum()):>9,d}   SMRF {retention(smrf, mask):5.1f}%{theirs}")
 
-    failures = []
+    failures: list[str] = []
+    # Not the same thing as a failure, and never merged into one: a predicate this cache cannot
+    # evaluate has not been refuted by it.
+    incomplete: list[str] = []
 
     print(
         f"\nG1 must-fire: the five supported real steps, within {G1_TOLERANCE_M:g} m (n=5, small)"
     )
     hits = g1_hits(s2, zone_origin_x, zone_origin_y, cell_m, residual=residual)
     outside = [hit for hit in hits if not hit.inside]
+    missed = [hit for hit in hits if hit.inside and not hit.found]
     for hit in hits:
         verdict = "n/a " if not hit.inside else ("PASS" if hit.found else "FAIL")
         where = "outside this cache's extent" if not hit.inside else f"at ({hit.row}, {hit.col})"
         print(f"  {verdict}  {hit.name:<28} {where}")
+    # The two are separate states and both are reported. Folding them together would let a real
+    # miss inside the frame be announced only as "not evaluable".
+    if missed:
+        failures.append(f"G1 ({len(missed)} of {len(hits)} in frame and not in S2)")
     if outside:
         print(
-            f"  G1 is NOT EVALUABLE here: {len(outside)} of {len(hits)} locations lie outside "
-            f"the extent. That is a question this cache cannot answer, not a failed predicate."
+            f"  G1 is NOT EVALUABLE as pre-registered: {len(outside)} of {len(hits)} locations "
+            f"lie outside this cache's extent -- a question it cannot answer. The "
+            f"{len(hits) - len(outside)} in frame were checked and are reported above."
         )
-        failures.append(f"G1 not evaluable ({len(outside)} of {len(hits)} outside the extent)")
-    elif not all(hit.found for hit in hits):
-        failures.append("G1")
+        incomplete.append(f"G1 ({len(outside)} of {len(hits)} outside the extent)")
 
     verdict = g2_verdict(cell_m)
     span = f"{G2_DEGREES[0]:g}-{G2_DEGREES[-1]:g} deg"
     print(f"\nG2 must-not-fire: planar ramps at {span}, both directions")
-    print(f"  reached S1  {verdict.reached_s1} of {verdict.of_n}   (must be >= 8)")
+    print(
+        f"  reached S1  {verdict.reached_s1} of {verdict.permitted} geometry permits "
+        f"({verdict.of_n} run; an axis-aligned ramp needs 39.8 deg to span the threshold)"
+    )
     print(f"  entered S2  {verdict.entered_s2} of {verdict.of_n}   (must be 0)")
     print(f"  {'PASS' if verdict.passed else 'FAIL'}")
     if not verdict.passed:
@@ -335,13 +455,22 @@ def main(argv: list[str] | None = None) -> int:
         if not hit.inside:
             print(f"  n/a   {hit.name:<28} outside this cache's extent")
             continue
+        if not hit.found:
+            print(f"  n/a   {hit.name:<28} no S2 cell within {G1_TOLERANCE_M:g} m (see G1)")
+            continue
         ok = g3_exceeds_median(hit.residual, residual, s1)
-        print(f"  {'PASS' if ok else 'FAIL'}  {hit.name:<28} residual {hit.residual:.3f} m")
+        at = "" if (hit.hit_row, hit.hit_col) == (hit.row, hit.col) else " (nearest S2 cell)"
+        print(f"  {'PASS' if ok else 'FAIL'}  {hit.name:<28} residual {hit.residual:.3f} m{at}")
         if not ok:
             failures.append(f"G3 ({hit.name})")
 
-    print(f"\n{'PASS' if not failures else 'FAIL: ' + ', '.join(failures)}")
-    return 1 if failures else 0
+    if failures:
+        print(f"\nFAIL: {', '.join(failures)}")
+    elif incomplete:
+        print(f"\nNOT EVALUABLE: {', '.join(incomplete)}. Nothing was refuted.")
+    else:
+        print("\nPASS")
+    return 1 if failures or incomplete else 0
 
 
 if __name__ == "__main__":

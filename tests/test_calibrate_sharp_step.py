@@ -47,23 +47,43 @@ class TestStepFloor:
 
 
 class TestWidthCurve:
-    def test_a_riser_spread_across_the_window_becomes_planar(self) -> None:
-        curve = dict(mod.width_curve(2.6, window_cells=7, cell_m=0.5))
+    @staticmethod
+    def _curve() -> dict[float, tuple[float, float, float]]:
+        return {w: (c, lo, hi) for w, c, lo, hi in mod.width_curve(2.6, window_cells=7, cell_m=0.5)}
 
-        assert curve[0.5] > 0.4
-        assert curve[3.0] == pytest.approx(0.0, abs=1e-9)
+    def test_a_riser_spread_across_the_window_can_be_exactly_planar(self) -> None:
+        """`can be`, not `is`. At one alignment it reads 0.000; the claim was written as a
+        property of the width, and it is a property of where the boundary falls."""
+        curve = self._curve()
 
-    def test_the_curve_crosses_the_threshold_between_one_and_one_and_a_half_metres(self) -> None:
-        """The declared limitation's operative number, on the grid the instrument runs on."""
-        curve = dict(mod.width_curve(2.6, window_cells=7, cell_m=0.5))
+        assert curve[0.5][1] > 0.4
+        assert curve[3.0][1] == pytest.approx(0.0, abs=1e-9)
+        assert curve[3.0][2] > 0.1, "and at other offsets it is not planar at all"
 
-        assert curve[1.0] >= mod.cgf.SHARP_STEP_RESIDUAL_MIN_M
-        assert curve[1.5] < mod.cgf.SHARP_STEP_RESIDUAL_MIN_M
+    def test_the_threshold_crossing_depends_on_the_sub_cell_offset(self) -> None:
+        """The declared limitation's operative number, and its width.
 
-    def test_the_curve_falls_monotonically(self) -> None:
-        widths = [residual for _, residual in mod.width_curve(2.6, window_cells=7, cell_m=0.5)]
+        Centred, 1.0 m survives R and 1.5 m does not. Swept over offsets the two bands overlap
+        the threshold from either side, so "the last width that survives is 1.0 m" is true of the
+        centred alignment and of nothing else.
+        """
+        curve = self._curve()
+        r = mod.cgf.SHARP_STEP_RESIDUAL_MIN_M
 
-        assert widths == sorted(widths, reverse=True)
+        assert curve[1.0][0] >= r and curve[1.5][0] < r, "centred"
+        assert curve[1.0][1] >= r, "1.0 m survives at every offset"
+        assert curve[1.5][1] < r <= curve[1.5][2], "1.5 m straddles it"
+
+    def test_the_centred_curve_falls_monotonically(self) -> None:
+        centred = [c for _, c, _, _ in mod.width_curve(2.6, window_cells=7, cell_m=0.5)]
+
+        assert centred == sorted(centred, reverse=True)
+
+    def test_every_band_contains_its_centred_value(self) -> None:
+        """A min/max that did not bracket the centred reading would mean the sweep and the
+        centred case are not computing the same thing."""
+        for _, centred, low, high in mod.width_curve(2.6, window_cells=7, cell_m=0.5):
+            assert low <= centred <= high
 
 
 class TestNoiseCurve:

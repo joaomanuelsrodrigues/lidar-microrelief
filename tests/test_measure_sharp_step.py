@@ -50,6 +50,15 @@ def _cache(path: Path, surface: np.ndarray) -> Path:
     return path
 
 
+def _run_predicates(surface: np.ndarray) -> tuple[float, list[object]]:
+    """The population, the S1 median residual, and the G1 hits -- what the predicates read."""
+    result = mod.cgf.sharp_step_population(surface, cell_m=0.5)
+    minx, _, _, maxy = mod.ZONE
+    median = float(np.nanmedian(result.residual[result.candidates]))
+    hits = mod.g1_hits(result.population, minx, maxy, 0.5, residual=result.residual)
+    return median, list(hits)
+
+
 class TestTheVerifiedLocations:
     def test_every_verified_location_is_inside_zone_z(self) -> None:
         """A must-fire control outside the zone would be vacuous."""
@@ -146,21 +155,67 @@ class TestG1:
 
         assert all(h.inside for h in hits)
 
+    def test_g3_reads_the_cell_that_satisfied_g1_not_the_centre(self) -> None:
+        """G1 accepts a hit anywhere in the 2 m disc; G3 must read its residual there.
+
+        Reading the centre reports `nan` -- undefined -- for a location G1 passed through a
+        neighbour, and prints it as a failure. A mutation putting the centre back survives every
+        other test in this file.
+        """
+        cell_m, shape = 0.5, (1600, 1600)
+        minx, _, _, maxy = mod.ZONE
+        name, x, y = mod.VERIFIED_STEPS[0]
+        row, col = int((maxy - y) / cell_m), int((x - minx) / cell_m)
+        population = np.zeros(shape, dtype=bool)
+        population[row, col + 4] = True
+        residual = np.full(shape, np.nan)
+        residual[row, col + 4] = 0.9
+
+        hit = {h.name: h for h in mod.g1_hits(population, minx, maxy, cell_m, residual=residual)}[
+            name
+        ]
+
+        assert hit.found
+        assert (hit.hit_row, hit.hit_col) == (row, col + 4)
+        assert hit.residual == 0.9, "the centre holds nan; reading it would print a false failure"
+
 
 class TestG2:
-    def test_g2_requires_both_halves(self) -> None:
-        """A ramp must reach S1 and be rejected from S2."""
+    def test_g2_requires_every_ramp_geometry_permits_and_no_more(self) -> None:
+        """Two of the twelve cannot fire at all, and the rule now says which.
+
+        A 7-cell window separates cells by 3.0 m along an axis, so an axis-aligned ramp needs
+        39.8 deg to span 2.5 m; 31 and 35 deg cannot. The pre-registration's "S1 must be
+        non-empty", read per ramp, was unsatisfiable by geometry before the run -- and the code's
+        first version hid it behind `>= 8`, a constant in no document.
+        """
         verdict = mod.g2_verdict(cell_m=0.5)
 
-        assert verdict.reached_s1 >= 8
+        assert verdict.permitted == 10
+        assert verdict.reached_s1 == verdict.permitted
         assert verdict.entered_s2 == 0
         assert verdict.passed
+
+    def test_the_two_ramps_geometry_forbids_are_the_shallow_axis_aligned_ones(self) -> None:
+        forbidden = [
+            (deg, diagonal)
+            for deg in mod.G2_DEGREES
+            for diagonal in (False, True)
+            if not mod.ramp_can_reach(deg, diagonal, 7, 0.5, 2.5)
+        ]
+
+        assert forbidden == [(31.0, False), (35.0, False)]
+
+    def test_a_ramp_that_should_have_fired_and_did_not_fails_g2(self) -> None:
+        """The half `>= 8` silently accepted: a regression killing one permitted ramp."""
+        assert not mod.G2Verdict(reached_s1=9, entered_s2=0, permitted=10, of_n=12).passed
 
     def test_an_instrument_that_selects_nothing_fails_g2(self) -> None:
         """The half that stops a broken instrument passing by rejecting everything."""
         verdict = mod.g2_verdict(cell_m=0.5, step_threshold_m=1000.0)
 
         assert verdict.reached_s1 == 0
+        assert verdict.permitted == 0
         assert verdict.entered_s2 == 0
         assert not verdict.passed, "empty S1 is a broken instrument, not a clean must-not-fire"
 
@@ -172,7 +227,7 @@ class TestG2:
         The state is reachable only by deleting the term -- which is a mutation, and is CAUGHT
         by the P4-window tests. What is testable here is that the verdict would refuse it.
         """
-        assert not mod.G2Verdict(reached_s1=12, entered_s2=1, of_n=12).passed
+        assert not mod.G2Verdict(reached_s1=10, entered_s2=1, permitted=10, of_n=12).passed
 
     def test_a_non_positive_threshold_is_refused_rather_than_quietly_adjusted(self) -> None:
         """The first version of this script coerced it to 1e-12 to get past the guard, which is
@@ -198,6 +253,9 @@ class TestReadCache:
             path,
             min_z_ground_asprs=np.zeros((4, 4), dtype=np.float32),
             min_z_all=np.zeros((4, 4), dtype=np.float32),
+            max_z_all=np.zeros((4, 4), dtype=np.float32),
+            n_all=np.ones((4, 4), dtype=np.int32),
+            n_ground_asprs=np.ones((4, 4), dtype=np.int32),
             n_reference_ground=np.array([[0, 1, 0, 0]] * 4, dtype=np.int32),
             provenance=json.dumps(
                 {"grid": {"origin_x": -20210.0, "origin_y": 256395.0, "cell": 0.5}}
@@ -210,6 +268,25 @@ class TestReadCache:
         assert result.pdal_ground is not None
         assert result.pdal_ground.sum() == 4
         assert (result.origin_x, result.origin_y) == (-20210.0, 256395.0)
+
+    def test_a_build_cache_from_before_the_all_returns_surface_is_refused_by_name(
+        self, tmp_path: Path
+    ) -> None:
+        """The failure mode the two-shape reader exists to remove, one version back: a cache
+        written before `min_z_all` was kept would die on a bare KeyError naming one field."""
+        path = tmp_path / "old.npz"
+        np.savez_compressed(
+            path,
+            min_z_ground=np.zeros((4, 4), dtype=np.float32),
+            n_ground=np.ones((4, 4), dtype=np.int32),
+            origin_x=-20400.0,
+            origin_y=256400.0,
+            cell=0.5,
+            crs_epsg=3763,
+        )
+
+        with pytest.raises(ValueError, match="before the all-returns surface"):
+            mod.read_cache(path)
 
     def test_a_cache_of_neither_shape_is_refused_by_name(self, tmp_path: Path) -> None:
         """A KeyError naming one field would read like a corrupt file, not the wrong cache."""
@@ -259,10 +336,77 @@ class TestExitCodes:
 
         assert mod.main(["--reference", str(cache)]) == 2
 
-    def test_a_surface_that_fails_the_predicates_exits_1(self, tmp_path: Path) -> None:
-        """A single wall far from every verified location: S1 is non-empty, so the instrument
-        is not broken, and G1 must fail."""
-        surface = np.where(np.mgrid[0:200, 0:200][1] >= 100, 2.6, 0.0).astype(np.float64)
+    def test_a_wall_far_from_every_location_fails_G1_in_frame(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The exit-1 branch that is a REFUSAL, not an unanswerable question.
+
+        The first version of this test used a 200x200 fixture, on which all five locations are
+        outside the extent -- so it exercised the not-evaluable branch and never reached
+        `failures.append("G1")` at all. The grid here spans the whole zone, so every location is
+        in frame and a wall elsewhere is a genuine miss.
+        """
+        surface = np.where(np.mgrid[0:1600, 0:1600][1] >= 800, 2.6, 0.0).astype(np.float64)
         cache = _cache(tmp_path / "wall.npz", surface)
 
         assert mod.main(["--reference", str(cache)]) == 1
+
+        out = capsys.readouterr().out
+        assert "FAIL:" in out and "in frame and not in S2" in out
+        assert "NOT EVALUABLE" not in out
+
+    def test_a_partial_extent_is_reported_as_not_evaluable(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The other exit-1 branch. Both exit 1, so the exit code cannot tell them apart -- the
+        summary line has to, or merging the two states back together survives the suite."""
+        surface = np.where(np.mgrid[0:200, 0:200][1] >= 100, 2.6, 0.0).astype(np.float64)
+        cache = _cache(tmp_path / "small.npz", surface)
+
+        assert mod.main(["--reference", str(cache)]) == 1
+
+        out = capsys.readouterr().out
+        assert "NOT EVALUABLE" in out
+        assert "Nothing was refuted" in out
+        assert "\nFAIL:" not in out, "an unanswerable question is not a refutation"
+
+    def test_a_g3_failure_is_recorded_as_one(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A location in S2 whose residual is below the S1 median.
+
+        The first version of this test asserted on the fixture instead of running the
+        instrument, so the line that records a G3 failure was still never executed and deleting
+        it still survived. Checking the fixture is not checking the branch.
+        """
+        surface = np.zeros((1600, 1600), dtype=np.float64)
+        _, cols = np.mgrid[0:1600, 0:1600]
+        # A field of sharp walls: high residuals, so the S1 median is high.
+        surface[cols % 40 >= 20] = 2.6
+        # And at each verified location, a gentler 1.0 m riser: in S2 (0.455) but below it.
+        minx, _, _, maxy = mod.ZONE
+        for _, x, y in mod.VERIFIED_STEPS:
+            r, c = int((maxy - y) / 0.5), int((x - minx) / 0.5)
+            surface[r - 12 : r + 13, c - 12 : c + 13] = 0.0
+            ramp = np.clip((np.arange(-12, 13) - (-1)) / 2.0, 0.0, 1.0) * 2.6
+            surface[r - 12 : r + 13, c - 12 : c + 13] = ramp[None, :]
+
+        median, hits = _run_predicates(surface)
+        below = [h for h in hits if h.found and h.residual < median]
+        assert below, f"the fixture must put a location below the median {median:.3f}"
+
+        assert mod.main(["--reference", str(_cache(tmp_path / "g3.npz", surface))]) == 1
+
+        out = capsys.readouterr().out
+        assert "FAIL:" in out
+        assert "G3 (" in out, "the G3 failure must reach the summary, not just the table"
+
+    def test_an_s1_with_no_computable_residual_exits_2(self, tmp_path: Path) -> None:
+        """S1 non-empty and not one residual computable is a broken instrument, like an empty S1
+        -- five G3 failures for a reason that is not the measured one would read as a result."""
+        surface = np.full((400, 400), np.nan)
+        surface[::9, ::9] = 0.0
+        surface[4::9, 4::9] = 2.6
+        cache = _cache(tmp_path / "sparse.npz", surface)
+
+        assert mod.main(["--reference", str(cache)]) == 2

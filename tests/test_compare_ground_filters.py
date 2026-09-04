@@ -666,10 +666,17 @@ class TestSharpStepPopulation:
         """The instrument's declared limitation, pinned so it cannot change in silence.
 
         `docs/riser-measurement.md` admits risers up to max_riser_width = 3.0 m. A riser spread
-        that far is exactly planar inside a 3.5 m window, so it is not in this population. The
-        last width that survives R = 0.30 m on a 0.5 m grid is 1.0 m; 1.5 m reads 0.270 and falls
-        out. The riser is 2.6 m, not 2.5: the range of a 2.5 m riser is exactly 2.5 and the
-        candidate rule is strict, so no width of it would be a candidate at all.
+        that far can be exactly planar inside a 3.5 m window, so it is not in this population.
+
+        These fixtures are **centred**, which is one sub-cell alignment out of many: swept over
+        offsets, 1.0 m is in at every one (0.389-0.484) and 1.5 m straddles R (0.270-0.341).
+        `scripts/calibrate_sharp_step.py` reports the bands; this test pins the centred readings,
+        which is what the numbers below are. Saying "the last width that survives is 1.0 m"
+        without that qualifier -- as the first version of this docstring did -- states a property
+        of an alignment as a property of the width.
+
+        The riser is 2.6 m, not 2.5: the range of a 2.5 m riser is exactly 2.5 and the candidate
+        rule is strict, so no width of it would be a candidate at all.
         """
         rows, cols = np.mgrid[0:40, 0:40]
         for width_cells, expected in ((1, True), (2, True), (3, False), (6, False)):

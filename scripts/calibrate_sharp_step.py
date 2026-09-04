@@ -48,7 +48,7 @@ def step_floor(step_m: float, window_cells: int, cell_m: float) -> float:
     _, cols = np.mgrid[0:size, 0:size]
     centre = size // 2
     residuals = []
-    for shift in np.linspace(0.0, 1.0, 11, endpoint=False):
+    for shift in BOUNDARY_OFFSETS:
         profile = np.clip(cols - (centre - 0.5 + shift), 0.0, 1.0) * step_m
         residuals.append(
             cgf.plane_residual(
@@ -61,21 +61,39 @@ def step_floor(step_m: float, window_cells: int, cell_m: float) -> float:
     return float(np.nanmin(residuals))
 
 
-def width_curve(step_m: float, window_cells: int, cell_m: float) -> list[tuple[float, float]]:
-    """Residual of a riser of `step_m` spread over 1..2*margin cells, in metres of width."""
+# The sub-cell boundary offsets both curves are swept over. A riser's edge does not fall on a
+# cell edge, and which offset it lands on moves the residual by more than the gap between two
+# widths -- so a curve computed at one offset describes an alignment, not the geometry.
+BOUNDARY_OFFSETS = np.linspace(0.0, 1.0, 11, endpoint=False)
+
+
+def width_curve(
+    step_m: float, window_cells: int, cell_m: float
+) -> list[tuple[float, float, float, float]]:
+    """Residual of a riser of `step_m` spread over 1..2*margin cells, in metres of width.
+
+    Returns `(width_m, centred, minimum, maximum)` over the sub-cell offsets. Reporting only the
+    centred value is what the first version of this did, next to a `step_floor` that swept them
+    -- two curves in one table under different assumptions, and the derived claims inherited the
+    difference: a 3.0 m riser reads 0.000 centred and up to 0.109 elsewhere, so "exactly planar"
+    is a property of an alignment, not of the width.
+    """
     size = 8 * window_cells
     _, cols = np.mgrid[0:size, 0:size]
     centre = size // 2
+    cell = np.array([[centre, centre]], dtype=np.int64)
     out = []
     for width_cells in range(1, window_cells):
-        profile = np.clip((cols - (centre - width_cells / 2)) / width_cells, 0.0, 1.0) * step_m
-        residual = cgf.plane_residual(
-            profile.astype(np.float64),
-            np.array([[centre, centre]], dtype=np.int64),
-            window_cells,
-            cell_m,
-        )[0]
-        out.append((width_cells * cell_m, float(residual)))
+        values = []
+        for shift in BOUNDARY_OFFSETS:
+            profile = (
+                np.clip((cols - (centre - width_cells / 2 + shift)) / width_cells, 0.0, 1.0)
+                * step_m
+            )
+            values.append(
+                float(cgf.plane_residual(profile.astype(np.float64), cell, window_cells, cell_m)[0])
+            )
+        out.append((width_cells * cell_m, values[0], min(values), max(values)))
     return out
 
 
@@ -139,11 +157,17 @@ def main() -> int:
     print(f"step floor at the gate height ({cgf.P4B_GATE_THRESHOLD_M:g} m): {floor:.4f} m")
     print("  the smallest residual a clean step of that height can give, over sub-cell offsets\n")
 
-    print(f"width curve, riser of {RISER_M:g} m:")
-    for width_m, residual in width_curve(RISER_M, window_cells, cell_m):
-        side = "in " if residual >= threshold else "OUT"
-        print(f"  {width_m:>4.1f} m wide   {residual:.3f} m   {side}")
-    print("  a riser spread across the window is a plane; that is the declared limitation\n")
+    print(f"width curve, riser of {RISER_M:g} m, over {len(BOUNDARY_OFFSETS)} sub-cell offsets:")
+    print(f"    {'width':>7}{'centred':>10}{'min':>9}{'max':>9}   at R = {threshold:.2f}")
+    for width_m, centred, low, high in width_curve(RISER_M, window_cells, cell_m):
+        if low >= threshold:
+            side = "in at every offset"
+        elif high < threshold:
+            side = "OUT at every offset"
+        else:
+            side = "depends on the offset"
+        print(f"  {width_m:>6.1f} m{centred:>10.3f}{low:>9.3f}{high:>9.3f}   {side}")
+    print("  a riser spread across the window can be a plane; that is the declared limitation\n")
 
     print(f"noise curve, planar ramp at {NOISE_RAMP_DEGREES:g} deg holding no step:")
     for sigma, residual in noise_curve(NOISE_RAMP_DEGREES, NOISE_SIGMAS, window_cells, cell_m):
