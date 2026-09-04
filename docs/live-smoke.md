@@ -2128,3 +2128,71 @@ the thing they did not reach.
 
 Neither the sample nor the full product moved: both re-run byte-identical in every band, same
 hashes, `known_limitations` unchanged.
+
+---
+
+## 2026-09-04 — the sharp-step population over the 800 m zone, and the P4 leg beside it
+
+The population `docs/sharp-step-preregistration.md` fixed **before this ran once**: the P4 range
+term paired with a least-squares plane residual, so that what the name claims and what the
+instrument selects are the same thing. Threshold `R = 0.30 m`, derived on synthetic geometry in
+`scripts/calibrate_sharp_step.py` and committed two commits before any real data was read.
+
+**Command:**
+
+    PYTHONPATH=src .venv/bin/python scripts/measure_risers.py build \
+        --aoi aoi/aoi.geojson --laz ~/data/dgt-laz-sistelo \
+        --cache ~/data/microrelief-cache/zone-z-surface.npz
+    PYTHONPATH=src .venv/bin/python scripts/measure_sharp_step.py \
+        --reference ~/data/microrelief-cache/zone-z-surface.npz
+
+**Output** (exit 0):
+
+    zone (-20400.0, 255600.0, -19600.0, 256400.0), 1600x1600 cells at 0.5 m
+      observed cells: 1,291,705
+      S1  step > 2.5 m                      307,381
+      S2  and residual >= 0.30 m             173,784
+      removed                                133,597  (43.5%)
+
+    what was removed, of S1's 307,381 cells:
+      near-planar   residual <  0.10 m       7,044
+      intermediate  0.10 <= r < 0.30 m     123,415
+      no residual   under 4 observed cells       3,138
+      (residual computable for 304,243 of 307,381)
+
+    residual percentiles over S1:
+      p10  0.141 m   p25  0.201 m   p50  0.349 m   p75  0.544 m   p90  0.695 m
+
+    retention (reported, gates nothing -- see the building caveat):
+      S1  SMRF 78.8%
+      S2  SMRF 83.7%
+
+    G1 must-fire   5 of 5 supported real steps in S2, lowest residual 0.783 m
+    G2 must-not-fire   10 of 12 planar ramps reached S1, 0 entered S2
+    G3 separation  5 of 5 above the S1 median of 0.349 m
+    PASS
+
+**43.5% of the P4-shaped population is not a sharp step**, and the bulk of it is not the
+ramp-like tail: near-planar cells are 7,044, while the intermediate band between 0.10 and 0.30 m
+holds 123,415. What those are is not measured here.
+
+**The retention went the opposite way to the pre-registration's own caveat.** That caveat exists
+to stop a *lower* retention on `S2` being read as SMRF failing — Zone Z holds the village core and
+`S2` is enriched in built edges. Measured: `S2` is retained 4.9 points *more*. It gates nothing,
+which is the only reason a wrong anticipation costs nothing here.
+
+**The P4-window leg, explicitly not blind**, with PDAL 2.10.2 (git-version: e8618b) — the version
+`docs/p4-terrace-result.md` names, installed from conda-forge:
+
+    P4 gate population (measured basis)   7,625 cells    SMRF 95.1%    PDAL 95.1%
+    pre-registered S1 (no basis term)     9,525 cells    SMRF 76.7%    PDAL 76.7%
+
+The first line returns all three published figures, so the implementation reproduces the record.
+The second is the finding: **`S1` as pre-registered is not P4's population.** The whole
+1,900-cell difference is P4's measured-basis restriction, verified by adding only that term with
+everything else fixed and recovering 7,625 and 95.1% exactly. It is worth 18.4 points of
+retention, so Zone Z's 78.8% and 83.7% are **not** comparable with the band table.
+
+G1 and G3 are not evaluable on a 150 m frame — four of the five verified steps lie outside it.
+The instrument's first version reported them as `FAIL`, which is a refusal with a false reason;
+it now reports `n/a — outside this cache's extent` and declares G1 not evaluable.
