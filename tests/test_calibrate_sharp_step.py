@@ -9,6 +9,7 @@ window is a plane and must read zero; noise of a known scale must be reported at
 scale -- rather than against the numbers the script happens to print.
 """
 
+import functools
 import importlib.util
 import sys
 from pathlib import Path
@@ -52,7 +53,10 @@ class TestWidthCurve:
     CENTRED = {0.5: 0.455, 1.0: 0.455, 1.5: 0.270, 2.0: 0.208, 2.5: 0.083, 3.0: 0.000}
 
     @staticmethod
+    @functools.cache
     def _curve() -> dict[float, tuple[float, float, float, int]]:
+        """Cached: the sweep is 46 orientations x 400 phases and costs 20 s, and seven tests here
+        call it with identical arguments. Uncached, this file took 148 s for no extra coverage."""
         return {
             w: (c, lo, hi, n)
             for w, c, lo, hi, n in mod.width_curve(2.6, window_cells=7, cell_m=0.5)
@@ -128,6 +132,20 @@ class TestWidthCurve:
         centred = [c for _, c, _, _, _ in mod.width_curve(2.6, window_cells=7, cell_m=0.5)]
 
         assert centred == sorted(centred, reverse=True)
+
+    def test_the_published_candidate_shares_are_pinned(self) -> None:
+        """The grid-invariant half of the `sampled` column, which the record publishes.
+
+        The raw count is a property of `WIDTH_PHASES` x `WIDTH_ORIENTATIONS`; the share is not.
+        Pinned because a document quotes it -- and because the first hand-check of these figures
+        used 800 phases where there are 400, and would have published shares half their size.
+        """
+        swept = len(mod.WIDTH_PHASES) * len(mod.WIDTH_ORIENTATIONS)
+        expected = {0.5: 83.8, 1.0: 72.3, 1.5: 60.8, 2.0: 49.2, 2.5: 37.7, 3.0: 26.2}
+        curve = self._curve()
+
+        for width, share in expected.items():
+            assert 100.0 * curve[width][3] / swept == pytest.approx(share, abs=0.05), width
 
     def test_only_candidate_positions_are_counted(self) -> None:
         """The restriction that makes the band a statement about the population.

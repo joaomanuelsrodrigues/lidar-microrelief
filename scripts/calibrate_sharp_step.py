@@ -208,7 +208,11 @@ def main() -> int:
         f"{len(WIDTH_ORIENTATIONS)} orientations, {WIDTH_ORIENTATIONS[0]:g}-"
         f"{WIDTH_ORIENTATIONS[-1]:g} deg):"
     )
-    header = f"    {'width':>7}{'centred':>10}{'min':>9}{'max':>9}{'positions':>12}"
+    # The raw count is a property of the grid -- it nearly doubles at 0.5-degree steps while
+    # every band edge is unchanged to five decimals -- so the grid-invariant share is printed
+    # beside it and the count is labelled `sampled` rather than left to read as geometry.
+    swept = len(WIDTH_PHASES) * len(WIDTH_ORIENTATIONS)
+    header = f"    {'width':>7}{'centred':>10}{'min':>9}{'max':>9}{'sampled':>10}{'candidate':>12}"
     print(f"{header}   at R = {threshold:.2f}")
     for width_m, centred, low, high, n in width_curve(RISER_M, window_cells, cell_m):
         if low >= threshold:
@@ -217,7 +221,10 @@ def main() -> int:
             side = "OUT at every position"
         else:
             side = f"straddles R (max is {high - threshold:+.4f} m from it)"
-        print(f"  {width_m:>6.1f} m{centred:>10.3f}{low:>9.3f}{high:>9.3f}{n:>12d}   {side}")
+        print(
+            f"  {width_m:>6.1f} m{centred:>10.3f}{low:>9.3f}{high:>9.3f}"
+            f"{n:>10d}{100.0 * n / swept:>11.1f}%   {side}"
+        )
     print("  a riser spread across the window can be a plane; that is the declared limitation\n")
 
     print(f"noise curve, planar ramp at {NOISE_RAMP_DEGREES:g} deg holding no step:")

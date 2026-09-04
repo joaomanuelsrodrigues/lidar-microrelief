@@ -199,8 +199,9 @@ class TestG1:
 
         The first version asserted only that the truncated string was absent from a run where no
         location has its centre in frame -- which deleting the branch satisfies. The second
-        fixture is 537 columns wide: the first verified step sits at column 534, so its centre is
-        in frame and its four-cell disc is not.
+        fixture is 538 columns wide -- SMRF needs whole 2x2 blocks, so not the 537 an earlier
+        draft of this sentence claimed -- and the first verified step sits at column 534, so its
+        centre is in frame and its four-cell disc, reaching 538, is not.
         """
         far = np.where(np.mgrid[0:200, 0:200][1] >= 100, 2.6, 0.0).astype(np.float64)
         mod.main(["--reference", str(_cache(tmp_path / "small.npz", far))])
@@ -216,8 +217,10 @@ class TestG1:
         out = capsys.readouterr().out
 
         # Both blocks print it -- G1's table and G3's -- so counting is what catches a fix that
-        # reaches one of them. Asserting mere presence let a mutation of the G1 branch survive.
-        assert out.count("neighbourhood truncated at the frame edge") >= 2, out[-900:]
+        # reaches one of them. Asserting mere presence let a mutation of the G1 branch survive;
+        # `>= 2` would let it survive again if the fixture ever admitted a second truncated
+        # location, so the count is exact and the fixture is built to hold exactly one.
+        assert out.count("neighbourhood truncated at the frame edge") == 2, out[-900:]
 
     def test_every_location_is_inside_the_full_zone(self) -> None:
         """The complement: over Zone Z's own extent nothing is out of frame, so a FAIL there is
@@ -375,7 +378,13 @@ class TestTheInstrumentMeasuresTheFilterThatShips:
             f"SMRF at 18*cell and republish retention for a filter nobody runs"
         )
         assert mod.SMRF_REFERENCE.window is None
-        assert mod.SMRF_REFERENCE.cut == 0.0, "the shipped CLI declares no cut and PDAL's is 0"
+        # Against the sibling, not against a literal: `SMRF_REFERENCE` is `SmrfParams()`, so
+        # comparing its `cut` to 0.0 is the dataclass being its own control -- the pattern this
+        # class exists to reject, surviving one field over.
+        assert "--smrf-cut" not in sibling, (
+            "the shipped CLI now declares a cut; this script would run SMRF without it"
+        )
+        assert mod.SMRF_REFERENCE.cut == 0.0
         assert "SmrfParams(cell=" not in SCRIPT.read_text()
 
 
@@ -528,12 +537,17 @@ class TestExitCodes:
 
         assert mod.main(["--reference", str(cache)]) == 1
 
-        summary = _summary(capsys.readouterr().out)
+        out = capsys.readouterr().out
+        summary = _summary(out)
 
         assert summary.startswith("NOT EVALUABLE:"), summary
         assert "G1 and G3" in summary, "G3 is unevaluated at the same locations and must be named"
         assert "Nothing there was refuted" in summary
-        assert not summary.startswith("FAIL"), "an unanswerable question is not a refutation"
+        # Over the WHOLE output, not the summary: `main` prints FAIL before NOT EVALUABLE, so
+        # `_summary` returns the latter whenever anything is unanswerable and a startswith check
+        # on it is implied by the assertion three lines above. The round-4 rewrite of this test
+        # replaced the scan with that tautology and unlocked the property it was named for.
+        assert "\nFAIL:" not in out, "an unanswerable question is not a refutation"
 
     def test_a_g3_failure_is_recorded_as_one(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]

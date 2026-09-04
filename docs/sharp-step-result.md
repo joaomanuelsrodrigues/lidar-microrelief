@@ -150,18 +150,25 @@ terrace riser is in frame, and it passes both: in `S2` at (151, 154), residual 0
   positions where the centre cell is a candidate**, since a position whose window range falls
   under 2.5 m is not in the population and its residual is evidence about nothing:
 
-        width    centred      min      max   positions   at R = 0.30
-        0.5 m      0.455    0.339    0.719     15422     in at every position
-        1.0 m      0.455    0.388    0.587     13298     in at every position
-        1.5 m      0.270    0.270    0.457     11180     straddles R
-        2.0 m      0.208    0.190    0.376      9056     straddles R
-        2.5 m      0.083    0.083    0.289      6936     OUT at every position
-        3.0 m      0.000    0.000    0.190      4818     OUT at every position
+        width    centred      min      max   sampled   candidate   at R = 0.30
+        0.5 m      0.455    0.339    0.719     15422       83.8%     in at every position
+        1.0 m      0.455    0.388    0.587     13298       72.3%     in at every position
+        1.5 m      0.270    0.270    0.457     11180       60.8%     straddles R
+        2.0 m      0.208    0.190    0.376      9056       49.2%     straddles R
+        2.5 m      0.083    0.083    0.289      6936       37.7%     OUT at every position
+        3.0 m      0.000    0.000    0.190      4818       26.2%     OUT at every position
+
+  The `sampled` count is a property of the grid, not of the geometry — at 0.5° steps it nearly
+  doubles while every band edge is unchanged to five decimals. The **share** of swept positions
+  that are candidates is the grid-invariant quantity, so both are printed and the raw count is
+  labelled for what it is.
 
   So "a 3.0 m riser is **exactly** planar" and "the last width that survives is 1.0 m" are
   properties of the centred position, not of the width. The defensible statement is the table:
   **up to 1.0 m a riser is in wherever it sits; 1.5 m and 2.0 m straddle `R`; 2.5 m and wider are
-  out wherever they sit** — the last of those by **0.011 m**.
+  out wherever they sit** — the **2.5 m row** clearing `R` by **0.011 m**, the narrowest true
+  margin on the table. (Not to be read together with the noise curve's 0.011 m clearance
+  elsewhere in this document: two different quantities that happen to round the same.)
 
   **The orientation grid is a sampling too**, and four samples fifteen degrees apart put an
   artefact in the third decimal: they reported 0.340 where one-degree steps give 0.339, and a
