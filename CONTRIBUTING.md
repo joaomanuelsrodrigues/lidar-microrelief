@@ -32,10 +32,13 @@ These are the process rules this repository holds to. They are not the science: 
    diverge from the runner in silence), and report each exit code separately, because `&&` hides
    which step failed. Where a check's silence is its pass condition, prove it can still fail: a
    check that scanned nothing exits 0 exactly like a check that found nothing.
-8. **No private identifiers in tracked text.** Working notes from wherever a change was drafted
-   stay out of the repository: no session numbers, no internal task or finding identifiers, no
-   references to a plan step. `tests/test_no_private_ids.py` enforces this over every tracked text
-   file, and `docs/judge/` is exempt because those files quote a reviewer verbatim.
+8. **No private identifiers in the live files.** Working notes from wherever a change was drafted
+   stay out of the files a reader acts on: no session numbers, no internal task, finding or
+   experiment identifiers, no `Task <n>` or `Session <n>` plan references.
+   `tests/test_no_private_ids.py` enforces this over every tracked text file **outside `docs/`**.
+   `docs/` is exempt in full because it is the record store: the dated records there are annotated
+   rather than rewritten, some of them quote a reviewer verbatim, and `docs/judge/README.md` is the
+   legend that names these shapes on purpose.
 
 ## Where things live
 
