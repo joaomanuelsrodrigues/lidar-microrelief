@@ -216,11 +216,18 @@ class TestG1:
         mod.main(["--reference", str(_cache(tmp_path / "edge.npz", edge))])
         out = capsys.readouterr().out
 
-        # Both blocks print it -- G1's table and G3's -- so counting is what catches a fix that
-        # reaches one of them. Asserting mere presence let a mutation of the G1 branch survive;
-        # `>= 2` would let it survive again if the fixture ever admitted a second truncated
-        # location, so the count is exact and the fixture is built to hold exactly one.
-        assert out.count("neighbourhood truncated at the frame edge") == 2, out[-900:]
+        # Both blocks print it -- G1's table and G3's -- so the count is two per truncated
+        # location. Derived from the fixture, not written down: a literal `2` passes on a fixture
+        # holding two truncated locations with one of the two branches deleted, which is the same
+        # hole `>= 2` was rejected for, one step along.
+        minx, _, _, maxy = mod.ZONE
+        truncated = sum(
+            h.centre_inside and not h.inside
+            for h in mod.g1_hits(np.zeros(edge.shape, dtype=bool), minx, maxy, 0.5)
+        )
+
+        assert truncated == 1, "this fixture is built to truncate exactly one location"
+        assert out.count("neighbourhood truncated at the frame edge") == 2 * truncated, out[-900:]
 
     def test_every_location_is_inside_the_full_zone(self) -> None:
         """The complement: over Zone Z's own extent nothing is out of frame, so a FAIL there is
@@ -378,13 +385,13 @@ class TestTheInstrumentMeasuresTheFilterThatShips:
             f"SMRF at 18*cell and republish retention for a filter nobody runs"
         )
         assert mod.SMRF_REFERENCE.window is None
-        # Against the sibling, not against a literal: `SMRF_REFERENCE` is `SmrfParams()`, so
-        # comparing its `cut` to 0.0 is the dataclass being its own control -- the pattern this
-        # class exists to reject, surviving one field over.
-        assert "--smrf-cut" not in sibling, (
-            "the shipped CLI now declares a cut; this script would run SMRF without it"
+        # `cut` is not a CLI flag, so a string search for one guards nothing and false-fires on
+        # a comment. The route that can actually diverge is an explicit `cut=` in the sibling's
+        # own `SmrfParams(...)` constructions, which this script does not mirror.
+        assert "cut=" not in sibling, (
+            "the sibling now passes an explicit cut; this script's SmrfParams() would not"
         )
-        assert mod.SMRF_REFERENCE.cut == 0.0
+        assert mod.SMRF_REFERENCE.cut == 0.0, "and the dataclass default is still PDAL's 0"
         assert "SmrfParams(cell=" not in SCRIPT.read_text()
 
 

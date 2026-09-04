@@ -208,11 +208,20 @@ def main() -> int:
         f"{len(WIDTH_ORIENTATIONS)} orientations, {WIDTH_ORIENTATIONS[0]:g}-"
         f"{WIDTH_ORIENTATIONS[-1]:g} deg):"
     )
-    # The raw count is a property of the grid -- it nearly doubles at 0.5-degree steps while
-    # every band edge is unchanged to five decimals -- so the grid-invariant share is printed
-    # beside it and the count is labelled `sampled` rather than left to read as geometry.
+    # The candidate count is a property of the grid -- it nearly doubles at 0.5-degree steps
+    # while every band edge is unchanged to six decimals -- so the swept total is printed above
+    # the table and the share beside each count. The share is NOT grid-invariant either: it moves
+    # 0.03-0.08 percentage points between the 1 and 0.5 degree grids, which is enough to change
+    # the last digit of two of the six. Only the band edges are invariant, and only they are
+    # cited as such.
     swept = len(WIDTH_PHASES) * len(WIDTH_ORIENTATIONS)
-    header = f"    {'width':>7}{'centred':>10}{'min':>9}{'max':>9}{'sampled':>10}{'candidate':>12}"
+    header = (
+        f"    {'width':>7}{'centred':>10}{'min':>9}{'max':>9}{'candidates':>13}{'of swept':>11}"
+    )
+    print(
+        f"  positions swept per width: {swept:,d}  "
+        f"({len(WIDTH_PHASES)} phases x {len(WIDTH_ORIENTATIONS)} orientations)"
+    )
     print(f"{header}   at R = {threshold:.2f}")
     for width_m, centred, low, high, n in width_curve(RISER_M, window_cells, cell_m):
         if low >= threshold:
@@ -223,7 +232,7 @@ def main() -> int:
             side = f"straddles R (max is {high - threshold:+.4f} m from it)"
         print(
             f"  {width_m:>6.1f} m{centred:>10.3f}{low:>9.3f}{high:>9.3f}"
-            f"{n:>10d}{100.0 * n / swept:>11.1f}%   {side}"
+            f"{n:>13,d}{100.0 * n / swept:>10.1f}%   {side}"
         )
     print("  a riser spread across the window can be a plane; that is the declared limitation\n")
 

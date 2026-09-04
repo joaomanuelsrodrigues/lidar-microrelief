@@ -55,8 +55,14 @@ class TestWidthCurve:
     @staticmethod
     @functools.cache
     def _curve() -> dict[float, tuple[float, float, float, int]]:
-        """Cached: the sweep is 46 orientations x 400 phases and costs 20 s, and seven tests here
-        call it with identical arguments. Uncached, this file took 148 s for no extra coverage."""
+        """Cached: the sweep is 46 orientations x 400 phases and costs 20 s, and every test in
+        this class needs it with identical arguments.
+
+        Uncached the file took 148 s. The first version of this cache still left two call sites
+        going direct -- they had the same arguments and did not go through the helper -- so the
+        file measured 59 s, not the 21 s the commit body published. Counting the callers is the
+        check; measuring the file is the control.
+        """
         return {
             w: (c, lo, hi, n)
             for w, c, lo, hi, n in mod.width_curve(2.6, window_cells=7, cell_m=0.5)
@@ -129,23 +135,54 @@ class TestWidthCurve:
         assert r - curve[2.5][2] == pytest.approx(0.011, abs=5e-4)
 
     def test_the_centred_curve_falls_monotonically(self) -> None:
-        centred = [c for _, c, _, _, _ in mod.width_curve(2.6, window_cells=7, cell_m=0.5)]
+        centred = [row[0] for row in self._curve().values()]
 
         assert centred == sorted(centred, reverse=True)
 
     def test_the_published_candidate_shares_are_pinned(self) -> None:
         """The grid-invariant half of the `sampled` column, which the record publishes.
 
-        The raw count is a property of `WIDTH_PHASES` x `WIDTH_ORIENTATIONS`; the share is not.
-        Pinned because a document quotes it -- and because the first hand-check of these figures
-        used 800 phases where there are 400, and would have published shares half their size.
+        The count is a property of `WIDTH_PHASES` x `WIDTH_ORIENTATIONS`. The share is much less
+        so, but it is **not** invariant either: measured between the 1 and 0.5 degree grids it
+        moves 0.03-0.08 percentage points, enough to change the last published digit of two of
+        the six (83.8 -> 83.9, 49.2 -> 49.3). So the tolerance here is 0.15 pp -- wider than that
+        drift -- and this test is not evidence of invariance. Only the band edges are invariant,
+        and `test_the_band_edges_are_invariant_under_the_grid` is where that is asserted.
+
+        Pinned at all because a document quotes these figures, and because the first hand-check
+        of them used 800 phases where there are 400 and would have published half their size.
         """
         swept = len(mod.WIDTH_PHASES) * len(mod.WIDTH_ORIENTATIONS)
         expected = {0.5: 83.8, 1.0: 72.3, 1.5: 60.8, 2.0: 49.2, 2.5: 37.7, 3.0: 26.2}
         curve = self._curve()
 
         for width, share in expected.items():
-            assert 100.0 * curve[width][3] / swept == pytest.approx(share, abs=0.05), width
+            assert 100.0 * curve[width][3] / swept == pytest.approx(share, abs=0.15), width
+
+    def test_the_band_edges_are_invariant_under_the_grid(self) -> None:
+        """The claim the record actually rests on, measured rather than asserted.
+
+        Refining the orientation grid from 1 degree to 0.5 (46 -> 91 orientations, 18,400 ->
+        36,400 positions swept) leaves every band edge identical. The candidate counts nearly
+        double and the shares move in their last published digit; the edges do not move at all.
+        That is what makes the published table a statement about geometry.
+        """
+        import numpy as np
+
+        coarse = self._curve()
+        original = mod.WIDTH_ORIENTATIONS
+        try:
+            mod.WIDTH_ORIENTATIONS = tuple(float(d) for d in np.arange(0.0, 45.0001, 0.5))
+            fine = {w: (c, lo, hi, n) for w, c, lo, hi, n in mod.width_curve(2.6, 7, 0.5)}
+        finally:
+            mod.WIDTH_ORIENTATIONS = original
+        assert original == mod.WIDTH_ORIENTATIONS, "the grid must be restored"
+
+        assert len(fine) == len(coarse)
+        for width, (_, low, high, count) in coarse.items():
+            assert fine[width][1] == pytest.approx(low, abs=1e-6), f"min at {width}"
+            assert fine[width][2] == pytest.approx(high, abs=1e-6), f"max at {width}"
+            assert fine[width][3] > 1.9 * count, "the counts, meanwhile, nearly double"
 
     def test_only_candidate_positions_are_counted(self) -> None:
         """The restriction that makes the band a statement about the population.
@@ -155,12 +192,36 @@ class TestWidthCurve:
         population can hold, so the phase count must shrink as the riser widens and every
         counted position must be a candidate.
         """
-        rows = mod.width_curve(2.6, window_cells=7, cell_m=0.5)
-        phases = [n for _, _, _, _, n in rows]
+        phases = [row[3] for row in self._curve().values()]
 
         assert phases == sorted(phases, reverse=True)
         assert all(n > 0 for n in phases)
         assert phases[-1] < phases[0] / 2, "a 3.0 m riser is a candidate far less often"
+
+
+class TestTheRecordQuotesTheInstrument:
+    """The third copy of these figures, and the one nothing was checking.
+
+    They live in `main`'s output, in this file's literals, and in the prose of
+    `docs/sharp-step-result.md`. Only the first two were coupled: change the sweep, this file
+    goes red, `expected` gets updated, and the record stays stale and green.
+    """
+
+    RECORD = ROOT / "docs" / "sharp-step-result.md"
+
+    def test_every_row_of_the_published_table_is_what_the_script_computes(self) -> None:
+        published = self.RECORD.read_text()
+        rows = mod.width_curve(2.6, window_cells=7, cell_m=0.5)
+        swept = len(mod.WIDTH_PHASES) * len(mod.WIDTH_ORIENTATIONS)
+        assert rows, "the sweep produced nothing to check the record against"
+
+        for width_m, centred, low, high, count in rows:
+            share = 100.0 * count / swept
+            expected = (
+                f"{width_m:.1f} m      {centred:.3f}    {low:.3f}    {high:.3f}"
+                f"     {count:>5d}       {share:.1f}%"
+            )
+            assert expected in published, f"row {width_m} m is not in the record as:\n{expected}"
 
 
 class TestNoiseCurve:

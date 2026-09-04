@@ -150,7 +150,7 @@ terrace riser is in frame, and it passes both: in `S2` at (151, 154), residual 0
   positions where the centre cell is a candidate**, since a position whose window range falls
   under 2.5 m is not in the population and its residual is evidence about nothing:
 
-        width    centred      min      max   sampled   candidate   at R = 0.30
+        width    centred      min      max   candidates   of 18,400   at R = 0.30
         0.5 m      0.455    0.339    0.719     15422       83.8%     in at every position
         1.0 m      0.455    0.388    0.587     13298       72.3%     in at every position
         1.5 m      0.270    0.270    0.457     11180       60.8%     straddles R
@@ -158,10 +158,13 @@ terrace riser is in frame, and it passes both: in `S2` at (151, 154), residual 0
         2.5 m      0.083    0.083    0.289      6936       37.7%     OUT at every position
         3.0 m      0.000    0.000    0.190      4818       26.2%     OUT at every position
 
-  The `sampled` count is a property of the grid, not of the geometry — at 0.5° steps it nearly
-  doubles while every band edge is unchanged to five decimals. The **share** of swept positions
-  that are candidates is the grid-invariant quantity, so both are printed and the raw count is
-  labelled for what it is.
+  **The band edges are the grid-invariant quantities, and only they.** Refining the orientation
+  grid to 0.5° (91 orientations, 36,400 positions swept) leaves every `min` and `max` above
+  identical to six decimals, while the candidate counts nearly double. The **share** is far less
+  grid-sensitive than the count but is *not* invariant either: it moves 0.03–0.08 percentage
+  points, which changes the last published digit of two of the six rows (83.8 → 83.9,
+  49.2 → 49.3). An earlier version of this paragraph called the share grid-invariant — asserted,
+  not measured, in the sentence correcting a count that had been published as geometry.
 
   So "a 3.0 m riser is **exactly** planar" and "the last width that survives is 1.0 m" are
   properties of the centred position, not of the width. The defensible statement is the table:
