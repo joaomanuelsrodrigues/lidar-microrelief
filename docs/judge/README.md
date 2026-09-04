@@ -14,15 +14,14 @@ the fact. `T-xxx` is the author's task-ledger ID for the change being judged. Ne
 anything in this repository; both are left as written here because these files are the judge's
 own words at a fixed commit, and quoting a third party means quoting them unedited.
 
-Four more identifier shapes appear in these verdicts, and none of them resolves to anything in
+Three more identifier shapes appear in these verdicts, and none of them resolves to anything in
 this repository either. They are the author's private working vocabulary, listed so a reader can
 skip them rather than hunt for a definition:
 
 | shape | what it was | example |
 |---|---|---|
-| `§A`_n_ | a class in the author's ledger of past failures, cited as the reason for a guard | `§A1`, `§A6` |
-| `Task `_n_ | a step of the author's written plan for this repository | `Task 9` |
-| `F-0`_nn_ | a numbered finding in the author's method notes | `F-047`, `F-050` |
+| `§A`_n_ | a class in the author's ledger of past failures, cited as the reason for a guard | `§A1`, `§A9` |
+| `Task `_n_ | a step of the author's written plan for this repository | `Task 3` |
 | `E-00`_n_ | a numbered experiment in the same notes | `E-006` |
 
 Everywhere else — the README, `SITE.md`, `CALIBRATIONS.md`, the records under `docs/`, the source

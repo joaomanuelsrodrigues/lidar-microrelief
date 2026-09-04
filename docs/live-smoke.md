@@ -1013,7 +1013,8 @@ judged** (the summary now says `e-mail-shaped bytes in 1 of them not judged`: th
 measured earlier, visible instead of silent); the self-test and the pytest scratch repositories
 run under `GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1` with every `GIT_*` variable unset;
 the working-tree `.env` check is gone (the tracked one stays: `.gitignore`'s `.env*` is where a
-local one is provisioned to live), and `AGENTS.md` rule 5 says "tracked". The CI-mirror test
+local one is provisioned to live), and rule 5 of the contributor guide (`CONTRIBUTING.md`, then
+`AGENTS.md`) says "tracked". The CI-mirror test
 parses `ci.yml` with PyYAML (dev extra) after three hand-rolled line readers each missed a form
 the next review found. On this tree, 0.7 s:
 
@@ -1309,7 +1310,8 @@ Two of the six findings were the kind only a different instrument sees.
 **`uv.lock` was never regenerated for 0.4.1**, so `uv lock --check` reported drift and CI's
 **first** step — `uv sync --locked` — would have refused, making every later gate unreachable.
 Every gate above had been run locally *without* that step, so the whole set was green over a
-build CI cannot produce. `AGENTS.md` states this exact failure mode, and
+build CI cannot produce. The contributor guide (`CONTRIBUTING.md`, then `AGENTS.md`) states this
+exact failure mode, and
 `test_the_human_facing_version_copies_agree_with_the_package` enumerated the version's copies as
 `CITATION.cff` + `SKILL.md` — not the one CI actually gates on. `uv.lock` is now in that
 enumeration, and a mutation setting it back to 0.4.0 turns the test red.
