@@ -25,6 +25,10 @@ from typing import Any
 import numpy as np
 from numpy.typing import NDArray
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
+from microrelief.smrf import SmrfParams, classify_ground_smrf  # noqa: E402
+
 
 def _sibling(name: str) -> Any:
     spec = importlib.util.spec_from_file_location(
@@ -156,6 +160,20 @@ def g3_exceeds_median(value: float, residual: NDArray[np.float64], s1: NDArray[n
     return bool(value > median)
 
 
+def retention(keep: NDArray[np.bool_], population: NDArray[np.bool_]) -> float:
+    """Share of `population` the ground filter retains, as a percentage.
+
+    Reported, never gated. Zone Z holds the village core and SMRF exists to cut buildings, so a
+    lower retention on `S2` than on `S1` is SMRF working -- `S2` is enriched in exactly the sharp
+    built edges it is meant to remove. `nan` on an empty population rather than a division: no
+    number is the honest report when there is nothing to report on.
+    """
+    n = int(population.sum())
+    if n == 0:
+        return float("nan")
+    return 100.0 * float((keep & population).sum()) / n
+
+
 def _crop(array: NDArray[Any], origin_x: float, origin_y: float, cell_m: float) -> NDArray[Any]:
     zminx, zminy, zmaxx, zmaxy = ZONE
     col0, col1 = int((zminx - origin_x) / cell_m), int((zmaxx - origin_x) / cell_m)
@@ -204,6 +222,15 @@ def main(argv: list[str] | None = None) -> int:
     print("\nresidual percentiles over S1:")
     for q in (10, 25, 50, 75, 90):
         print(f"  p{q:<3d} {np.nanpercentile(values[usable], q):.3f} m")
+
+    smrf = classify_ground_smrf(
+        _crop(arrays["min_z_all"].astype(np.float64), origin_x, origin_y, cell_m),
+        cell_m,
+        SmrfParams(cell=1.0, slope=0.15, scalar=1.25, threshold=0.5, window=None),
+    )
+    print("\nSMRF retention (reported, gates nothing -- see the building caveat):")
+    for label, mask in (("S1", s1), ("S2", s2)):
+        print(f"  {label}  {retention(smrf, mask):.1f}%")
 
     failures = []
 

@@ -158,6 +158,27 @@ class TestG2:
             mod.g2_verdict(cell_m=0.5, residual_min_m=0.0)
 
 
+class TestRetention:
+    def test_retention_is_the_share_of_the_population_the_filter_keeps(self) -> None:
+        keep = np.array([[True, True, False, True]])
+        population = np.array([[True, True, True, False]])
+
+        assert mod.retention(keep, population) == pytest.approx(200.0 / 3.0)
+
+    def test_an_empty_population_reports_no_number_rather_than_dividing(self) -> None:
+        keep = np.ones((2, 2), dtype=bool)
+
+        assert np.isnan(mod.retention(keep, np.zeros((2, 2), dtype=bool)))
+
+    def test_cells_outside_the_population_do_not_count(self) -> None:
+        """A retention computed over the whole grid would report the filter's global behaviour
+        and call it the population's."""
+        keep = np.array([[False, True, True, True]])
+        population = np.array([[True, False, False, False]])
+
+        assert mod.retention(keep, population) == pytest.approx(0.0)
+
+
 class TestG3:
     def test_g3_compares_against_the_median_and_can_fail(self) -> None:
         residual = np.full((10, 10), np.nan)
