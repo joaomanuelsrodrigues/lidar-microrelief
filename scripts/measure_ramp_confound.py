@@ -47,26 +47,6 @@ _SPEC.loader.exec_module(cgf)
 RESIDUAL_BANDS_M = (0.10, 0.20, 0.30, 0.50)
 
 
-def plane_residual(
-    surface: NDArray[np.float64], cells: NDArray[np.int64], window_cells: int, cell_m: float
-) -> NDArray[np.float64]:
-    """RMS residual from a least-squares plane over the observed cells of each cell's window."""
-    margin = window_cells // 2
-    dy, dx = np.mgrid[-margin : margin + 1, -margin : margin + 1]
-    dy = dy.ravel() * cell_m
-    dx = dx.ravel() * cell_m
-    out = np.full(len(cells), np.nan)
-    for i, (row, col) in enumerate(cells):
-        window = surface[row - margin : row + margin + 1, col - margin : col + margin + 1].ravel()
-        seen = np.isfinite(window)
-        if int(seen.sum()) < 4:  # a plane has three parameters; four points to have a residual
-            continue
-        design = np.column_stack([dx[seen], dy[seen], np.ones(int(seen.sum()))])
-        coefficients, *_ = np.linalg.lstsq(design, window[seen], rcond=None)
-        out[i] = float(np.sqrt(np.mean((design @ coefficients - window[seen]) ** 2)))
-    return out
-
-
 def synthetic_ramp(degrees: float, cell_m: float, diagonal: bool) -> NDArray[np.float64]:
     """A planar surface holding no step, falling either along an axis or across the diagonal."""
     gradient = np.tan(np.radians(degrees))
@@ -88,7 +68,7 @@ def _calibrate(window_cells: int, cell_m: float) -> None:
         if not len(cells):
             print(f"  {name:<32} no cells over the gate threshold")
             continue
-        residual = plane_residual(surface, cells, window_cells, cell_m)
+        residual = cgf.plane_residual(surface, cells, window_cells, cell_m)
         print(
             f"  {name:<32} n={len(cells):>6,d}  "
             f"median plane residual {np.nanmedian(residual):.3f} m"
@@ -151,7 +131,7 @@ def main(argv: list[str] | None = None) -> int:
     gate = measured & defined & (step > cgf.P4B_GATE_THRESHOLD_M)
     cells = np.argwhere(gate)
     print(f"\nreal gate population at > {cgf.P4B_GATE_THRESHOLD_M:g} m: {len(cells):,d} cells")
-    residual = plane_residual(surface, cells, window, cell_m)
+    residual = cgf.plane_residual(surface, cells, window, cell_m)
     usable = np.isfinite(residual)
     print(f"  plane residual computable for {int(usable.sum()):,d}")
     for q in (10, 25, 50, 75, 90):

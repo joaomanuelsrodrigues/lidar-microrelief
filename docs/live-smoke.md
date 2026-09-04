@@ -2128,3 +2128,156 @@ the thing they did not reach.
 
 Neither the sample nor the full product moved: both re-run byte-identical in every band, same
 hashes, `known_limitations` unchanged.
+
+---
+
+## 2026-09-04 — the sharp-step population over the 800 m zone, and the P4 leg beside it
+
+The population `docs/sharp-step-preregistration.md` fixed **before this ran once**: the P4 range
+term paired with a least-squares plane residual, so that what the name claims and what the
+instrument selects are the same thing. Threshold `R = 0.30 m`, derived on synthetic geometry in
+`scripts/calibrate_sharp_step.py` and committed two commits before any real data was read.
+
+**Command:**
+
+    PYTHONPATH=src .venv/bin/python scripts/measure_risers.py build \
+        --aoi aoi/aoi.geojson --laz ~/data/dgt-laz-sistelo \
+        --cache ~/data/microrelief-cache/zone-z-surface.npz
+    PYTHONPATH=src .venv/bin/python scripts/measure_sharp_step.py \
+        --reference ~/data/microrelief-cache/zone-z-surface.npz
+
+**Output, verbatim** (exit 0):
+
+    cache: measure_risers build
+    zone (-20400.0, 255600.0, -19600.0, 256400.0), 1600x1600 cells at 0.5 m
+      observed cells: 1,291,705
+      S1  step > 2.5 m                      307,381
+      S2  and residual >= 0.30 m             173,784
+      removed                                133,597  (43.5%)
+
+    what was removed, of S1's 307,381 cells:
+      near-planar   residual <  0.10 m       7,044
+      intermediate  0.10 <= r < 0.30 m     123,415
+      no residual   under 4 observed cells       3,138
+      (residual computable for 304,243 of 307,381)
+
+    residual percentiles over S1:
+      p10  0.141 m
+      p25  0.201 m
+      p50  0.349 m
+      p75  0.544 m
+      p90  0.695 m
+
+    retention (reported, gates nothing -- see the building caveat):
+      S1                       307,381   SMRF  78.8%
+      S2                       173,784   SMRF  83.7%
+      S1 & measured basis      251,030   SMRF  94.5%
+      S2 & measured basis      152,049   SMRF  93.7%
+
+    G1 must-fire: the five supported real steps, within 2 m (n=5, small)
+      PASS  terrace riser 2.98 m         at (161, 534)
+      PASS  built wall (rank 4)          at (876, 1001)
+      PASS  churchyard wall (rank 8)     at (452, 966)
+      PASS  gully/lane edge (rank 10)    at (935, 784)
+      PASS  built wall (rank 11)         at (851, 989)
+
+    G2 must-not-fire: planar ramps at 31-60 deg, both directions
+      reached S1  10 of 10 geometry permits (12 run; an axis-aligned ramp needs 39.8 deg to span the threshold)
+      entered S2  0 of 12   (must be 0)
+      PASS
+
+    G3 separation: each location's residual above the S1 median (0.349 m)
+      PASS  terrace riser 2.98 m         residual 0.783 m
+      PASS  built wall (rank 4)          residual 1.696 m
+      PASS  churchyard wall (rank 8)     residual 1.050 m
+      PASS  gully/lane edge (rank 10)    residual 1.205 m
+      PASS  built wall (rank 11)         residual 1.107 m
+
+    PASS
+
+**The P4-window leg, explicitly not blind**, with PDAL 2.10.2 (git-version: e8618b) — the version
+`docs/p4-terrace-result.md` names, installed from conda-forge:
+
+    ~/bin/micromamba create -y -p ~/micromamba/envs/pdal -c conda-forge pdal=2.10.2
+    ~/micromamba/envs/pdal/bin/pdal pipeline docs/p4-reference-pipeline.json \
+        --readers.las.filename=$HOME/data/dgt-laz-sistelo/LO-179557-07-2025.laz \
+        --writers.las.filename=$HOME/data/microrelief-cache/LO-179557-smrf.laz
+    PYTHONPATH=src .venv/bin/python scripts/compare_ground_filters.py reference \
+        --tiles ~/data/dgt-laz-p4 --smrf ~/data/microrelief-cache \
+        --aoi examples/sistelo-sample/aoi.geojson \
+        --out ~/data/microrelief-cache/p4-reference.npz --pipeline docs/p4-reference-pipeline.json
+    PYTHONPATH=src .venv/bin/python scripts/measure_sharp_step.py \
+        --reference ~/data/microrelief-cache/p4-reference.npz
+
+**Output, verbatim** (exit 1 — G1 and G3 not evaluable on a 150 m frame):
+
+    cache: compare_ground_filters reference
+    zone (-20400.0, 255600.0, -19600.0, 256400.0), 300x300 cells at 0.5 m
+      observed cells: 36,314
+      S1  step > 2.5 m                        9,525
+      S2  and residual >= 0.30 m               5,652
+      removed                                  3,873  (40.7%)
+
+    what was removed, of S1's 9,525 cells:
+      near-planar   residual <  0.10 m         241
+      intermediate  0.10 <= r < 0.30 m       3,508
+      no residual   under 4 observed cells         124
+      (residual computable for 9,401 of 9,525)
+
+    residual percentiles over S1:
+      p10  0.142 m
+      p25  0.214 m
+      p50  0.356 m
+      p75  0.548 m
+      p90  0.637 m
+
+    retention (reported, gates nothing -- see the building caveat):
+      S1                         9,525   SMRF  76.7%   PDAL 76.7%
+      S2                         5,652   SMRF  83.1%   PDAL 83.0%
+      S1 & measured basis        7,625   SMRF  95.1%   PDAL 95.1%
+      S2 & measured basis        4,954   SMRF  94.2%   PDAL 94.1%
+
+    G1 must-fire: the five supported real steps, within 2 m (n=5, small)
+      PASS  terrace riser 2.98 m         at (151, 154)
+      n/a   built wall (rank 4)          outside this cache's extent
+      n/a   churchyard wall (rank 8)     outside this cache's extent
+      n/a   gully/lane edge (rank 10)    outside this cache's extent
+      n/a   built wall (rank 11)         outside this cache's extent
+      G1 is NOT EVALUABLE as pre-registered: 4 of 5 locations are not searchable in this cache -- a question it cannot answer. Checked and reported above: 1 of 5.
+
+    G2 must-not-fire: planar ramps at 31-60 deg, both directions
+      reached S1  10 of 10 geometry permits (12 run; an axis-aligned ramp needs 39.8 deg to span the threshold)
+      entered S2  0 of 12   (must be 0)
+      PASS
+
+    G3 separation: each location's residual above the S1 median (0.356 m)
+      PASS  terrace riser 2.98 m         residual 0.783 m
+      n/a   built wall (rank 4)          outside this cache's extent
+      n/a   churchyard wall (rank 8)     outside this cache's extent
+      n/a   gully/lane edge (rank 10)    outside this cache's extent
+      n/a   built wall (rank 11)         outside this cache's extent
+
+    NOT EVALUABLE: G1 and G3 (4 of 5 not searchable). Nothing there was refuted.
+
+**What the two runs say**, outside the fences, because a summary is not output:
+
+**43.5% of `S1` is removed**: **42.4%** (130,459 of 307,381) departs from a plane by less than
+`R`, and **1.0%** (3,138 of 307,381) has no computable residual and was removed as unmeasurable
+rather than as planar. Both from their own counts; subtracting one rounded percentage from
+another gives 1.1 and is the kind of arithmetic that puts a wrong digit in a record. The bulk is
+not the ramp-like tail — near-planar cells are 7,044, while the intermediate band holds 123,415.
+
+**The P4 leg returns six published figures**: 7,625 / 95.1% / 95.1% for P4's gate population and
+4,954 / 94.2% / 94.1% for its `residual >= 0.30 m` row. It also shows that the pre-registered
+`S1` is **not** P4's population — the measured-basis term is worth 18.4 retention points — and
+that Zone Z's `S2`-above-`S1` retention was an artefact of omitting that term: with it, 94.5%
+against 93.7%, the direction the pre-registration anticipated.
+
+**G1 and G3 are not evaluable on a 150 m frame** — four of the five verified steps are not
+searchable in it. Two earlier versions of the instrument got this wrong in the same shape: the
+first printed those as `FAIL`, a refusal with a false reason; the second named only G1 in the
+summary while G3 was equally unevaluated, which is the same defect one predicate over.
+
+**A regeneration of the two fences above dropped this section entirely**, and the README's
+percentage guard is what caught it — the second time in this branch that a claim in the README
+was held up by a record that no longer carried its number.

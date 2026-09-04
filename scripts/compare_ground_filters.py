@@ -139,6 +139,11 @@ P4B_GATE_THRESHOLD_M = 2.5
 # Reported beside P4b, so a reader can see whether the result is carried by sparse
 # neighbourhoods, where two distant points on a slope give a large range with no step present.
 STEP_DENSE_MIN_FINITE = 10
+# Instrument parameter, not a production threshold: nothing in `src/` reads it. Derived and
+# declared in `docs/sharp-step-preregistration.md` from the 0.2-0.3 m LiDAR error band this
+# repository already uses for `elevation_threshold_m` and `smrf_threshold` -- below it, a
+# window's departure from a plane is inside what sensor noise alone can manufacture.
+SHARP_STEP_RESIDUAL_MIN_M = 0.30
 
 
 def step_magnitude(
@@ -189,6 +194,89 @@ def step_magnitude(
     defined: NDArray[np.bool_] = (counts >= min_finite) & observed
     step: NDArray[np.float64] = np.where(defined, highs - lows, np.nan)
     return step, defined
+
+
+def plane_residual(
+    surface: NDArray[np.float64], cells: NDArray[np.int64], window_cells: int, cell_m: float
+) -> NDArray[np.float64]:
+    """RMS residual from a least-squares plane over the observed cells of each cell's window.
+
+    The discriminator `step_magnitude` lacks: a range cannot tell a riser from a smooth slope
+    steep enough to span it, and a uniform ramp is planar at any steepness and in any direction
+    while a step is not. Computed per listed cell rather than over the whole grid, because the
+    callers only ever ask about cells the range term already selected, and a per-cell least
+    squares over a full grid would cost orders of magnitude more for answers nobody reads.
+
+    `cells` must be at least `window_cells // 2` from every border. Callers get that for free by
+    taking them from `step_magnitude`'s `defined`, which excludes the margin; a caller that does
+    not would index with a negative row and read the far edge of the array instead of refusing.
+    """
+    margin = window_cells // 2
+    dy, dx = np.mgrid[-margin : margin + 1, -margin : margin + 1]
+    dy = dy.ravel() * cell_m
+    dx = dx.ravel() * cell_m
+    out = np.full(len(cells), np.nan)
+    for i, (row, col) in enumerate(cells):
+        window = surface[row - margin : row + margin + 1, col - margin : col + margin + 1].ravel()
+        seen = np.isfinite(window)
+        if int(seen.sum()) < 4:  # a plane has three parameters; four points to have a residual
+            continue
+        design = np.column_stack([dx[seen], dy[seen], np.ones(int(seen.sum()))])
+        coefficients, *_ = np.linalg.lstsq(design, window[seen], rcond=None)
+        out[i] = float(np.sqrt(np.mean((design @ coefficients - window[seen]) ** 2)))
+    return out
+
+
+@dataclass(frozen=True)
+class SharpStep:
+    """A step that is a step, and not a plane steep enough to span the same range."""
+
+    candidates: NDArray[np.bool_]
+    population: NDArray[np.bool_]
+    step: NDArray[np.float64]
+    residual: NDArray[np.float64]
+
+
+def sharp_step_population(
+    surface: NDArray[np.float64],
+    *,
+    cell_m: float,
+    window_cells: int = STEP_WINDOW_CELLS,
+    min_finite: int = STEP_MIN_FINITE,
+    step_threshold_m: float = P4B_GATE_THRESHOLD_M,
+    residual_min_m: float = SHARP_STEP_RESIDUAL_MIN_M,
+) -> SharpStep:
+    """Cells whose window spans `step_threshold_m` *and* departs from a plane by `residual_min_m`.
+
+    The range term alone cannot say which of the two it found, and the population it defines is
+    therefore not what its name claims. This pairs it with the statistic that can: a uniform
+    hillside is planar at any steepness and in any direction, a step is not.
+
+    A candidate whose window holds fewer than four observed cells has no residual -- a range
+    needs two points, a plane four -- and is left out rather than read as planar. Sparsity does
+    not get to choose the population.
+
+    What this still cannot do, measured and declared in `docs/sharp-step-preregistration.md`: a
+    riser spread across most of the window is itself planar, so this is a *sharp*-step
+    population, not a riser population.
+    """
+    if not np.isfinite(residual_min_m) or residual_min_m <= 0:
+        raise ValueError(f"residual_min_m must be a positive, finite height, got {residual_min_m}")
+    if not np.isfinite(step_threshold_m) or step_threshold_m <= 0:
+        raise ValueError(
+            f"step_threshold_m must be a positive, finite height, got {step_threshold_m}"
+        )
+
+    step, defined = step_magnitude(surface, window_cells, min_finite)
+    candidates: NDArray[np.bool_] = defined & (step > step_threshold_m)
+
+    residual = np.full(surface.shape, np.nan)
+    cells = np.argwhere(candidates)
+    if len(cells):
+        residual[candidates] = plane_residual(surface, cells, window_cells, cell_m)
+
+    population: NDArray[np.bool_] = candidates & (residual >= residual_min_m)
+    return SharpStep(candidates=candidates, population=population, step=step, residual=residual)
 
 
 @dataclass(frozen=True)

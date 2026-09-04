@@ -67,6 +67,11 @@ def build(aoi: Path, laz_dir: Path, cache: Path) -> int:
         cache,
         min_z_ground=stats.min_z_ground_asprs,
         n_ground=stats.n_ground_asprs,
+        # Computed in the same pass and previously dropped. A ground filter reads the
+        # all-returns surface, so recovering these later would mean reading the delivery again.
+        min_z_all=stats.min_z_all,
+        max_z_all=stats.max_z_all,
+        n_all=stats.n_all,
         origin_x=grid.origin_x,
         origin_y=grid.origin_y,
         cell=grid.cell,
