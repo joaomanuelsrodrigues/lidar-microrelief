@@ -13,6 +13,14 @@
 # enforces. If the extraction stops finding exactly one definition of each, this exits 2 rather
 # than scanning with a default of its own.
 #
+# Declared limit: `rev-list --objects` has no NUL-delimited form, so the object list is read line
+# by line, and a tracked path containing a newline is REPORTED truncated. Measured in a scratch
+# repository holding exactly such a path: the blob was still scanned and its hit still judged,
+# exit 1, and only the name in the report was cut short. The mechanism by which the trailing
+# fragment is discarded was NOT established -- an earlier draft of this comment asserted one and
+# the probe did not show it -- so only the outcome is claimed. Named rather than hardened: no
+# such path exists here, and a guard without a control is not an improvement.
+#
 # What it reads, and what it does not. Blobs only. Commit metadata — author and committer names
 # and addresses — is NOT scanned and is not this instrument's claim; `git log --format='%ae %ce'`
 # is one command and belongs in the flip's own record. Trees, tags and submodule gitlinks are
