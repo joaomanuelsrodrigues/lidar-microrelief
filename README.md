@@ -13,13 +13,15 @@ the known limitations.
 
 *The basis band over the terraces of Sistelo, Portugal: green measured, orange interpolated, red
 undetermined. Drag the comparison yourself in the
-[live viewer](https://joaomanuelsrodrigues.github.io/lidar-microrelief/viewer/).*
+[live viewer](https://joaomanuelsrodrigues.github.io/lidar-microrelief/viewer/), or open
+`docs/viewer/index.html` in a clone.*
 
 Each surface band is transparent exactly where it has nothing it can honestly publish: the DTM
 where no measured ground lies in the cell or within 2 m of it, the CHM wherever the cell's own
 ground was not measured, the DSM only where no return landed at all. The basis band is never
 transparent, because a band whose job is to say "we looked and there was nothing to measure" would
-erase its own admission by declaring that cell NoData.
+erase its own admission by declaring that cell NoData; its NoData code is 255, which the band never
+produces.
 
 ## Try it
 

@@ -57,8 +57,8 @@ and paid for it in non-ground recall and false positives. Keeping the row here c
 pretending otherwise costs everything.
 
 What decided the swap was not the accuracy column. It was what the two filters do to buildings: on
-a built area, the retired filter published most of the roof cells holding no ground return at all as
-measured terrain, and this one publishes a small fraction of them
+a built area, the retired filter published 87.7% of the roof cells holding no ground return at all
+as measured terrain, where this one calls 16.4% of them ground
 ([`reference-instrument-result.md`](reference-instrument-result.md),
 [`ground-filter-diagnosis.md`](ground-filter-diagnosis.md)). The README's limitations section
 carries both figures.
