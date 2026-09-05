@@ -33,7 +33,7 @@ Worked example in this repository — real data, about a minute:
         --out outputs/sample --attribution "$(cat examples/sistelo-sample/attribution.txt)"
 
 On the author's machine and on GitHub's runner this gives a 300 × 300 grid of 0.5 m cells; basis
-51.6% measured, 42.3% interpolated, 6.1% undetermined; expected void 1.3%; agreement with the
+51.6% measured, 42.3% interpolated, 6.1% undetermined; expected void 1.312%; agreement with the
 delivery's ground class: accuracy 0.866 against a majority-class null of 0.587 (recall ground
 0.977, non-ground 0.788); record hash `2da06987808e…`. `tests/test_sample.py` locks the values and
 `tests/case_study/test_readme_claims.py` locks this copy of the hash.

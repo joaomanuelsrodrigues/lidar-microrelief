@@ -2301,3 +2301,74 @@ summary while G3 was equally unevaluated, which is the same defect one predicate
 **A regeneration of the two fences above dropped this section entirely**, and the README's
 percentage guard is what caught it — the second time in this branch that a claim in the README
 was held up by a record that no longer carried its number.
+
+## 2026-09-05 — every blob of every ref, before the flip
+
+The neutrality gate reads the index. Making this repository public publishes the history, so this
+is the other scan, run from `scripts/histscan.sh` at `0adcc89`, the state at which the script
+stopped changing. Every figure below — the scan AND the commit counts under it — is from that one
+state, because the first version of this entry had them from two, and every number here moves
+with every commit. **The eight lines are the comparison; the denominators are not.** An earlier run
+of the same shape, on 2026-09-05 over `b69e07b`, lived in a scratchpad and left no artefact; this
+one is a tracked script with its own tests.
+
+```
+$ bash scripts/histscan.sh --must-find microrelief
+LIST  e-mail-shaped b603ea10aef8  docs/figures/riser/f01-terrace-2.98m.png  (binary, not judged)
+LIST  e-mail-shaped 7ab3782982f3  docs/viewer/mdt.png  (binary, not judged)
+LIST  e-mail-shaped c8b0e7d58a49  viewer/chm.png  (binary, not judged)
+LIST  e-mail-shaped 13141fddaf4d  viewer/mds.png  (binary, not judged)
+HIT   private-path  453893875010  scripts/neutrality.sh  (text)
+HIT   e-mail        453893875010  scripts/neutrality.sh  (text)
+HIT   private-path  9c972566e0ab  .github/workflows/ci.yml  (text)
+HIT   private-path  8d53e76a99b9  .github/workflows/ci.yml  (text)
+histscan: 30 ref(s), 1532 object(s), 710 blob(s) scanned (693 text, 17 binary or empty);
+73937786 byte(s) read, each blob matching the size git declares; must-find control matched 421
+blob(s); 4 judged hit(s), 4 listed not judged
+$ echo $?
+1
+```
+
+**Earlier runs of this instrument reported 695 blobs at `98c3f5c`, 700 at `83cced9` and 706 at
+`725c3ff`**, with the same eight lines throughout — which is the point: the hit list is what a
+flip sitting compares, and it has not moved once across four runs and two review rounds. Those figures moved for reasons that are not the history
+changing: each commit fixing this scan added blobs, and the first run counted the one empty blob
+in this history as text where the gate it borrows its patterns from counts it as binary-or-empty.
+They are named here rather than erased, because a record that quietly acquires better numbers
+cannot be compared against.
+
+**The four judged hits are pattern text and fixture text, in blobs no ref's tip carries.** Each
+was opened and read, not counted:
+
+| blob | what it is |
+| --- | --- |
+| `453893875010` | a superseded `scripts/neutrality.sh`, from before `9e95e20` made the self-test assemble its planted strings at run time. Both hits are that self-test's own fixtures — a made-up home directory and an address at the domain reserved for examples. The strings are not quoted here, because a record of a removal that quotes it has not removed it. |
+| `9c972566e0ab`, `8d53e76a99b9` | two superseded `.github/workflows/ci.yml`, carrying the regex literal of the earlier grep-based neutrality check. The pattern, not data. Already found in the 2026-08-11 sweep; this is the second time the gate has met its own literal. |
+
+The four listed are runs of address-shaped bytes inside PNGs. They are compressed data, so they
+are listed and not judged, and the exit code is unaffected by them.
+
+**Commit metadata is out of this instrument's scope**, deliberately — it scans blobs. The one
+command that covers it, over the same refs:
+
+```
+$ git rev-list --all | wc -l
+173
+$ git log --all --format='%ae' | sort | uniq -c
+    173 <the author's address>
+$ git log --all --format='%ce' | sort | uniq -c
+    166 <the same address>
+      7 <GitHub's noreply address, on the merge commits it authored>
+```
+
+One identity throughout, plus the seven merge commits GitHub authored. Deliberate, not a leak.
+The addresses are replaced above rather than quoted, and the replacement is declared here: this
+file is tracked, and the gate refuses an address in a published document — which is a different
+question from what commit metadata carries, and the gate is right about its own. Run the two
+commands to see the values.
+
+**This run is stale the moment a commit lands.** It reports on 30 refs and 710 blobs at
+`0adcc89`; the flip publishes whatever exists at the flip. Re-run it in the flip sitting, on the
+exact history being made public, and compare against the eight lines above — a fifth judged hit,
+or a different blob, is the thing to look at. A green here is never the finding; the denominators
+and the must-find count are.
