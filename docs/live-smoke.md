@@ -2305,7 +2305,7 @@ was held up by a record that no longer carried its number.
 ## 2026-09-05 — every blob of every ref, before the flip
 
 The neutrality gate reads the index. Making this repository public publishes the history, so this
-is the other scan, run from `scripts/histscan.sh` at `98c3f5c`. An earlier run
+is the other scan, run from `scripts/histscan.sh` at `83cced9`. An earlier run
 of the same shape, on 2026-09-05 over `b69e07b`, lived in a scratchpad and left no artefact; this
 one is a tracked script with its own tests.
 
@@ -2319,12 +2319,19 @@ HIT   private-path  453893875010  scripts/neutrality.sh  (text)
 HIT   e-mail        453893875010  scripts/neutrality.sh  (text)
 HIT   private-path  9c972566e0ab  .github/workflows/ci.yml  (text)
 HIT   private-path  8d53e76a99b9  .github/workflows/ci.yml  (text)
-histscan: 30 ref(s), 1487 object(s), 695 blob(s) scanned (679 text, 16 binary); 73188480 byte(s)
-read, each blob matching the size git declares; must-find control matched 413 blob(s); 4 judged
-hit(s), 4 listed not judged
+histscan: 30 ref(s), 1503 object(s), 700 blob(s) scanned (683 text, 17 binary or empty);
+73520586 byte(s) read, each blob matching the size git declares; must-find control matched 416
+blob(s); 4 judged hit(s), 4 listed not judged
 $ echo $?
 1
 ```
+
+**A first run of this instrument, at `98c3f5c`, reported 695 blobs, 679 text and 16 binary, and
+the same eight lines.** Both numbers moved for reasons that are not the history changing: the
+commits fixing this scan added five blobs, and the scan had been counting the one empty blob in
+this history as text where the gate it borrows its patterns from counts it as binary-or-empty.
+The superseded figures are named here rather than erased, because a record that quietly acquires
+better numbers cannot be compared against.
 
 **The four judged hits are pattern text and fixture text, in blobs no ref's tip carries.** Each
 was opened and read, not counted:
