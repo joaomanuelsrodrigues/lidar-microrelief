@@ -44,9 +44,12 @@ core never reaches for a provider.
 
 Any other provider, and any other delivery, is untested rather than unsupported. The standard here
 is that a path is unvalidated until it has been exercised end to end against the real thing, and no
-second one has been. Site independence is enforced negatively instead: the tests that bind this
-package to Sistelo live in `tests/case_study/`, and with `aoi/aoi.geojson` removed from the tree
-the rest of the suite still passes.
+second one has been.
+
+Site independence was checked negatively instead. The tests that bind this package to Sistelo live
+in `tests/case_study/`, and with `aoi/aoi.geojson` removed from the tree everything outside that
+directory still passed. That was a measurement taken by hand, not a job CI re-runs: the workflow
+runs the whole suite with the file present.
 
 Without `--selection`, the catalogue step, the record says it does not know what the provider
 claimed rather than repeating back what it measured.
