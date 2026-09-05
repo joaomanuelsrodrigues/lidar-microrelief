@@ -34,7 +34,7 @@ Derived figure, recorded: falsely-measured roof cells **3,160,305 → 566,299**.
 ## The controls, which run before the comparison and can stop it
 
 **C1 — the reference environment.** `pdal --version` must read `2.10.2 (git-version: e8618b)`,
-taken from the binary. *Verified before this file was committed: it matches the s297 string
+taken from the binary. *Verified before this file was committed: it matches the recorded string
 exactly, so a version drift is excluded as an explanation for any difference below.*
 
 **C2 — SMRF genuinely reclassifies.** On tile LO-162471, SMRF must move **2,014,732** returns into
@@ -62,8 +62,8 @@ is a finding about the evidence base of the ruling, not only about this script. 
 with both numbers side by side, and the ruling is re-read against the corrected table before any
 line of SMRF is written.
 
-**INCONCLUSIVE** — C2 or C3 does not reproduce. Then the reference is not being built the way s297
-built it, and the comparison is not measuring what it claims to; no verdict is drawn on the table
+**INCONCLUSIVE** — C2 or C3 does not reproduce. Then the reference is not being built the way the recorded table
+was built, and the comparison is not measuring what it claims to; no verdict is drawn on the table
 from a reference that failed its own control.
 
 Distinguishing the three matters more than which one lands: "0 differences" produced by an

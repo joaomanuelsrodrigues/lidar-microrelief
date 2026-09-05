@@ -29,7 +29,7 @@ SRC = Path(__file__).resolve().parents[1] / "src" / "microrelief"
 # `__main__.py` belongs with it rather than in core: it holds no logic, it is the `python -m
 # microrelief` door that calls `cli.main`, so classifying it as core would put a module that
 # imports the composition root inside the layer defined by not knowing about it. Added in
-# s293, and the partition below is what forced the classification instead of letting the file
+# 0.4.1, and the partition below is what forced the classification instead of letting the file
 # arrive unclassified.
 COMPOSITION_ROOT = {"cli.py", "__main__.py"}
 

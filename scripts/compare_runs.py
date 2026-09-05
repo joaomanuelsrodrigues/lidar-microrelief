@@ -221,13 +221,13 @@ def compare(
     # version produced it, and a flag would let you assert 0.4.0's additions against a 0.4.1
     # record by accident. It also keeps this an `action="store_true"` flag -- an optional-value
     # flag placed before the two positionals makes argparse swallow one of them, which silently
-    # broke both acceptance commands recorded in docs/live-smoke.md (measured, s293).
+    # broke both acceptance commands recorded in docs/live-smoke.md (measured).
     release = str(doc_b.get("package_version") or "")
     # An unknown release is a refusal, and a refusal makes exactly ONE claim. Falling back to
     # the old list here and then comparing against it produced a second problem line asserting
     # an expectation the instrument had just said it does not hold -- "known_limitations is not
     # the old list plus the two declared gaps" beside "no expected limitations are recorded
-    # here" -- which sends a reader after a limitations bug that does not exist (s295).
+    # here" -- which sends a reader after a limitations bug that does not exist.
     unknown_release = expect_new_limitations and release not in RELEASE_LIMITATIONS
     if unknown_release:
         problems.append(
@@ -245,7 +245,7 @@ def compare(
         change = RELEASE_LIMITATIONS[release]
         # The count comes from the mapping, never from a sentence. "the two declared gaps" was
         # written into both this message and the success line, and was already false for 0.4.4,
-        # which declared one: a number typed into a message is a published number (s295).
+        # which declared one: a number typed into a message is a published number.
         wanted = (
             f"the old list under {release}'s declared transformation "
             f"({len(change.replaced)} replaced, {len(change.added)} added)"
@@ -289,7 +289,7 @@ def build_parser() -> argparse.ArgumentParser:
     `main()` used to build this inline, which meant the only way to check a recorded command
     line was to run the whole comparison. Every command written into `docs/live-smoke.md` is a
     claim about what this parser accepts, and twice now such a claim was published without ever
-    being run (s293, s295) -- so the claim is now checkable against the parser itself.
+    being run -- so the claim is now checkable against the parser itself.
     """
     ap = argparse.ArgumentParser()
     ap.add_argument("old", type=Path)

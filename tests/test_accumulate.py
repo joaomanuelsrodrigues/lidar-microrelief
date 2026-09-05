@@ -199,7 +199,7 @@ def test_the_published_byte_cost_per_cell_is_the_measured_one() -> None:
 
     The number reaches the refusal message (`grid.py`), the declared limitation
     (`cli.LIMITATIONS`, hence every `provenance.json` the tool writes) and the README. Its
-    docstring says "measured rather than estimated" and until s293 nothing measured it: add a
+    docstring says "measured rather than estimated" and until this test nothing measured it: add a
     sixth accumulator array or widen a `CellStats` dtype and all three copies silently
     understate, while the published record keeps asserting a ceiling that is not the one the
     memory actually implies.
