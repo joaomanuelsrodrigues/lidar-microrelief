@@ -26,8 +26,11 @@
 # is one command and belongs in the flip's own record. Trees, tags and submodule gitlinks are
 # counted and not scanned.
 #
-# Text and binary. An e-mail-shaped hit inside compressed bytes is a coincidence, not an address,
-# so a hit is JUDGED only in a text blob and LISTED, never hidden, in a binary one. "Text" is
+# Text and binary. This applies to the E-MAIL pattern only: an address-shaped run of bytes inside
+# compressed data is a coincidence, not an address, so an e-mail hit is JUDGED in a text blob and
+# LISTED, never hidden, in a binary one. A private path in a binary blob is a hit like any other
+# and sets the exit code -- which is what the gate does, and what the four HIT lines in the
+# record would otherwise contradict. "Text" is
 # decided here by one rule — a blob with no NUL byte — measured by deleting NULs and comparing
 # byte counts, which needs no pattern engine and no `.gitattributes`. (The scan that ran on
 # 2026-09-05 mislabelled four PNGs as text; its recorded cause, that a shell pattern cannot hold
@@ -86,6 +89,13 @@ printf '%s\n' "$probe_email" | command grep -qE "$EMAIL" || die "EMAIL does not 
 printf '%s\n' "nothing to see here" | command grep -qE "$PRIVATE_PATH" && die "PRIVATE_PATH matches clean text"
 printf '%s\n' "nothing to see here" | command grep -qE "$EMAIL" && die "EMAIL matches clean text"
 
+grep_blob() {  # grep_blob <ere> <file> <sha>  -> 0 match, 1 no match, exits 2 on failure
+  local rc=0
+  command grep -qaE "$1" -- "$2" || rc=$?
+  [ "$rc" -le 1 ] || die "grep failed (exit $rc) on blob $3: a failure is not a clean blob"
+  return "$rc"
+}
+
 # --- the scan ------------------------------------------------------------------------------
 scan_repo() {  # scan_repo <repo> <control-pattern>  -> writes the report to stdout, rc via $?
   local repo=$1 control=$2
@@ -99,7 +109,12 @@ scan_repo() {  # scan_repo <repo> <control-pattern>  -> writes the report to std
 
   git -C "$repo" -c core.quotePath=false rev-list --objects --all > "$work/objects" 2>"$work/err" \
     || die "rev-list failed: $(cat -- "$work/err")"
-  git -C "$repo" for-each-ref --format='%(refname)' > "$work/refs" 2>/dev/null || true
+  # Read, never swallowed: `2>/dev/null || true` here would print `0 ref(s)` beside a real scan
+  # of real blobs, which is the silently-wrong denominator this script refuses everywhere else.
+  # A separate `n_refs > 0` check was written and then removed as unreachable: no refs means no
+  # objects, and the objects guard below already fires. Only the FAILURE was reachable.
+  git -C "$repo" for-each-ref --format='%(refname)' > "$work/refs" 2>"$work/err" \
+    || die "for-each-ref failed: $(cat -- "$work/err")"
   local n_refs n_objects
   n_refs=$(wc -l < "$work/refs")
   n_objects=$(wc -l < "$work/objects")
@@ -135,11 +150,14 @@ scan_repo() {  # scan_repo <repo> <control-pattern>  -> writes the report to std
     if [ "$raw" -gt 0 ] && [ "$raw" = "$stripped" ]; then kind=text; n_text=$((n_text + 1))
     else kind=binary; n_binary=$((n_binary + 1)); fi
 
-    if command grep -qaE "$PRIVATE_PATH" -- "$work/blob"; then
+    # grep -q returns 1 for "no match" AND for its own failure, so the two decisions that
+    # actually set the verdict read the exit code instead of a bare `if`: 0 match, 1 clean,
+    # anything else an instrument failure. Every other read here already has a control.
+    if grep_blob "$PRIVATE_PATH" "$work/blob" "$sha"; then
       printf 'HIT   private-path  %s  %s  (%s)\n' "${sha:0:12}" "$path" "$kind" >> "$work/hits"
       n_hits=$((n_hits + 1))
     fi
-    if command grep -qaE "$EMAIL" -- "$work/blob"; then
+    if grep_blob "$EMAIL" "$work/blob" "$sha"; then
       if [ "$kind" = text ]; then
         printf 'HIT   e-mail        %s  %s  (text)\n' "${sha:0:12}" "$path" >> "$work/hits"
         n_hits=$((n_hits + 1))
@@ -148,7 +166,7 @@ scan_repo() {  # scan_repo <repo> <control-pattern>  -> writes the report to std
         n_listed=$((n_listed + 1))
       fi
     fi
-    if [ -n "$control" ] && command grep -qaE "$control" -- "$work/blob"; then
+    if [ -n "$control" ] && grep_blob "$control" "$work/blob" "$sha"; then
       n_control=$((n_control + 1))
     fi
   done < "$work/types"

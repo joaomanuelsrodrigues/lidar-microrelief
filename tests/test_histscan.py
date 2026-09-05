@@ -24,6 +24,14 @@ HOME_PATH = "/home/" + "some" + "one/keys"
 FIXTURE_MAIL = "t" + "@" + "example.invalid"
 
 
+def _gate_pattern(name: str) -> str:
+    """The gate's own literal, read from its single definition -- never copied."""
+    text = GATE.read_text(encoding="utf-8")
+    lines = [ln for ln in text.splitlines() if ln.startswith(f"{name}=")]
+    assert len(lines) == 1, f"expected one definition of {name} in {GATE}, found {len(lines)}"
+    return lines[0].split("=", 1)[1].strip().strip("'")
+
+
 def _env(tmp_path: Path) -> dict[str, str]:
     env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
     env.update(
@@ -67,7 +75,10 @@ def test_it_finds_a_leak_the_index_scoped_gate_cannot_see(tmp_path: Path) -> Non
     env = _env(tmp_path)
     repo = _repo(tmp_path, env, "dirty", [f"a note about {HOME_PATH}\n", "a note about nothing\n"])
 
-    tip = subprocess.run(["git", "grep", "-qaE", "/home/[A-Za-z0-9._-]+/"], cwd=repo, env=env)
+    # The pattern is read out of the gate, the way the script reads it. A copy here would be the
+    # exact drift the script's design exists to prevent: it would silently stop testing the
+    # difference between the two scans the moment PRIVATE_PATH is widened.
+    tip = subprocess.run(["git", "grep", "-qaE", _gate_pattern("PRIVATE_PATH")], cwd=repo, env=env)
     assert tip.returncode != 0, "the scratch tip is not clean; the comparison proves nothing"
 
     r = _run(repo, env)
@@ -291,3 +302,81 @@ def test_an_empty_blob_is_counted_the_way_the_gate_counts_it(tmp_path: Path) -> 
     r = _run(repo, env)
     assert r.returncode == 0, r.stdout + r.stderr
     assert "2 blob(s) scanned (1 text, 1 binary or empty)" in r.stdout, r.stdout
+
+
+def test_a_failing_grep_is_an_instrument_failure_not_a_clean_blob(tmp_path: Path) -> None:
+    """`grep -q` returns 1 for "no match" and for its own failure, so the two decisions that set
+    the verdict read the exit code. Without that, a grep dying on one blob reports it clean and
+    the run prints a green summary with correct-looking denominators.
+
+    The shim fails only for the blob scan's `-qaE` calls, so the pattern-reading and the startup
+    probes still run: the arm under test is the scan, not the setup.
+    """
+    env = _env(tmp_path)
+    repo = _repo(tmp_path, env, "grepfail", [f"a note about {HOME_PATH}\n", "a note about it\n"])
+
+    shim_dir = tmp_path / "bin"
+    shim_dir.mkdir()
+    shim = shim_dir / "grep"
+    shim.write_text(
+        "#!/bin/sh\n"
+        'case " $* " in\n'
+        '  *" -qaE "*) exit 2 ;;\n'
+        '  *) exec /usr/bin/grep "$@" ;;\n'
+        "esac\n",
+        encoding="utf-8",
+    )
+    shim.chmod(0o755)
+    env["PATH"] = f"{shim_dir}:{env['PATH']}"
+
+    r = _run(repo, env)
+    assert r.returncode == 2, r.stdout + r.stderr
+    assert "grep failed" in r.stderr, r.stderr
+    assert "judged hit(s)" not in r.stdout, "an instrument failure must not print a summary"
+
+
+def test_a_repository_with_no_refs_is_refused(tmp_path: Path) -> None:
+    """A repository with no refs scans a history that is not there -- the vacuous green the
+    shallow refusal exists for. Refused by the objects guard, which is why the separate
+    `n_refs > 0` check was deleted rather than kept: no refs means no objects, and a mutation
+    pass showed nothing could tell that guard from its own absence."""
+    env = _env(tmp_path)
+    repo = tmp_path / "norefs"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo, env=env, check=True)
+    r = _run(repo, env)
+    assert r.returncode == 2, r.stdout + r.stderr
+    assert "histscan:" not in r.stdout, "an instrument failure must not print a summary"
+
+
+def test_a_failing_ref_listing_is_an_instrument_failure_not_a_zero_denominator(
+    tmp_path: Path,
+) -> None:
+    """The reachable half. `for-each-ref` swallowed would print `0 ref(s)` beside a real scan of
+    real blobs: a summary whose headline denominator is wrong while every other number is right.
+    The shim fails only that subcommand, so the scan itself is otherwise intact."""
+    import shutil
+
+    real_git = shutil.which("git")
+    assert real_git
+    env = _env(tmp_path)
+    repo = _repo(tmp_path, env, "reflisting", ["a note about nothing\n"])
+
+    shim_dir = tmp_path / "bin"
+    shim_dir.mkdir()
+    shim = shim_dir / "git"
+    shim.write_text(
+        "#!/bin/sh\n"
+        'case " $* " in\n'
+        '  *" for-each-ref "*) echo "boom" >&2; exit 3 ;;\n'
+        f'  *) exec {real_git} "$@" ;;\n'
+        "esac\n",
+        encoding="utf-8",
+    )
+    shim.chmod(0o755)
+    env["PATH"] = f"{shim_dir}:{env['PATH']}"
+
+    r = _run(repo, env)
+    assert r.returncode == 2, r.stdout + r.stderr
+    assert "for-each-ref failed" in r.stderr, r.stderr
+    assert "ref(s)" not in r.stdout, "an instrument failure must not print a summary"

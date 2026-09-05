@@ -273,20 +273,29 @@ LIVE_DOCUMENTS_A_READER_ACTS_ON = (
     "skills/microrelief/SKILL.md",
     "CALIBRATIONS.md",
     "examples/sistelo-sample/README.md",
+    "docs/recipes.md",
+    "docs/ground-filter.md",
 )
 
 
 def _opening_block(text: str) -> str:
-    """The first few non-empty lines of the body, front matter excluded.
+    """The first few non-empty prose lines of the body, front matter and headings excluded.
 
     Front matter is metadata, not the document's opening sentence: a date in it must not exempt
     the file, and neither must a date two hundred lines down.
+
+    SECTION headings are excluded, and it was not hypothetical: `docs/recipes.md` is a live
+    how-to whose sixth opening line is a `##` saying when that recipe was last exercised. That
+    dates a SECTION, and it had silently moved a page a reader follows out of this gate's
+    population. The document TITLE is kept, because that is a document naming itself -- two
+    records here are titled "... — result, <date>" and "... — pre-registered <date>, before the
+    run", which is a record declaring itself in the first thing anyone reads.
     """
     if text.startswith("---\n"):
         rest = text.split("\n", 1)[1]
         end = rest.find("\n---\n")
         text = rest[end + len("\n---\n") :] if end != -1 else rest
-    lines = [ln for ln in text.splitlines() if ln.strip()]
+    lines = [ln for ln in text.splitlines() if ln.strip() and not ln.lstrip().startswith("##")]
     return "\n".join(lines[:_OPENING_LINES])
 
 
