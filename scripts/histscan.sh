@@ -120,7 +120,11 @@ scan_repo() {  # scan_repo <repo> <control-pattern>  -> writes the report to std
     [ "$raw" = "$size" ] || die "blob $sha: read $raw bytes, git declares $size"
     n_read=$((n_read + raw))
     stripped=$(tr -d '\000' < "$work/blob" | wc -c)
-    if [ "$raw" = "$stripped" ]; then kind=text; n_text=$((n_text + 1))
+    # Non-empty and no NUL byte: the gate's own rule, worded the same way. An EMPTY blob is
+    # not text here -- it was, in the first version, which put this scan's denominator one out
+    # of step with the gate it borrows its patterns from. One rule, two implementations, is
+    # exactly what reading the patterns from that file exists to prevent.
+    if [ "$raw" -gt 0 ] && [ "$raw" = "$stripped" ]; then kind=text; n_text=$((n_text + 1))
     else kind=binary; n_binary=$((n_binary + 1)); fi
 
     if command grep -qaE "$PRIVATE_PATH" -- "$work/blob"; then
@@ -147,7 +151,7 @@ scan_repo() {  # scan_repo <repo> <control-pattern>  -> writes the report to std
   fi
 
   cat -- "$work/hits"
-  printf 'histscan: %s ref(s), %s object(s), %s blob(s) scanned (%s text, %s binary); ' \
+  printf 'histscan: %s ref(s), %s object(s), %s blob(s) scanned (%s text, %s binary or empty); ' \
     "$n_refs" "$n_objects" "$n_blobs" "$n_text" "$n_binary"
   printf '%s byte(s) read, each blob matching the size git declares; ' "$n_read"
   if [ -n "$control" ]; then printf 'must-find control matched %s blob(s); ' "$n_control"; fi

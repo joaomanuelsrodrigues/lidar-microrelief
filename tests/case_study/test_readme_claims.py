@@ -257,6 +257,10 @@ def test_the_record_currency_check_fires_on_a_stale_version() -> None:
 
 LIVE_SMOKE = "docs/live-smoke.md"
 
+# Figures with a decimal point: what the instrument prints. A bare `NN%` is deliberately out of
+# the population, because `%` is also URL percent-encoding -- the only three in a live document
+# here are `%E2%89%A5%20` in a badge URL, read as "2%", "89%" and "5%". The string would be right
+# and the referent wrong, which is the expensive kind of hit.
 _PERCENTAGE = re.compile(r"\d+\.\d+%")
 _ISO_DATE = re.compile(r"\b20\d\d-\d\d-\d\d\b")
 _OPENING_LINES = 6
@@ -292,9 +296,18 @@ def _is_dated_record(name: str, text: str) -> bool:
 
 
 def _unsourced_percentages(text: str) -> list[str]:
-    """The percentages in `text` that the run record does not carry verbatim."""
+    """The percentages in `text` that the run record does not carry as a value of its own.
+
+    Not a substring test. `"1.3%" in smoke` is satisfied by `51.3%` anywhere in the record, so
+    the very defect this guard was built for -- a hand-rounded `1.3%` against a recorded
+    `1.312%` -- would have passed had any longer figure ended in it. Measured: `1.6%` passes a
+    substring test and fails this one. A figure counts as sourced only where it is not the tail
+    of a longer number.
+    """
     smoke = (ROOT / LIVE_SMOKE).read_text(encoding="utf-8")
-    return sorted({p for p in _PERCENTAGE.findall(text) if p not in smoke})
+    return sorted(
+        {p for p in _PERCENTAGE.findall(text) if not re.search(r"(?<![\d.])" + re.escape(p), smoke)}
+    )
 
 
 def _live_documents() -> dict[str, str]:
@@ -381,6 +394,25 @@ def test_the_percentage_check_fires_on_a_planted_claim_and_is_quiet_on_a_sourced
 
     sourced = sorted(set(_PERCENTAGE.findall(smoke)))[0]
     assert _unsourced_percentages(f"basis {sourced} measured") == [], sourced
+
+    # The suffix arm, and the reason it is built rather than derived from "the first value":
+    # my first version took the record's lexicographically first percentage and dropped its
+    # leading digit, which gave `.0%` -- not a percentage at all, so the assertion never ran and
+    # the control passed by skipping. Here the pair is searched for and its absence is a failure.
+    values = set(_PERCENTAGE.findall(smoke))
+    only_a_tail = ""
+    for longer in sorted(v for v in values if re.match(r"\d\d", v)):
+        candidate = longer[1:]
+        if _PERCENTAGE.fullmatch(candidate) and not re.search(
+            r"(?<![\d.])" + re.escape(candidate), smoke
+        ):
+            only_a_tail = candidate
+            break
+    assert only_a_tail, "no value in the record is a tail-only figure: this control was not built"
+    assert only_a_tail in smoke, "a substring test must PASS here, or the arm proves nothing"
+    assert _unsourced_percentages(f"basis {only_a_tail} measured") == [only_a_tail], (
+        f"{only_a_tail!r} exists in the record only as the tail of a longer figure"
+    )
 
 
 def test_the_collection_names_the_offending_document_and_leaves_the_sourced_one_alone() -> None:

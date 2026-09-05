@@ -273,3 +273,21 @@ def test_an_address_in_a_text_blob_is_judged_a_hit(tmp_path: Path) -> None:
     assert r.returncode == 1, r.stdout + r.stderr
     assert "HIT   e-mail" in r.stdout
     assert "1 judged hit(s), 0 listed not judged" in r.stdout
+
+
+def test_an_empty_blob_is_counted_the_way_the_gate_counts_it(tmp_path: Path) -> None:
+    """One rule, one wording. The gate calls a blob text when it is non-empty and NUL-free; the
+    first version of this scan called an empty blob text, which put its denominator one out of
+    step with the gate whose patterns it reads. There is one empty blob in this repository's
+    history, so the divergence had a subject."""
+    env = _env(tmp_path)
+    repo = tmp_path / "empty"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo, env=env, check=True)
+    (repo / "empty.md").write_text("", encoding="utf-8")
+    (repo / "note.md").write_text("a note about nothing\n", encoding="utf-8")
+    subprocess.run(["git", "add", "--", "empty.md", "note.md"], cwd=repo, env=env, check=True)
+    subprocess.run(["git", "commit", "-qm", "c"], cwd=repo, env=env, check=True)
+    r = _run(repo, env)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "2 blob(s) scanned (1 text, 1 binary or empty)" in r.stdout, r.stdout
