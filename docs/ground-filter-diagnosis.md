@@ -1,9 +1,9 @@
 # Why the ground filter publishes buildings as terrain
 
-The second-AOI gate (`docs/second-aoi-gate-result.md`) established **that** the DTM
-publishes buildings as terrain. This establishes **what excuses them**, because the repair depends
-on it: a wrong mechanism buys a changed default, and a changed default was already measured not to
-work.
+**2026-08-31.** The second-AOI gate (`docs/second-aoi-gate-result.md`) established **that** the
+DTM publishes buildings as terrain. This establishes **what excuses them**, because the repair
+depends on it: a wrong mechanism buys a changed default, and a changed default was already
+measured not to work.
 
 Everything below the horizontal rule was written and committed **before** the run that fills it in.
 

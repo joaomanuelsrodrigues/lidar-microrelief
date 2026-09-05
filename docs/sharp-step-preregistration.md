@@ -1,7 +1,7 @@
 # The sharp-step population — what would count as passing, fixed before the first run
 
-**Written and committed before the sharp-step population was computed once on real data.** The
-result goes in `docs/sharp-step-result.md`, whichever way it lands.
+**2026-09-04. Written and committed before the sharp-step population was computed once on real
+data.** The result goes in `docs/sharp-step-result.md`, whichever way it lands.
 
 ## Why this document exists
 

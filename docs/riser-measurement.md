@@ -1,10 +1,11 @@
 # Measuring Sistelo's tallest real riser
 
-`CALIBRATIONS.md` declares `max_elevation_m = 3.0` with the calibration target *"largest true riser
-(or terrace wall) measured at the site — the value has to stay above it"*. This document is that
-measurement. The method below was written and committed **before** any elevation data was examined
-for this purpose; everything under "Results" was filled in afterwards, and nothing above it was
-edited once measurement began (corrections, if any, land beside the original, dated).
+**2026-08-08.** `CALIBRATIONS.md` declares `max_elevation_m = 3.0` with the calibration target
+*"largest true riser (or terrace wall) measured at the site — the value has to stay above it"*.
+This document is that measurement. The method below was written and committed **before** any
+elevation data was examined for this purpose; everything under "Results" was filled in
+afterwards, and nothing above it was edited once measurement began (corrections, if any, land
+beside the original, dated).
 
 ## Why this surface, and why not the DTM
 

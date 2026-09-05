@@ -37,16 +37,6 @@ def test_the_readme_states_the_published_rasters_are_not_an_input() -> None:
     assert "only for comparison" in text or "not an input" in text
 
 
-def test_every_percentage_in_the_readme_appears_in_the_live_smoke_record() -> None:
-    """A number in the README with no source in the record is the failure mode this prevents."""
-    readme = (ROOT / "README.md").read_text()
-    smoke = (ROOT / "docs" / "live-smoke.md").read_text()
-    percentages = set(re.findall(r"\d+\.\d+%", readme))
-    assert percentages, "a README about a measured run should quote at least one percentage"
-    for value in percentages:
-        assert value in smoke, value
-
-
 def test_the_readme_never_tells_a_stranger_to_pip_install_from_pypi() -> None:
     """`pip install microrelief[dgt]` fails: the package is not on PyPI. The only install lines
     allowed are a clone + `uv sync`, or pip against the git URL."""
@@ -241,3 +231,184 @@ def test_the_record_currency_check_fires_on_a_stale_version() -> None:
         f"asked about a version nothing was built at, every record must be named: {fired}"
     )
     assert all(v == microrelief.__version__ for v in fired.values()), fired
+
+
+# --- Every percentage published as a live claim, not just the README's -----------------------
+#
+# The lock this replaces read the README and nothing else, so `skills/microrelief/SKILL.md` could
+# publish `expected void 1.3%` -- the right number, rounded by hand, sourced nowhere; the record
+# of that run says `1.312%`. One file is one witness, again.
+#
+# Widening it to every tracked `.md` was measured and does not work either: 33 files carry a
+# percentage and 24 of them carry one absent from the record, because they ARE records -- dated
+# results, pre-registrations, judge verdicts, whose numbers are the instrument's output and whose
+# older figures are correct BECAUSE they are old. A gate born with 24 exemptions is a list of
+# filenames wearing a gate's clothes.
+#
+# So the partition is derived from the bytes, and carries no list: a document that declares a date
+# -- in its name or in its opening block -- is a record of a past moment and speaks for itself;
+# a document that does not is a live claim, and every percentage it publishes must appear verbatim
+# in the run record. Where the rule misfired it was right and the document was wrong: three
+# records did not say when they were made, and were dated rather than exempted.
+#
+# The one file excluded is the record itself: it is the source, so checking it against itself
+# would be vacuous. Its own contract is its first paragraph -- every entry a real command and its
+# real output.
+
+LIVE_SMOKE = "docs/live-smoke.md"
+
+_PERCENTAGE = re.compile(r"\d+\.\d+%")
+_ISO_DATE = re.compile(r"\b20\d\d-\d\d-\d\d\b")
+_OPENING_LINES = 6
+
+# Live documents that must stay in the population. Not the selector -- the selector is
+# `git ls-files` -- but the assertion that these four have not left it, which is what a date
+# appearing in a live file's opening block would do, silently.
+LIVE_DOCUMENTS_A_READER_ACTS_ON = (
+    "README.md",
+    "skills/microrelief/SKILL.md",
+    "CALIBRATIONS.md",
+    "examples/sistelo-sample/README.md",
+)
+
+
+def _opening_block(text: str) -> str:
+    """The first few non-empty lines of the body, front matter excluded.
+
+    Front matter is metadata, not the document's opening sentence: a date in it must not exempt
+    the file, and neither must a date two hundred lines down.
+    """
+    if text.startswith("---\n"):
+        rest = text.split("\n", 1)[1]
+        end = rest.find("\n---\n")
+        text = rest[end + len("\n---\n") :] if end != -1 else rest
+    lines = [ln for ln in text.splitlines() if ln.strip()]
+    return "\n".join(lines[:_OPENING_LINES])
+
+
+def _is_dated_record(name: str, text: str) -> bool:
+    """A record declares when it was made, in its name or where a reader meets it."""
+    return bool(_ISO_DATE.search(name) or _ISO_DATE.search(_opening_block(text)))
+
+
+def _unsourced_percentages(text: str) -> list[str]:
+    """The percentages in `text` that the run record does not carry verbatim."""
+    smoke = (ROOT / LIVE_SMOKE).read_text(encoding="utf-8")
+    return sorted({p for p in _PERCENTAGE.findall(text) if p not in smoke})
+
+
+def _live_documents() -> dict[str, str]:
+    live = {}
+    for name in _tracked_markdown():
+        if name == LIVE_SMOKE:
+            continue
+        text = (ROOT / name).read_text(encoding="utf-8")
+        if not _is_dated_record(name, text):
+            live[name] = text
+    return live
+
+
+def _unsourced_by_document(documents: dict[str, str]) -> dict[str, list[str]]:
+    """The documents publishing a percentage the record does not carry, by name.
+
+    Takes the corpus rather than reading the tree, so the control below can run THIS function
+    over a planted one. Collected in the test body, neutralising it was undetectable on a clean
+    tree: a guard whose subject is absent cannot be told from a deleted guard.
+    """
+    return {
+        name: unsourced
+        for name, text in documents.items()
+        if (unsourced := _unsourced_percentages(text))
+    }
+
+
+def test_every_percentage_in_a_live_document_appears_in_the_run_record() -> None:
+    """A live claim quotes the instrument; a number typed by hand is what this catches."""
+    offenders = _unsourced_by_document(_live_documents())
+    assert not offenders, (
+        f"{len(offenders)} live document(s) publish a percentage absent from {LIVE_SMOKE}: "
+        f"{offenders} -- copy it from the record, or date the document if it is a record"
+    )
+
+
+def test_the_live_class_still_holds_the_documents_a_reader_acts_on() -> None:
+    """The population check: an exemption leaving the population must turn this red.
+
+    Nothing in the selector protects these four. A date drifting into the opening block of any of
+    them -- a release note, a changelog line -- would move it to the record class and take its
+    percentages out of scrutiny without a single test going red. This is that test.
+    """
+    live = set(_live_documents())
+    missing = [n for n in LIVE_DOCUMENTS_A_READER_ACTS_ON if n not in live]
+    assert not missing, (
+        f"{missing} left the live class -- if a date now opens the file, move it out of the "
+        f"opening block; a live document is not a record of a moment"
+    )
+
+
+def test_the_partition_is_not_vacuous_on_either_side() -> None:
+    """Both classes populated, and the live side actually publishing percentages to check."""
+    live = _live_documents()
+    records = [n for n in _tracked_markdown() if n not in live and n != LIVE_SMOKE]
+    assert records, "no tracked .md classified as a dated record: the rule scanned nothing"
+    quoting = [n for n, t in live.items() if _PERCENTAGE.search(t)]
+    assert len(quoting) >= 4, (
+        f"only {len(quoting)} live document(s) quote a percentage: {quoting} -- the check above "
+        f"passes by having nothing to read"
+    )
+
+
+def test_the_excluded_source_is_the_record_and_it_is_not_empty() -> None:
+    """The one exclusion, and its reason, asserted rather than assumed."""
+    smoke = ROOT / LIVE_SMOKE
+    assert smoke.exists(), f"{LIVE_SMOKE} is the source set and it is gone"
+    assert len(_PERCENTAGE.findall(smoke.read_text(encoding="utf-8"))) > 50, (
+        "the source record carries almost no percentages: every live claim would pass by "
+        "matching nothing"
+    )
+
+
+def test_the_percentage_check_fires_on_a_planted_claim_and_is_quiet_on_a_sourced_one() -> None:
+    """Both arms, through the same function the check above calls.
+
+    The planted value is assembled here rather than written out: this repository has twice put a
+    control's literal into a tracked file and had the gate find its own bait.
+    """
+    smoke = (ROOT / LIVE_SMOKE).read_text(encoding="utf-8")
+    planted = "9" + "9.999%"
+    assert planted not in smoke, "the planted value must be absent from the record to mean anything"
+    assert _unsourced_percentages(f"basis {planted} measured") == [planted]
+
+    sourced = sorted(set(_PERCENTAGE.findall(smoke)))[0]
+    assert _unsourced_percentages(f"basis {sourced} measured") == [], sourced
+
+
+def test_the_collection_names_the_offending_document_and_leaves_the_sourced_one_alone() -> None:
+    """The collection's own arms, over a planted corpus, through the function the check calls."""
+    smoke = (ROOT / LIVE_SMOKE).read_text(encoding="utf-8")
+    planted = "9" + "9.999%"
+    sourced = sorted(set(_PERCENTAGE.findall(smoke)))[0]
+    corpus = {
+        "docs/planted-live.md": f"# A live claim\n\nbasis {planted} measured\n",
+        "docs/planted-sourced.md": f"# Another live claim\n\nbasis {sourced} measured\n",
+        "docs/planted-silent.md": "# No numbers here\n\nProse.\n",
+    }
+    assert _unsourced_by_document(corpus) == {"docs/planted-live.md": [planted]}
+
+
+def test_a_document_is_a_record_only_where_it_declares_its_date() -> None:
+    """The classifier's arms: name, opening block, and the two places a date must not exempt."""
+    body = "# A title\n\nProse quoting 1.234% of something.\n"
+    assert not _is_dated_record("docs/whatever.md", body)
+    assert _is_dated_record("docs/verdict-2026-08-06-r2.md", body)
+    assert _is_dated_record("docs/whatever.md", "# A title\n\n**2026-09-03.** Prose.\n")
+    deep = body + "".join(f"Paragraph {i}, saying nothing about when.\n\n" for i in range(40))
+    assert not _is_dated_record("docs/whatever.md", deep + "measured on 2026-09-03\n"), (
+        "a date far down the body is not a document declaring itself a record"
+    )
+    # The tree proves the same thing: CALIBRATIONS.md carries ten dates in its origin column and
+    # is asserted live above. Blank lines are not depth -- the opening block counts what a reader
+    # sees, so it skips them.
+    assert not _is_dated_record(
+        "docs/whatever.md", "---\nname: x\nupdated: 2026-09-03\n---\n\n" + body
+    ), "front matter is metadata, not the opening block a reader meets"
