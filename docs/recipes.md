@@ -1,9 +1,9 @@
 # Recipes — your point cloud into `microrelief`, and its output into QGIS
 
 `microrelief run` refuses rather than guesses: every `.laz` must declare a projected, metre-based
-CRS that resolves to an EPSG code, and the AOI must be in that same CRS (`README.md`, *Your own
-data*). These recipes do the preparation with tools you probably already have. Each one says
-whether the author exercised it; the exercised ones have their output in `docs/live-smoke.md`.
+CRS that resolves to an EPSG code, and the AOI must be in that same CRS (`docs/inputs.md`). These
+recipes do the preparation with tools you probably already have. Each one says whether the author
+exercised it; the exercised ones have their output in `docs/live-smoke.md`.
 
 ## PDAL — reproject and clip (exercised 2026-08-26 with PDAL 2.10.2 — `docs/live-smoke.md`)
 

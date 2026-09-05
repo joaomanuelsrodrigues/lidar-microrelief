@@ -3,7 +3,8 @@
 Everything DGT-specific lives here: the search endpoint, the `LAZ` collection name, the
 200 km2 download cap, and the attribution string for their open data. The core knows none
 of it. That this is the *only* provider exercised is a fact about the evidence, not a
-statement about the core's reach — see README, "What has been exercised".
+statement about the core's reach — see `docs/inputs.md`, "One provider,
+exercised".
 """
 
 from microrelief.providers.dgt.catalogue import (
