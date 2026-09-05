@@ -2305,7 +2305,7 @@ was held up by a record that no longer carried its number.
 ## 2026-09-05 — every blob of every ref, before the flip
 
 The neutrality gate reads the index. Making this repository public publishes the history, so this
-is the other scan, run from `scripts/histscan.sh` at `98c3f5c` on `s307-pre-flip`. An earlier run
+is the other scan, run from `scripts/histscan.sh` at `98c3f5c`. An earlier run
 of the same shape, on 2026-09-05 over `b69e07b`, lived in a scratchpad and left no artefact; this
 one is a tracked script with its own tests.
 
