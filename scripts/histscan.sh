@@ -111,13 +111,23 @@ scan_repo() {  # scan_repo <repo> <control-pattern>  -> writes the report to std
     || die "rev-list failed: $(cat -- "$work/err")"
   # Read, never swallowed: `2>/dev/null || true` here would print `0 ref(s)` beside a real scan
   # of real blobs, which is the silently-wrong denominator this script refuses everywhere else.
-  # A separate `n_refs > 0` check was written and then removed as unreachable: no refs means no
-  # objects, and the objects guard below already fires. Only the FAILURE was reachable.
   git -C "$repo" for-each-ref --format='%(refname)' > "$work/refs" 2>"$work/err" \
     || die "for-each-ref failed: $(cat -- "$work/err")"
   local n_refs n_objects
   n_refs=$(wc -l < "$work/refs")
+  # And zero refs is refused, not reported. This check was deleted once, on the reasoning that
+  # no refs means no objects so the objects guard below would fire anyway. That reasoning is
+  # FALSE and the measurement is one command: `for-each-ref` does not list HEAD, `rev-list --all`
+  # includes it, so a detached HEAD with no refs at all scans real blobs and judges real hits
+  # under a `0 ref(s)` headline. A mutation pass could not tell the guard from its own absence
+  # because no fixture had a detached HEAD -- the guard was reachable and the fixtures were not.
+  [ "$n_refs" -gt 0 ] || die "no refs: a detached HEAD still reaches objects, and a scan reported under 0 ref(s) cannot be compared against anything"
   n_objects=$(wc -l < "$work/objects")
+  # Kept, and knowingly redundant today: with the ref guard above in place, no fixture I could
+  # build reaches this one -- a ref implies a commit implies objects. It stays because the last
+  # time a guard here was deleted for being unreachable, the reasoning was false and the case was
+  # a detached HEAD nobody had thought of. A surviving mutation on this line is that judgement,
+  # not an oversight.
   [ "$n_objects" -gt 0 ] || die "no objects reachable from any ref: nothing was scanned"
 
   # objects -> blobs only, keeping the first path each was seen at (a blob has no path of its own)

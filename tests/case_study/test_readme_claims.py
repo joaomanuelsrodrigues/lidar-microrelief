@@ -264,6 +264,11 @@ LIVE_SMOKE = "docs/live-smoke.md"
 _PERCENTAGE = re.compile(r"\d+\.\d+%")
 _ISO_DATE = re.compile(r"\b20\d\d-\d\d-\d\d\b")
 _OPENING_LINES = 6
+# Skipping headings makes the six PROSE lines reachable from arbitrarily far down, and the case
+# that worries is the one the pinned-set test names: a version-history block is `##` headings, so
+# skipping them makes it easier to reach a dated line beneath. The physical cap bounds that.
+# Measured on this tree: the deepest a document needs is 13 physical lines (SKILL.md).
+_OPENING_PHYSICAL_LINES = 20
 
 # Live documents that must stay in the population. Not the selector -- the selector is
 # `git ls-files` -- but the assertion that these four have not left it, which is what a date
@@ -295,8 +300,19 @@ def _opening_block(text: str) -> str:
         rest = text.split("\n", 1)[1]
         end = rest.find("\n---\n")
         text = rest[end + len("\n---\n") :] if end != -1 else rest
-    lines = [ln for ln in text.splitlines() if ln.strip() and not ln.lstrip().startswith("##")]
-    return "\n".join(lines[:_OPENING_LINES])
+    opening: list[str] = []
+    in_fence = False
+    for index, raw in enumerate(text.splitlines()):
+        if index >= _OPENING_PHYSICAL_LINES or len(opening) >= _OPENING_LINES:
+            break
+        stripped = raw.strip()
+        if stripped.startswith("```"):
+            in_fence = not in_fence
+            continue
+        if in_fence or not stripped or stripped.startswith("##"):
+            continue
+        opening.append(raw)
+    return "\n".join(opening)
 
 
 def _is_dated_record(name: str, text: str) -> bool:
@@ -453,3 +469,22 @@ def test_a_document_is_a_record_only_where_it_declares_its_date() -> None:
     assert not _is_dated_record(
         "docs/whatever.md", "---\nname: x\nupdated: 2026-09-03\n---\n\n" + body
     ), "front matter is metadata, not the opening block a reader meets"
+
+    # The physical cap. Skipping headings makes six PROSE lines reachable from arbitrarily far
+    # down, so a version-history block -- all `##` -- could otherwise carry the reader past the
+    # cap into a dated line and exempt a live document. Nothing on this tree exercises it (the
+    # deepest real opening block is 13 physical lines), so the control is built.
+    history = "# A live page\n\n" + "".join(f"## 0.{i}.0\n\n" for i in range(30))
+    assert not _is_dated_record("docs/whatever.md", history + "Released 2026-09-03.\n"), (
+        "a date reachable only past the physical cap must not exempt a document"
+    )
+    assert _is_dated_record("docs/whatever.md", "# A record\n\nMade 2026-09-03.\n"), (
+        "the same date within the cap must still classify"
+    )
+
+    # Fenced code is not prose and its `##` is not a heading. A recipe's shell comment saying
+    # when it was run is the same shape as the bug this rule fixes.
+    fenced = "# A recipe\n\n```\n# ran 2026-09-03\n## not a heading\n```\n\nProse with 1.2%.\n"
+    assert not _is_dated_record("docs/whatever.md", fenced), (
+        "a date inside a code fence is not the document declaring itself a record"
+    )

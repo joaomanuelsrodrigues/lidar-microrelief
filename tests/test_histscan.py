@@ -25,11 +25,20 @@ FIXTURE_MAIL = "t" + "@" + "example.invalid"
 
 
 def _gate_pattern(name: str) -> str:
-    """The gate's own literal, read from its single definition -- never copied."""
+    """The gate's own literal, read from its single definition -- never copied.
+
+    Refuses exactly where `read_pattern` in the script refuses: one definition, single-quoted.
+    A looser reader here would silently return a mangled pattern on the day the script exits 2,
+    which is the drift this helper exists to prevent, one level up.
+    """
     text = GATE.read_text(encoding="utf-8")
     lines = [ln for ln in text.splitlines() if ln.startswith(f"{name}=")]
     assert len(lines) == 1, f"expected one definition of {name} in {GATE}, found {len(lines)}"
-    return lines[0].split("=", 1)[1].strip().strip("'")
+    value = lines[0].split("=", 1)[1]
+    assert value.startswith("'") and value.endswith("'") and len(value) > 2, (
+        f"{name} in {GATE} is not a single-quoted literal: {value!r} -- the script would exit 2"
+    )
+    return value[1:-1]
 
 
 def _env(tmp_path: Path) -> dict[str, str]:
@@ -310,19 +319,25 @@ def test_a_failing_grep_is_an_instrument_failure_not_a_clean_blob(tmp_path: Path
     the run prints a green summary with correct-looking denominators.
 
     The shim fails only for the blob scan's `-qaE` calls, so the pattern-reading and the startup
-    probes still run: the arm under test is the scan, not the setup.
+    probes still run: the arm under test is the scan, not the setup. Its passthrough is resolved
+    with `which`, like the sibling git shim -- a hardcoded path would fail on a host that keeps
+    grep elsewhere, for a reason unrelated to what is being tested.
     """
+    import shutil
+
     env = _env(tmp_path)
     repo = _repo(tmp_path, env, "grepfail", [f"a note about {HOME_PATH}\n", "a note about it\n"])
 
     shim_dir = tmp_path / "bin"
     shim_dir.mkdir()
     shim = shim_dir / "grep"
+    real_grep = shutil.which("grep")
+    assert real_grep
     shim.write_text(
         "#!/bin/sh\n"
         'case " $* " in\n'
         '  *" -qaE "*) exit 2 ;;\n'
-        '  *) exec /usr/bin/grep "$@" ;;\n'
+        f'  *) exec {real_grep} "$@" ;;\n'
         "esac\n",
         encoding="utf-8",
     )
@@ -335,18 +350,69 @@ def test_a_failing_grep_is_an_instrument_failure_not_a_clean_blob(tmp_path: Path
     assert "judged hit(s)" not in r.stdout, "an instrument failure must not print a summary"
 
 
-def test_a_repository_with_no_refs_is_refused(tmp_path: Path) -> None:
-    """A repository with no refs scans a history that is not there -- the vacuous green the
-    shallow refusal exists for. Refused by the objects guard, which is why the separate
-    `n_refs > 0` check was deleted rather than kept: no refs means no objects, and a mutation
-    pass showed nothing could tell that guard from its own absence."""
+def test_an_empty_repository_is_refused_by_the_objects_guard(tmp_path: Path) -> None:
+    """A repository with nothing in it. Asserts WHICH refusal fires: an earlier version of this
+    test checked only `rc == 2`, which three different guards satisfy, so it could not support
+    the argument it was written for."""
     env = _env(tmp_path)
-    repo = tmp_path / "norefs"
+    repo = tmp_path / "empty-repo"
     repo.mkdir()
     subprocess.run(["git", "init", "-q"], cwd=repo, env=env, check=True)
     r = _run(repo, env)
     assert r.returncode == 2, r.stdout + r.stderr
+    assert "no refs" in r.stderr, r.stderr
     assert "histscan:" not in r.stdout, "an instrument failure must not print a summary"
+
+
+def test_a_detached_head_with_no_refs_is_refused_rather_than_scanned(tmp_path: Path) -> None:
+    """The case that makes the ref guard reachable, and that no earlier fixture had.
+
+    `for-each-ref` does not list HEAD; `rev-list --all` includes it. So a repository with a
+    detached HEAD and no refs at all has real objects and real blobs, and without this guard the
+    scan judges a real hit under a `0 ref(s)` headline -- measured before the guard went back in.
+    """
+    env = _env(tmp_path)
+    repo = tmp_path / "detached"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo, env=env, check=True)
+    (repo / "note.md").write_text(f"a note about {HOME_PATH}\n", encoding="utf-8")
+    subprocess.run(["git", "add", "--", "note.md"], cwd=repo, env=env, check=True)
+    tree = subprocess.run(
+        ["git", "write-tree"], cwd=repo, env=env, capture_output=True, text=True, check=True
+    ).stdout.strip()
+    commit = subprocess.run(
+        ["git", "commit-tree", tree, "-m", "c"],
+        cwd=repo,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    subprocess.run(["git", "checkout", "-q", "--detach", commit], cwd=repo, env=env, check=True)
+
+    refs = subprocess.run(
+        ["git", "for-each-ref", "--format=%(refname)"],
+        cwd=repo,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    assert refs == "", f"the fixture must have no refs at all, got {refs!r}"
+    objects = subprocess.run(
+        ["git", "rev-list", "--objects", "--all"],
+        cwd=repo,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    assert objects, "the fixture must still reach objects, or it does not exercise the guard"
+
+    r = _run(repo, env)
+    assert r.returncode == 2, r.stdout + r.stderr
+    assert "no refs" in r.stderr, r.stderr
+    assert "0 ref(s)" not in r.stdout, "the summary this guard exists to prevent was printed"
 
 
 def test_a_failing_ref_listing_is_an_instrument_failure_not_a_zero_denominator(
@@ -380,3 +446,49 @@ def test_a_failing_ref_listing_is_an_instrument_failure_not_a_zero_denominator(
     assert r.returncode == 2, r.stdout + r.stderr
     assert "for-each-ref failed" in r.stderr, r.stderr
     assert "ref(s)" not in r.stdout, "an instrument failure must not print a summary"
+
+
+def test_a_history_with_refs_and_commits_but_no_blobs_is_refused(tmp_path: Path) -> None:
+    """The third refusal, and the one no other fixture reaches: refs exist, objects exist, and
+    there is nothing to scan. Without its own case the blob guard is indistinguishable from its
+    absence -- which is how a guard gets deleted on a reason that turns out to be false."""
+    env = _env(tmp_path)
+    repo = tmp_path / "treeless"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo, env=env, check=True)
+    tree = subprocess.run(
+        ["git", "write-tree"], cwd=repo, env=env, capture_output=True, text=True, check=True
+    ).stdout.strip()
+    commit = subprocess.run(
+        ["git", "commit-tree", tree, "-m", "empty"],
+        cwd=repo,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    subprocess.run(["git", "branch", "-f", "main", commit], cwd=repo, env=env, check=True)
+
+    refs = subprocess.run(
+        ["git", "for-each-ref", "--format=%(refname)"],
+        cwd=repo,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    assert refs, "the fixture must have a ref, or it exercises the ref guard instead"
+    objects = subprocess.run(
+        ["git", "rev-list", "--objects", "--all"],
+        cwd=repo,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.split("\n")
+    assert len([o for o in objects if o]) >= 2, "the fixture must reach objects"
+
+    r = _run(repo, env)
+    assert r.returncode == 2, r.stdout + r.stderr
+    assert "no blobs" in r.stderr, r.stderr
+    assert "histscan:" not in r.stdout, "an instrument failure must not print a summary"
